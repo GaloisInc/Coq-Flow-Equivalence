@@ -4,8 +4,6 @@ Import ListNotations.
 Open Scope list_scope.
 
 
-  Arguments odd_even_neighbors {even odd}.
-  Arguments even_odd_neighbors {even odd}.
 
 Section RiseDecoupled.
 
@@ -128,15 +126,7 @@ Section RiseDecoupled.
              find_ith_occurrence e (ls_empty_async lset) i = None.
     Proof.
       induction i; intros e lset; auto.
-    Qed. Print ls_empty_sync.
-(*
-    Lemma find_ith_occurrence_empty_sync :
-      forall (i : nat) (e : event even odd) (clk : CLK),
-             find_ith_occurrence e (ls_empty_sync clk) i = None.
-    Proof.
-      induction i; intros e lset; auto.
-    Qed.
-*)
+    Qed. 
 
 Existing Instance event_eq_dec.
 
@@ -148,12 +138,25 @@ Existing Instance event_eq_dec.
     flat_map f (ls1 ++ ls2) = flat_map f ls1 ++ flat_map f ls2.
   Admitted.
 
-About consistent.
+Lemma eval_cons : forall st e s,
+    eval c st (ls_async e s) = let st' := eval c st s in
+                               eval_async_1 _ _ c st' e.
+Proof.
+  intros. reflexivity.
+Qed.
+
 Arguments num_events {even odd Heven Hodd}.
 Arguments consistent {even odd Heven Hodd transitions Htrans}.
 About is_enabled.
 Arguments is_enabled {even odd Heven Hodd transitions}.
 Existing Instance latch_eq_dec.
+
+
+Lemma num_events_cons : forall (e e' : event even odd) s,
+    num_events e (ls_async e' s) = if e =? e' then 1 + num_events e s else num_events e s.
+Proof. intros. reflexivity. Qed.
+
+
 
 
 Lemma in_flat_map_proof : forall {A B C} (a : A) (b : B) (ls : list (A*B))
@@ -291,8 +294,7 @@ Print marking.
       inversion Hconsistent; subst.
       simpl. reflexivity.
 
-  * specialize (IHs s eq_refl JMeq_refl).
-    inversion Hconsistent as [ | e1 m1 m1' s' Henabled Hfire Hconsistent']; subst.
+  * inversion Hconsistent as [ | e1 m1 m1' s' Henabled Hfire Hconsistent']; subst.
     rename m1 into m.
     unfold num_events.
     fold (num_events (Pos (Odd O)) s).
@@ -354,8 +356,7 @@ Proof. intros. subst. reflexivity. Qed.
       inversion Hconsistent; subst.
       simpl. reflexivity.
 
-  * specialize (IHs s eq_refl JMeq_refl).
-    inversion Hconsistent as [ | e1 m1 m1' s' Henabled Hfire Hconsistent']; 
+  * inversion Hconsistent as [ | e1 m1 m1' s' Henabled Hfire Hconsistent']; 
       subst; rename m1 into m.
     unfold num_events.
     fold (num_events (Pos (Even E)) s).
@@ -392,6 +393,12 @@ Proof. intros. subst. reflexivity. Qed.
   Admitted.
 
 
+  Lemma opaque_neq_transparent_event : forall (l : latch even odd),
+    opaque_event l <> transparent_event l.
+  Proof.
+    destruct l; inversion 1.
+  Qed.
+
 
     
       
@@ -400,22 +407,12 @@ Proof. intros. subst. reflexivity. Qed.
     flow_equivalence rise_decoupled rise_decoupled_init c.
   Proof.
     unfold flow_equivalence.
-    intros s. 
-    dependent induction s; [rename l into lset | rename e into e0];
+    induction s as [lset | e s];
       intros Hconsistent.
     * simpl. reflexivity.
-    * specialize (IHs s eq_refl JMeq_refl).
-      inversion Hconsistent as [ m Hm];
+    * inversion Hconsistent as [ m Hm];
         inversion Hm as [ | e0' m0 m0' s' Henabled Hfire Hconsistent']; subst;
         rename m0 into m.
-
-Print eval.
-Lemma eval_cons : forall st e s,
-    eval c st (ls_async e s) = let st' := eval c st s in
-                               eval_async_1 _ _ c st' e.
-Proof.
-  intros. reflexivity.
-Qed.
 
       rewrite eval_cons.
       rewrite IHs.
@@ -423,11 +420,6 @@ Qed.
       unfold eval_async_1.
       apply functional_extensionality.
       intros l.
-
-Print num_events.
-Lemma num_events_cons : forall (e e' : event even odd) s,
-    num_events e (ls_async e' s) = if e =? e' then 1 + num_events e s else num_events e s.
-Proof. intros. reflexivity. Qed.
 
       rewrite num_events_cons.
 
@@ -441,18 +433,9 @@ Proof. intros. reflexivity. Qed.
           unfold even_state.
           admit. }
         destruct (Neg (Odd O) =? e0).
-        { subst.
-      
-      
+        { subst. admit. }
+        admit.
 
-
-      destruct (transparent_event l =? e0) as [l_eq_e | l_neq_e].
-      + subst. 
-Lemma opaque_neq_transparent_event : forall (l : latch even odd),
-    opaque_event l <> transparent_event l.
-Proof.
-    destruct l; inversion 1.
-Qed.
 
     destruct (opaque_event l =? transparent_event l) as [Heq | _].
     1:{ apply opaque_neq_transparent_event in Heq. contradiction. }
