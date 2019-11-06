@@ -109,9 +109,9 @@ Section LatchSequence.
   (* Odd latches are transparent on 1, so if then event o+
      occurs, then o is no longer transparent. *)
   | Pos (Odd o) => true
-  | Pos (Even e) => false
+  | Pos (Even e) => true
   | Neg (Odd o)  => false
-  | Neg (Even e) => true
+  | Neg (Even e) => false
   end.
 
   Definition step_latch_set (e : event) (t : latch_set) : latch_set :=
@@ -287,6 +287,7 @@ Section Circuits.
              then get_latch_value c prev l
              else prev l.
 
+(*
   Fixpoint eval (c : circuit) (prev : state (latch even odd))
                 (s : latch_sequence even odd)
                 : state (latch even odd) :=
@@ -295,11 +296,24 @@ Section Circuits.
     | ls_async e s'       => let st := eval c prev s' in
                              eval_async_1 c st e
     end.
+*)
 
+  Reserved Notation " c '⊢' st '⇒' s '⇒' st' " (no associativity, at level 80).
+  Inductive eval (c : circuit) (init : state (latch even odd))
+               : latch_sequence even odd -> state (latch even odd) -> Prop :=
+  | eval_nil lset : c ⊢ init ⇒ ls_empty_async lset ⇒ init
+  | eval_cons e s st st' :
+    c ⊢ init ⇒s⇒ st ->
+    (forall l, is_transparent (ls_async e s) l = false -> st' l = st l) ->
+    (forall l, is_transparent (ls_async e s) l = true -> st' l = get_latch_value c st' l) ->
+    c ⊢ init ⇒ls_async e s⇒ st'
+  where " c '⊢' st '⇒' s '⇒' st' " := (eval c st s st').
 
 End Circuits.
 
 Arguments eval {even odd Heven Hodd}.
+Notation " c '⊢' st '⇒' s '⇒' st' " := (eval c st s st') (no associativity, at level 80).
+
 Arguments transparent_event {even odd}.
 Arguments opaque_event {even odd}.
 Arguments odd_even_neighbors {even odd}.
@@ -473,8 +487,10 @@ Section FlowEquivalence.
   Definition flow_equivalence (c : circuit even odd) :=
     forall (s : latch_sequence even odd),
         consistent s ->
-        eval c (marking_to_state init) s
-      = fun l => sync_eval c (marking_to_state init) (num_events (opaque_event l) s) l.
+        forall st,
+        eval c (marking_to_state init) s st ->
+        forall l, is_transparent s l = false ->
+                  st l = sync_eval c (marking_to_state init) (num_events (Neg l) s) l.
 
 
 End FlowEquivalence.
