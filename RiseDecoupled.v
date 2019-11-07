@@ -226,7 +226,7 @@ Arguments in_transitions {events transitions Hevents}.
 Print enabled.
 Notation "m <? n" := (PeanoNat.Nat.ltb m n) (no associativity, at level 90).
 
-
+(*
 Lemma neg_even_enabled_even_odd_rise_0 : forall e o (Hin : In (o,e) (odd_even_neighbors c)) m,
     is_enabled rise_decoupled (Neg (Even e)) m ->
     m (Even_odd_rise o e Hin) = 0.
@@ -235,6 +235,8 @@ Proof.
   unfold is_enabled,enabled in *.
   admit (*???*).
 Admitted.
+*)
+
 
 Lemma in_dec_fmap : forall {A B} `{eq_dec A} `{eq_dec B} (x : A) (y : B) f ls,
     x ∈ ls ->
@@ -242,6 +244,8 @@ Lemma in_dec_fmap : forall {A B} `{eq_dec A} `{eq_dec B} (x : A) (y : B) f ls,
     y ∈ fmap f ls.
 Admitted.
 
+
+(*
 Lemma fire_even_odd_rise : forall e o (Hin : In (o,e) (odd_even_neighbors c)) m,
     is_enabled rise_decoupled (Neg (Even e)) m ->
     fire (Neg (Even e)) rise_decoupled m (Even_odd_rise o e Hin)
@@ -255,9 +259,8 @@ Existing Instance prod_eq_dec.
   { admit. }
   unfold in_dec'. 
 Admitted.  
-    
+*)  
 
-Print transitions_RD.
 
 
 (*
@@ -291,6 +294,7 @@ Print marking.
     
 *)
 
+(*
   Lemma num_transparent_events_odd_even : forall s m,
       ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
       forall o e (pf : In (o,e) (odd_even_neighbors c)),
@@ -412,6 +416,8 @@ Proof. intros. subst. reflexivity. Qed.
     destruct l; inversion 1.
   Qed.
 
+*)
+
 Print consistent. 
 Print ls_consistent_with_MG.
 
@@ -421,6 +427,33 @@ Print ls_consistent_with_MG.
     st = marking_to_state rise_decoupled rise_decoupled_init ->
     is_transparent (ls_empty_async lset) (Even E) = true.
 *)
+
+Lemma fall_enabled_transparent : forall s m l,
+    ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
+    is_enabled rise_decoupled (Neg l) m ->
+    is_transparent s l = true.
+Admitted.
+
+Lemma rise_enabled_opaque : forall s m l,
+    ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
+    is_enabled rise_decoupled (Pos l) m ->
+    is_transparent s l = false.
+Admitted.
+
+Lemma fall_enabled_even_opaque : forall s m O E,
+    ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
+    is_enabled rise_decoupled (Neg (Odd O)) m ->
+    In (E,O) (even_odd_neighbors c) ->
+    is_transparent s (Even E) = false.
+Admitted.
+
+Lemma fall_enabled_odd_opaque : forall s m O E,
+    ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
+    is_enabled rise_decoupled (Neg (Even E)) m ->
+    In (O,E) (odd_even_neighbors c) ->
+    is_transparent s (Odd O) = false.
+Admitted.
+
       
 
   Theorem rise_decoupled_flow_equivalence :
@@ -441,8 +474,6 @@ Print ls_consistent_with_MG.
           unfold is_enabled. unfold enabled.
           apply forallb_forall.
           intros T HT.
-Existing Instance eqdecRD.
-
 
           Search In flat_map.
           unfold in_transitions, rise_decoupled in HT. simpl in HT.
@@ -475,8 +506,7 @@ Existing Instance eqdecRD.
            rewrite Hopaque'.
            2:{ simpl. rewrite eqb_eq. auto. }
            rewrite (eval_transparent _ _ _ _ _ _ Heval').
-           2:{ admit (* true since (Neg 0) is enabled in s *). }
-           
+           2:{ eapply fall_enabled_transparent; eauto. (* LEMMA *) }
 
         unfold get_latch_value.
         apply f_equal. unfold even_state.
@@ -484,7 +514,8 @@ Existing Instance eqdecRD.
            intros [E H_EO].
            rewrite sync_eval_even. simpl.
            rewrite IHs; [ |eexists; eauto | assumption |].
-           2:{ (* Since O- is enabled in m, E must be opaque *) admit. }
+           2:{ eapply fall_enabled_even_opaque; eauto. (* LEMMA *) }
+
            rewrite sync_eval_even.
            apply f_equal.
            assert (H : num_events (Neg (Even E)) s = 1+num_events (Neg (Odd O)) s).
@@ -495,7 +526,7 @@ Existing Instance eqdecRD.
            rewrite Hopaque'.
            2:{ simpl. rewrite eqb_eq. auto. }
            rewrite (eval_transparent _ _ _ _ _ _ Heval').
-           2:{ admit (* true since (Neg 0) is enabled in s *). }
+           2:{ eapply fall_enabled_transparent; eauto. (* LEMMA *) }
 
         unfold get_latch_value.
         apply f_equal. unfold odd_state.
@@ -504,7 +535,7 @@ Existing Instance eqdecRD.
            
            rewrite sync_eval_odd. simpl.
            rewrite IHs; [ |eexists; eauto | assumption |].
-           2:{ (* Since O- is enabled in m, E must be opaque *) admit. }
+           2:{ eapply fall_enabled_odd_opaque; eauto. (* LEMMA *) }
            assert (H : num_events (Neg (Odd O)) s = 1+num_events (Neg (Even E)) s).
            { (* false??? since O- is enabled *) admit. }
            rewrite H.
@@ -527,194 +558,4 @@ Existing Instance eqdecRD.
       reflexivity.
   Admitted.
 
-      rewrite He in *.
-      
-      
-
-        destruct l as [O | E].
-        ++ apply f_equal. unfold even_state.
-           apply functional_extensionality.
-           intros [E H_EO].
-           simpl.
-           rewrite IHs; [ |eexists; eauto | assumption |].
-           2:{ (* Since O- is enabled in m, E must be opaque *) admit. }
-           assert (num_events (Neg (Even E)) s = 1+num_events (Neg (Odd O)) s).
-           { admit (* not true, #(E-)s = 1+#(O-)s... *). }
-          rewrite H. simpl. admit (*???*).
-        ++ apply f_equal. unfold odd_state.
-           apply functional_extensionality.
-           intros [O OE]. simpl.
-           rewrite IHs; [ | eexists; eauto | assumption | ].
-           2:{ admit (* true *). }
-           assert (num_events (Neg (Odd O)) s = num_events (Neg (Even E)) s).
-           { admit (* true *). }
-           rewrite H. reflexivity.
-      
-
-        erewrite IHs; [| eexists; eauto | eauto |].
-        2:{ (* because Neg l is enabled in m and s is consistent with m... *) admit. }
-
-        
-        
-      destruct l as [O | E].
-      + 
-
-
-      rewrite eval_cons.
-      rewrite IHs.
-      2:{ exists m. assumption. }
-      unfold eval_async_1.
-      apply functional_extensionality.
-      intros l.
-
-      rewrite num_events_cons.
-
-      destruct l as [O | E]. unfold transparent_event, opaque_event.
-
-      + destruct (Pos (Odd O) =? e0).
-        { subst. simpl. 
-          assert (H : num_events (Neg (Odd O)) s = num_events (Pos (Odd O)) s)
-            by admit.
-          rewrite H; clear H.
-          unfold even_state.
-          admit. }
-        destruct (Neg (Odd O) =? e0).
-        { subst. admit. }
-        admit.
-
-
-    destruct (opaque_event l =? transparent_event l) as [Heq | _].
-    1:{ apply opaque_neq_transparent_event in Heq. contradiction. }
-
-
-        unfold get_latch_value.
-        destruct l as [O | E].
-        ++ apply f_equal. unfold even_state.
-           apply functional_extensionality. intros [E Hin].
-           simpl.
-           (* because (transparent_event (Odd o)) is enabled in MG,
-              m(Odd_even_rise e' o) = 0*)
-           assert (H_num_events : num_events (Neg (Even e')) = ).
-
-           subst.
-           set (Heo := num_transparent_events_even_odd s o e' m Hconsistent' He').
-           (* because (transparent_event (Odd o)) is enabled in MG,
-              m(Odd_even_rise e' o) = 0*)
-           assert (Hm0 : m (Odd_even_rise e' o He') = 0) by admit.
-           rewrite Hm0 in Heo. simpl in Heo.
-           rewrite <- Heo.
-
-           edestruct (num_transparent_events_odd_even) as [_ H_num_events];
-             eauto.
-           unfold transparent_event in *.
-           admit (*???*).
-        ++ apply f_equal. unfold odd_state.
-           apply functional_extensionality. intros [o0 Ho0].
-           simpl.
-           assert ( Hnum : num_transparent_events even odd (Odd o0) s
-                         = num_transparent_events even odd (Even e0) s) by admit.
-           rewrite Hnum.
-           reflexivity.
-     + reflexivity.
-Admitted.
-
-      + erewrite IHs. reflexivity. eauto.
-        erewrite IHs. reflexivity.
-
-
-      destruct (event_refers_to_latch even odd e l) eqn:He;
-
-      un
-      
-
-
-        unfold event_refers_to_latch in He.
-      + unfold get_latch_value.
-        
-
-      
-
- unfold eval_sync_even_1. unfold eval_sync_odd_1.
-
-      dependent destruction i; auto.
-      simpl.
-      unfold eqb.
-      destruct (e =? transparent_event even odd l) as [e_eq_l | e_neq_l].
-      + Print sync_latch_sequence. destruct 
-
-      destruct l as [lE | lO].
-      + simpl.
-        
-
-      destruct i as [ | i]; [reflexivity | ].
-      simpl.
-
-
-
-      assert (Hsync :
-              find_ith_occurrence (transparentEvent even odd l) 
-                                  (sync_latch_sequence even odd (ls_length even odd s) CLK0)
-                                  i'
-              = Some 0 
-          \/ find_ith_occurrence (transparentEvent even odd l) 
-                                  (sync_latch_sequence even odd (ls_length even odd s) CLK0)
-                                  i'
-              = Some 1)
-        by admit.
-
-
-
-Locate "_ ~= _". Print JMeq.
-      simpl.
-      Print projection.
-      
-
-
-    intros s Hconsistent l i.
-Print projection.
-    induction i as [ | i'].
-    * simpl. reflexivity.
-    * simpl. Print sync_latch_sequence. 
-      destruct Hsync as [Hsync | Hsync]; rewrite Hsync; clear Hsync.
-      + simpl.
-        rewrite IHi'.
-
-  Abort.
-
-
 End RiseDecoupled.
-Arguments rise_decoupled {even odd}.
-
-Section RDFlowEquivalence.
-
-  Context (even odd : Set).
-  Context `{Heven : eq_dec even} `{Hodd : eq_dec odd}.
-
-  Context (c : circuit even odd).
-  
-  Theorem rise_decoupled_flow_equivalence : forall c,
-    flow_equivalence rise_decoupled rise_decoupled_init c all_even_events_rd all_odd_events_rd.
-  Proof.
-    intros c. intros s Hconsistent.
-    unfold consistent_with_MG in Hconsistent.
-    intros [o | e] i.
-    induction i.
-    * simpl. reflexivity.
-    * simpl.
-      set (SYNC := (repeat (ls_length evenRD oddRD s) [all_even_events_rd; all_odd_events_rd])).
-      destruct l as [o | e].
-      + simpl. 
-        assert (Hsync : (find_ith_occurrence (Pos (Odd o)) SYNC i = Some (2*i))) (* or opposite? *)
-         by admit.
-        rewrite Hsync.
-        unfold all_even_events_rd. unfold all_odd_events_rd.
-        unfold sync_latch_sequence.
-        destruct (find_ith_occurrence (Pos (Odd o)) (next_events s) i)
-          as [t | ] eqn:Ht.
-        ++ admit.
-        ++ rewrite IHi.
-           admit (*?*).
-  Abort.  
-
-
-End RDFlowEquivalence.
