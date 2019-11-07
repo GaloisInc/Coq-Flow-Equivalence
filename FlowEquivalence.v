@@ -18,10 +18,16 @@ Inductive value :=
 | Z  : value.
 
 
-Class eq_dec A := { dec : forall (a b : A), {a = b} + {a <> b} }.
+Class eq_dec A := { Dec : forall (a b : A), {a = b} + {a <> b} }.
 Definition eqb {A} `{eq_dec A} (a b : A) : bool :=
-  if dec a b then true else false.
-Infix "=?" := dec.
+  if Dec a b then true else false.
+Infix "=?" := eqb.
+
+
+Lemma eqb_eq : forall A `{eq_dec A} (a : A), a =? a = true.
+Proof. intros. unfold eqb. destruct (Dec a a); auto. Qed.
+Lemma eqb_neq : forall A `{eq_dec A} (a b : A), a <> b -> a =? b = false.
+Proof. intros. unfold eqb. destruct (Dec a b); auto. contradiction. Qed.
 
 
 Require Import List.
@@ -31,7 +37,7 @@ Open Scope list_scope.
 Fixpoint in_list_dec {A} `{eq_dec A} (a : A) (ls : list A) : bool :=
   match ls with
   | [] => false
-  | b :: ls' => if dec a b then true else in_list_dec a ls'
+  | b :: ls' => if a =? b then true else in_list_dec a ls'
   end.
 Notation "a ∈ ls" := (in_list_dec a ls = true) (no associativity, at level 90).
 Notation "a ∈? ls" := (in_list_dec a ls) (no associativity, at level 90).
@@ -89,11 +95,11 @@ Section LatchSequence.
   Proof.
     constructor.
     intros [l1 | l1] [l2 | l2].
-    * destruct (dec l1 l2); [ subst; auto | ].
+    * destruct (Dec l1 l2); [ subst; auto | ].
       right. inversion 1. contradiction.
     * right. inversion 1.
     * right. inversion 1.
-    * destruct (dec l1 l2); [ subst; auto | ].
+    * destruct (Dec l1 l2); [ subst; auto | ].
       right. inversion 1. contradiction.
   Defined.
 
@@ -175,7 +181,7 @@ Section LatchSequence.
   Fixpoint find_next_occurrence_a (e : event) (es : list event) : option (nat * list event) :=
     match es with
     | [] => None
-    | e0 :: es' => if dec e e0 then Some (0, es')
+    | e0 :: es' => if e =? e0 then Some (0, es')
                    else match find_next_occurrence_a e es' with
                         | Some (n,es2) => Some (S n, es2)
                         | None => None
@@ -256,12 +262,12 @@ Section Circuits.
 
   Definition transparent_event (l : latch even odd) : event even odd :=
     match l with
-    | Even e => Neg (Even e)
+    | Even e => Pos (Even e)
     | Odd o  => Pos (Odd o)
     end.
   Definition opaque_event (l : latch even odd) : event even odd :=
     match l with
-    | Even e => Pos (Even e)
+    | Even e => Neg (Even e)
     | Odd o  => Neg (Odd o)
     end.
     
@@ -301,13 +307,23 @@ Section Circuits.
   Reserved Notation " c '⊢' st '⇒' s '⇒' st' " (no associativity, at level 80).
   Inductive eval (c : circuit) (init : state (latch even odd))
                : latch_sequence even odd -> state (latch even odd) -> Prop :=
-  | eval_nil lset : c ⊢ init ⇒ ls_empty_async lset ⇒ init
+  | eval_nil lset : 
+    (forall l, lset l = true -> init l = get_latch_value c init l) ->
+    c ⊢ init ⇒ ls_empty_async lset ⇒ init
   | eval_cons e s st st' :
     c ⊢ init ⇒s⇒ st ->
     (forall l, is_transparent (ls_async e s) l = false -> st' l = st l) ->
     (forall l, is_transparent (ls_async e s) l = true -> st' l = get_latch_value c st' l) ->
     c ⊢ init ⇒ls_async e s⇒ st'
   where " c '⊢' st '⇒' s '⇒' st' " := (eval c st s st').
+
+  Lemma eval_transparent : forall c st s st',
+    c ⊢ st ⇒ s ⇒ st' ->
+    forall l, is_transparent s l = true -> st' l = get_latch_value c st' l.
+  Proof.
+    intros c st s st' H.
+    induction H; intros invariant l; auto.
+  Qed.
 
 End Circuits.
 
@@ -353,6 +369,12 @@ Section MarkedGraphs.
     filter (fun (t : transitions) => eqb (output_event M t) e) (enumerate).
 *)
 
+  Lemma in_in_transitions : forall T M e,
+    In T (in_transitions M e) ->
+    exists e0, In (e0,T,e) (input_event_output M).
+  Proof.
+  Admitted.
+
   Definition enabled (e : events)
                      (M : marked_graph)
                      (m : marking)
@@ -363,7 +385,7 @@ Section MarkedGraphs.
   Instance prod_eq_dec {A B} `{eq_dec A} `{eq_dec B} : eq_dec (A*B).
   Proof.
     split. intros [a b] [a' b'].
-    destruct (dec a a'); destruct (dec b b');
+    destruct (Dec a a'); destruct (Dec b b');
       subst; auto;
       right; inversion 1; contradiction.
   Defined.
@@ -437,7 +459,10 @@ Section FlowEquivalence.
     enabled e M m = true.
 
   Inductive ls_consistent_with_MG : latch_sequence even odd -> marking transitions -> Prop :=
-  | lsc_empty lset : ls_consistent_with_MG (ls_empty_async lset) init
+  | lsc_empty lset : 
+    (forall l, is_enabled (Pos l) init -> lset l = false) ->
+    (forall l, is_enabled (Neg l) init -> lset l = true) ->
+    ls_consistent_with_MG (ls_empty_async lset) init
   | lsc_cons e m m' s' : is_enabled e m ->
                 fire e M m = m' ->
                 ls_consistent_with_MG s' m ->
@@ -468,12 +493,70 @@ Section FlowEquivalence.
     | ls_async _ s' => 1 + ls_length s'
     end.
 
+(*
   Fixpoint sync_eval (c : circuit even odd) (st : state (latch even odd)) (n : nat) :=
     match n with
     | 0 => st
     | S n' => let st' := sync_eval c st n' in
               fun l => get_latch_value _ _ c st' l
     end.
+*)
+
+  Arguments get_latch_value {even odd}.
+
+About get_latch_value.
+About evenF.
+Search state.
+Arguments oddF {even odd}.
+Arguments evenF {even odd}.
+Arguments even_state {even odd P}.
+Arguments odd_state {even odd P}.
+
+  Fixpoint sync_even (c : circuit even odd) (st : state (latch even odd)) (n : nat)
+                            {struct n} : state even :=
+    fun E =>
+    evenF c E (fun O => match n with
+                        | 0 => st (Odd (projT1 O))
+                        | S n' => oddF c (projT1 O) (fun E => sync_even c st n' (projT1 E))
+                        end).
+  Fixpoint sync_odd (c : circuit even odd) (st : state (latch even odd)) (n : nat) 
+                            {struct n} : state odd :=
+    fun O =>
+    match n with
+    | 0 => st (Odd O)
+    | S n' => oddF c O (fun E => sync_even c st n' (projT1 E))
+    end.
+  Lemma sync_even_eq : forall c st n E,
+    sync_even c st n E = evenF c E (fun O => sync_odd c st n (projT1 O)).
+  Proof.
+    intros.
+    induction n.
+    * simpl. reflexivity.
+    * simpl. reflexivity. 
+  Qed.
+
+  Definition sync_eval (c : circuit even odd) (st : state (latch even odd)) (n : nat) 
+                   : state (latch even odd) := fun l =>
+    match l with
+    | Even E => sync_even c st n E
+    | Odd o  => sync_odd c st n o
+    end.
+  Lemma sync_eval_even : forall c st n E,
+        sync_eval c st n (Even E) = evenF c E (odd_state (sync_eval c st n)).
+  Proof.
+    intros c st n E. simpl. 
+    rewrite sync_even_eq. reflexivity.
+  Qed.
+  Lemma sync_eval_odd_0 : forall c st O,
+        sync_eval c st 0 (Odd O) = st (Odd O).
+  Proof.
+    reflexivity.
+  Qed.
+  Lemma sync_eval_odd : forall c st n O,
+        sync_eval c st (S n) (Odd O) = oddF c O (even_state (sync_eval c st n)).
+  Proof.
+    reflexivity.
+  Qed.
 
   Fixpoint num_events (e : event even odd) (s : latch_sequence even odd) : nat :=
     match s with
