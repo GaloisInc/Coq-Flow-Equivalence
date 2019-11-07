@@ -238,10 +238,10 @@ Section Circuits.
 
   Definition state (tp : Set) := tp -> value.
 
-  Definition odd_state (P : odd -> Prop)
+  Definition odd_state {P : odd -> Prop}
                        (s : state (latch even odd)) : state {o : odd & P o} :=
     fun o => s (Odd (projT1 o)).
-  Definition even_state (P : even -> Prop)
+  Definition even_state {P : even -> Prop}
                         (s : state (latch even odd)) : state {e : even & P e} :=
     fun o => s (Even (projT1 o)).
 
@@ -256,8 +256,8 @@ Section Circuits.
                              (prev : state (latch even odd))
                              (l : latch even odd) : value :=
     match l with
-    | Even e => evenF c e (odd_state _ prev)
-    | Odd o  => oddF c o (even_state _ prev)
+    | Even e => evenF c e (odd_state prev)
+    | Odd o  => oddF c o (even_state prev)
     end.
 
   Definition transparent_event (l : latch even odd) : event even odd :=
@@ -324,6 +324,64 @@ Section Circuits.
     intros c st s st' H.
     induction H; intros invariant l; auto.
   Qed.
+
+
+
+  Fixpoint sync_even (c : circuit) (st : state (latch even odd)) (n : nat)
+                            {struct n} : state even :=
+    fun E =>
+    evenF c E (fun O => match n with
+                        | 0 => st (Odd (projT1 O))
+                        | S n' => oddF c (projT1 O) (fun E => sync_even c st n' (projT1 E))
+                        end).
+  Fixpoint sync_odd (c : circuit) (st : state (latch even odd)) (n : nat) 
+                            {struct n} : state odd :=
+    fun O =>
+    match n with
+    | 0 => st (Odd O)
+    | S n' => oddF c O (fun E => sync_even c st n' (projT1 E))
+    end.
+  Lemma sync_even_eq : forall c st n E,
+    sync_even c st n E = evenF c E (fun O => sync_odd c st n (projT1 O)).
+  Proof.
+    intros.
+    induction n.
+    * simpl. reflexivity.
+    * simpl. reflexivity. 
+  Qed.
+
+  Definition sync_eval (c : circuit) (st : state (latch even odd)) (n : nat) 
+                   : state (latch even odd) := fun l =>
+    match l with
+    | Even E => sync_even c st n E
+    | Odd o  => sync_odd c st n o
+    end.
+
+  Lemma sync_eval_even : forall (c : circuit) (st : state (latch even odd)) n E,
+        sync_eval c st n (Even E) = evenF c E (odd_state (sync_eval c st n)).
+  Proof.
+    intros c st n E. simpl. 
+    rewrite sync_even_eq. reflexivity.
+  Qed.
+  Lemma sync_eval_odd_0 : forall c st O,
+        sync_eval c st 0 (Odd O) = st (Odd O).
+  Proof.
+    reflexivity.
+  Qed.
+  Lemma sync_eval_odd : forall c st n O,
+        sync_eval c st (S n) (Odd O) = oddF c O (even_state (sync_eval c st n)).
+  Proof.
+    reflexivity.
+  Qed.
+  Lemma sync_eval_even_0_opp : forall c st E,
+        sync_eval c st 0 (Even E) = st (Even E).
+  Admitted.
+  Lemma sync_eval_even_opp : forall c st n E,
+        sync_eval c st (S n) (Even E) = evenF c E (odd_state (sync_eval c st n)).
+  Admitted.
+  Lemma sync_eval_odd_opp : forall c st n O,
+        sync_eval c st n (Odd O) = oddF c O (even_state (sync_eval c st n)).
+  Admitted.
 
 End Circuits.
 
@@ -442,6 +500,15 @@ Arguments step_latch_sequence_n {even odd}.
 Arguments find_ith_occurrence {even odd Heven Hodd}.
 Arguments fire {events transitions Hevents Htransitions}.
 
+
+Arguments get_latch_value {even odd}.
+
+Arguments oddF {even odd}.
+Arguments evenF {even odd}.
+Arguments even_state {even odd P}.
+Arguments odd_state {even odd P}.
+Arguments sync_eval {even odd}.
+
 Section FlowEquivalence.
 
   Context (even odd : Set).
@@ -502,61 +569,9 @@ Section FlowEquivalence.
     end.
 *)
 
-  Arguments get_latch_value {even odd}.
 
-About get_latch_value.
-About evenF.
-Search state.
-Arguments oddF {even odd}.
-Arguments evenF {even odd}.
-Arguments even_state {even odd P}.
-Arguments odd_state {even odd P}.
 
-  Fixpoint sync_even (c : circuit even odd) (st : state (latch even odd)) (n : nat)
-                            {struct n} : state even :=
-    fun E =>
-    evenF c E (fun O => match n with
-                        | 0 => st (Odd (projT1 O))
-                        | S n' => oddF c (projT1 O) (fun E => sync_even c st n' (projT1 E))
-                        end).
-  Fixpoint sync_odd (c : circuit even odd) (st : state (latch even odd)) (n : nat) 
-                            {struct n} : state odd :=
-    fun O =>
-    match n with
-    | 0 => st (Odd O)
-    | S n' => oddF c O (fun E => sync_even c st n' (projT1 E))
-    end.
-  Lemma sync_even_eq : forall c st n E,
-    sync_even c st n E = evenF c E (fun O => sync_odd c st n (projT1 O)).
-  Proof.
-    intros.
-    induction n.
-    * simpl. reflexivity.
-    * simpl. reflexivity. 
-  Qed.
 
-  Definition sync_eval (c : circuit even odd) (st : state (latch even odd)) (n : nat) 
-                   : state (latch even odd) := fun l =>
-    match l with
-    | Even E => sync_even c st n E
-    | Odd o  => sync_odd c st n o
-    end.
-  Lemma sync_eval_even : forall c st n E,
-        sync_eval c st n (Even E) = evenF c E (odd_state (sync_eval c st n)).
-  Proof.
-    intros c st n E. simpl. 
-    rewrite sync_even_eq. reflexivity.
-  Qed.
-  Lemma sync_eval_odd_0 : forall c st O,
-        sync_eval c st 0 (Odd O) = st (Odd O).
-  Proof.
-    reflexivity.
-  Qed.
-  Lemma sync_eval_odd : forall c st n O,
-        sync_eval c st (S n) (Odd O) = oddF c O (even_state (sync_eval c st n)).
-  Proof.
-    reflexivity.
-  Qed.
 
   Fixpoint num_events (e : event even odd) (s : latch_sequence even odd) : nat :=
     match s with

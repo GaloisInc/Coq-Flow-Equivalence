@@ -454,28 +454,31 @@ Lemma fall_enabled_odd_opaque : forall s m O E,
     is_transparent s (Odd O) = false.
 Admitted.
 
-      
+Lemma fall_enabled_even_odd : forall s m O E,
+    ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
+    is_enabled rise_decoupled (Neg (Odd O)) m ->
+    In (E,O) (even_odd_neighbors c) ->
+    num_events (Neg (Even E)) s = 1+num_events (Neg (Odd O)) s.
+Admitted.
 
-  Theorem rise_decoupled_flow_equivalence :
-    flow_equivalence rise_decoupled rise_decoupled_init c.
-  Proof.
-    unfold flow_equivalence.
-    induction s as [lset | e s];
-      intros Hconsistent st Heval l Hopaque.
-    * simpl. inversion Heval as [lset' Htransparent | ]; subst.
-      destruct l as [O | E].
-      + simpl. reflexivity.
-      + simpl in Hopaque.
-        absurd (lset (Even E) = true).
-        { intro H_E. rewrite H_E in Hopaque. inversion Hopaque. }
-        { inversion Hconsistent as [m Hm].
-          inversion Hm as [? Hpos Hneg | ]; subst.
-          apply Hneg.
-          unfold is_enabled. unfold enabled.
-          apply forallb_forall.
-          intros T HT.
+Lemma fall_enabled_odd_even : forall s m O E,
+    ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
+    is_enabled rise_decoupled (Neg (Even E)) m ->
+    In (O,E) (odd_even_neighbors c) ->
+    num_events (Neg (Odd O)) s = num_events (Neg (Even E)) s.
+Admitted.
 
-          Search In flat_map.
+
+Lemma rise_decoupled_init_even : forall lset E,
+    consistent rise_decoupled rise_decoupled_init (ls_empty_async lset) ->
+    lset (Even E) = true.
+Proof.
+  intros lset E [m Hm].
+  inversion Hm as [? Hpos Hneg | ]; subst.
+  apply Hneg.
+  unfold is_enabled, enabled.
+  apply forallb_forall.
+  intros T HT.
           unfold in_transitions, rise_decoupled in HT. simpl in HT.
           apply in_flat_map in HT.
           destruct HT as [[[e_in t] e_out] [HT H]]. simpl in *.
@@ -491,71 +494,106 @@ Admitted.
              destruct HT as [E0 [O0 [pf0 HT]]].
              simpl in HT.
              repeat (destruct HT as [HT | HT]; [ inversion HT; subst; auto | ]); inversion HT.
-        }
+Qed.
+
+  Theorem rise_decoupled_flow_equivalence :
+    flow_equivalence rise_decoupled rise_decoupled_init c.
+  Proof.
+    unfold flow_equivalence.
+    induction s as [lset | e s];
+      intros Hconsistent st Heval l Hopaque.
+    * simpl. 
+      inversion Heval as [lset' Htransparent | ]; subst.
+
+      (* Since l is opaque in the initial rise_decoupled state, it must be odd. *)
+      destruct l as [O | E].
+      + (* Odd case *) simpl. reflexivity.
+      + (* Even case *) 
+      contradict Hopaque. 
+      { rewrite rise_decoupled_init_even; [inversion 1 | auto]. }
     * simpl.
       inversion Hconsistent as [ m Hm];
         inversion Hm as [ | e0' m0 m0' s' Henabled Hfire Hconsistent']; subst;
         rename m0 into m.
       inversion Heval as [ | ? ? st' ? Heval' Hopaque' Htransparent']; subst.
-      simpl in Hopaque.
       simpl in *. unfold step_latch_set in *.
-      destruct (Dec (Neg l) e). (* e = l-, so l is opaque in st, but transparent in st'. *)
-      + subst. rewrite eqb_eq.
-        destruct l as [O | E].
-        ++ rewrite sync_eval_odd.
-           rewrite Hopaque'.
-           2:{ simpl. rewrite eqb_eq. auto. }
-           rewrite (eval_transparent _ _ _ _ _ _ Heval').
-           2:{ eapply fall_enabled_transparent; eauto. (* LEMMA *) }
 
+      (* Hconsistent' : ls_consistent_with_MG rise_decoupled rise_decoupled_init s m
+         Henabled : is_enabled rise_decoupled e m
+         Heval : c ⊢ init_state ⇒ e :: s ⇒ st
+         Heval' : c ⊢ init_state ⇒ s ⇒ st'
+       *)
+    
+      (* 1. test if e=l- *)
+      destruct (Dec (Neg l) e). 
+      { (* e = l-, so l is opaque in st, but transparent in st'. *)
+        subst. rewrite eqb_eq.
+        rewrite Hopaque'.
+        2:{ simpl. rewrite eqb_eq. destruct l; reflexivity. }
+        rewrite (eval_transparent _ _ _ _ _ _ Heval').
+        2:{ eapply fall_enabled_transparent; eauto. }
         unfold get_latch_value.
-        apply f_equal. unfold even_state.
-           apply functional_extensionality.
+
+        destruct l as [O | E].
+        ++ (* l = O *)
+           rewrite sync_eval_odd_opp; auto. (* OPPOSITE *)
+           apply f_equal. unfold even_state. apply functional_extensionality.
            intros [E H_EO].
-           rewrite sync_eval_even. simpl.
+
+           rewrite sync_eval_even_opp; auto. (* OPPOSITE *) 
+           simpl.
+
            rewrite IHs; [ |eexists; eauto | assumption |].
            2:{ eapply fall_enabled_even_opaque; eauto. (* LEMMA *) }
 
-           rewrite sync_eval_even.
-           apply f_equal.
            assert (H : num_events (Neg (Even E)) s = 1+num_events (Neg (Odd O)) s).
-           { (* true since O- is enabled *) admit. }
-           admit (*???*).
-
-         ++ rewrite sync_eval_even.
-           rewrite Hopaque'.
-           2:{ simpl. rewrite eqb_eq. auto. }
-           rewrite (eval_transparent _ _ _ _ _ _ Heval').
-           2:{ eapply fall_enabled_transparent; eauto. (* LEMMA *) }
-
-        unfold get_latch_value.
-        apply f_equal. unfold odd_state.
-           apply functional_extensionality.
-           intros [O H_OE].
-           
-           rewrite sync_eval_odd. simpl.
-           rewrite IHs; [ |eexists; eauto | assumption |].
-           2:{ eapply fall_enabled_odd_opaque; eauto. (* LEMMA *) }
-           assert (H : num_events (Neg (Odd O)) s = 1+num_events (Neg (Even E)) s).
-           { (* false??? since O- is enabled *) admit. }
+           { eapply fall_enabled_even_odd; eauto. (* LEMMA *) }
            rewrite H.
+
+           rewrite sync_eval_even_opp; [ | auto | auto]. (* OPPOSITE *)
            reflexivity.
 
-    + rewrite eqb_neq; [ | assumption].
-      destruct (Dec (Pos l) e). (* e = l+, so l is not opaque in st, contradiction. *)
-      { subst. simpl in Hopaque.
+         ++ (* l = E *)
+           rewrite sync_eval_even_opp; auto. (* OPPOSITE *)
+
+           apply f_equal. unfold odd_state. apply functional_extensionality.
+           intros [O H_OE].
+
+           rewrite sync_eval_odd_opp; auto. (* OPPOSITE *) 
+           simpl.
+
+           rewrite IHs; [ |eexists; eauto | assumption |].
+           2:{ eapply fall_enabled_odd_opaque; eauto. (* LEMMA *) }
+
+           assert (H : num_events (Neg (Odd O)) s = num_events (Neg (Even E)) s).
+           { eapply fall_enabled_odd_even; eauto. (* LEMMA *) }
+           rewrite H.
+
+           rewrite sync_eval_odd_opp; [ | auto | auto]. (* OPPOSITE *)
+           reflexivity.
+      } 
+
+      rewrite eqb_neq; [ | assumption].
+
+      (* 2. Test if e = l+ *)
+      destruct (Dec (Pos l) e).
+      { (* e = l+, so l is not opaque in st, contradiction. *)
+        subst. simpl in Hopaque.
         rewrite eqb_eq in Hopaque.
         destruct l; inversion Hopaque.
       }
+
+      (* 3. e <> l+ and e <> l- *)
       assert (He : event_refers_to_latch  _ _ e l = false).
       { unfold event_refers_to_latch. 
         destruct e; rewrite eqb_neq; auto; intro; subst; intuition.
       }
       rewrite He in *.
+      (* Then l is opaque in both s and (e::s) *)
       rewrite Hopaque'.
       2:{ rewrite He. apply Hopaque. }
       rewrite IHs; [ | eexists; eauto | auto | apply Hopaque].
       reflexivity.
-  Admitted.
+  Qed.
 
 End RiseDecoupled.
