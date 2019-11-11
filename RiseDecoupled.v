@@ -290,14 +290,14 @@ Lemma fall_enabled_even_odd : forall s m O E,
     ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
     is_enabled rise_decoupled (Fall (Odd O)) m ->
     In (E,O) (even_odd_neighbors c) ->
-    num_events (Fall (Even E)) s = 1+num_events (Fall (Odd O)) s.
+    num_events (Fall (Even E)) s = num_events (Fall (Odd O)) s.
 Admitted.
 
 Lemma fall_enabled_odd_even : forall s m O E,
     ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
     is_enabled rise_decoupled (Fall (Even E)) m ->
     In (O,E) (odd_even_neighbors c) ->
-    num_events (Fall (Odd O)) s = num_events (Fall (Even E)) s.
+    num_events (Fall (Odd O)) s = 1+num_events (Fall (Even E)) s.
 Admitted.
 
 
@@ -317,11 +317,7 @@ Admitted.
         erewrite rise_decoupled_init_odd; eauto.
         inversion 1.
       + (* Even case *) 
-
-rewrite sync_eval_even_0. reflexivity.
-
-      contradict Hopaque. 
-      { erewrite rise_decoupled_init_odd; [inversion 1 | eauto]. }
+        rewrite sync_eval_even_0. reflexivity.
     * simpl.
         inversion Hm as [ | e0' m0 m0' s' Henabled Hfire Hconsistent']; subst;
         rename m0 into m.
@@ -357,7 +353,7 @@ rewrite sync_eval_even_0. reflexivity.
            rewrite IHs; [ |eexists; eauto | assumption |].
            2:{ eapply fall_enabled_even_opaque; eauto. (* LEMMA *) }
 
-           assert (H : num_events (Fall (Even E)) s = num_events (Fall (Odd O)) s).
+           assert (H : num_events (Fall (Even E)) s =  num_events (Fall (Odd O)) s).
            { eapply fall_enabled_even_odd; eauto. (* LEMMA *) }
            rewrite H.
 
@@ -373,7 +369,7 @@ rewrite sync_eval_even_0. reflexivity.
            rewrite IHs; [ |eexists; eauto | assumption |].
            2:{ eapply fall_enabled_odd_opaque; eauto. (* LEMMA *) }
 
-           assert (H : num_events (Fall (Odd O)) s = num_events (Fall (Even E)) s).
+           assert (H : num_events (Fall (Odd O)) s = 1+num_events (Fall (Even E)) s).
            { eapply fall_enabled_odd_even; eauto. (* LEMMA *) }
            rewrite H.
            reflexivity.
@@ -392,12 +388,6 @@ rewrite sync_eval_even_0. reflexivity.
       }
 
       (* 3. e <> l+ and e <> l- *)
-(*
-      assert (He : event_refers_to_latch  _ _ e l = false).
-      { unfold event_refers_to_latch. 
-        destruct e; rewrite eqb_neq; auto; intro; subst; intuition.
-      }
-*)
       (* Then l is opaque in both s and (e::s) *)
       repeat (rewrite eqb_neq in Hopaque; [ | assumption]).
 
