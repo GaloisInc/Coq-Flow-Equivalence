@@ -60,7 +60,7 @@ Section RiseDecoupled.
                      ; (Fall (Even A), Even_odd_fall A B pf, Fall (Odd B))
                      ; (Fall (Odd B), Odd_even_rise A B pf, Rise (Even A))
                      ; (Rise (Odd B), Odd_fall B, Fall (Odd B))
-                     ; (Fall (Odd B), Odd_rise B, Fall (Odd B))
+                     ; (Fall (Odd B), Odd_rise B, Rise (Odd B))
                      ]
      in
      let oe_f := fun (A : odd) (B : even) pf =>
@@ -76,40 +76,20 @@ Section RiseDecoupled.
 
   Definition rise_decoupled_init  : marking transitions_RD :=
     fun t => match t with
+(*
              | Even_fall e => 1
              | Odd_even_fall _ _ _ => 1
              | Odd_rise _  => 1
+             | _ => 0
+*)
+             | Even_odd_fall _ _ _ => 1
+             | Even_rise _ => 1
+             | Odd_fall _ => 1
              | _ => 0
              end.
 
 
 
-Lemma rise_decoupled_init_even : forall lset E m,
-    {rise_decoupled}⊢ rise_decoupled_init →empty_trace lset→ m ->
-    lset (Even E) = true.
-Proof.
-  intros lset E m Hm.
-  inversion Hm as [? Hpos Hneg | ]; subst.
-  apply Hneg.
-  unfold is_enabled, enabled.
-  apply forallb_forall.
-  intros T HT.
-          unfold in_places, rise_decoupled in HT. simpl in HT.
-          apply in_flat_map in HT.
-          destruct HT as [[[e_in t] e_out] [HT H]]. simpl in *.
-          destruct (Dec e_out (Fall (Even E))); [subst; rewrite eqb_eq in H| rewrite eqb_neq in H; auto].
-          inversion H as [ | H0]; [subst | inversion H0]; clear H.
-          apply in_app_or in HT.
-          destruct HT as [HT | HT].
-          ++ apply in_flat_map_proof' in HT.
-             destruct HT as [E0 [O0 [pf0 HT]]].
-             simpl in HT.
-             repeat (destruct HT as [HT | HT]; [ inversion HT; subst; auto | ]); inversion HT.
-          ++ apply in_flat_map_proof' in HT.
-             destruct HT as [E0 [O0 [pf0 HT]]].
-             simpl in HT.
-             repeat (destruct HT as [HT | HT]; [ inversion HT; subst; auto | ]); inversion HT.
-Qed.
 
 
 Open Scope nat_scope.
@@ -141,7 +121,7 @@ Inductive is_enabled_RD : event even odd -> marking transitions_RD -> Prop :=
 Lemma RD_is_enabled_equiv : forall e m,
     is_enabled_RD e m -> is_enabled rise_decoupled e m.
 Proof.
-  destruct e as [[E | O] | [E | O]];
+  destruct e as [[O | E] | [O | E]];
     intros m; intros H.
   * unfold is_enabled. unfold enabled. apply forallb_forall.
     intros T pf_in.
@@ -153,7 +133,7 @@ Proof.
     apply in_flat_map in pf_in.
     destruct pf_in as [[[e1 T0] e2] [pf_in1 pf_in2]].
     simpl in pf_in2.
-    destruct (Dec e2 (Rise (Odd E)));
+    destruct (Dec e2 (Rise (Odd O)));
       [ subst; rewrite eqb_eq in pf_in2; inversion pf_in2;
         [ subst; clear pf_in2 | contradiction]
         | rewrite eqb_neq in pf_in2; [contradiction | assumption] ].
@@ -164,7 +144,8 @@ Proof.
        destruct pf_in1 as [E1 [O1 [pf1 pf]]].
        simpl in pf.
        destruct pf as [pf | [pf | [pf | [pf | [pf | pf]]]]];
-         try (inversion pf).
+         try (inversion pf); subst; clear pf.
+       eapply H1; eauto.
     ** apply in_flat_map_proof' in pf_in1.
        destruct pf_in1 as [E1 [O1 [pf1 pf]]].
        simpl in pf.
@@ -179,6 +160,62 @@ Lemma is_enabled_RD_equiv : forall e m,
     is_enabled rise_decoupled e m ->
     is_enabled_RD e m.
 Admitted.
+
+Lemma rise_decoupled_init_even : forall P E m,
+    {rise_decoupled}⊢ rise_decoupled_init →empty_trace P→ m ->
+    P (Even E) = true.
+Proof.
+  intros P E m Hm.
+  inversion Hm as [? Hpos Hneg | ]; subst.
+  apply Hneg.
+  unfold is_enabled, enabled.
+  apply forallb_forall.
+  intros T HT.
+          unfold in_places, rise_decoupled in HT. simpl in HT.
+          apply in_flat_map in HT.
+          destruct HT as [[[e_in t] e_out] [HT H]]. simpl in *.
+          destruct (Dec e_out (Fall (Even E))); [subst; rewrite eqb_eq in H| rewrite eqb_neq in H; auto].
+          inversion H as [ | H0]; [subst | inversion H0]; clear H.
+          apply in_app_or in HT.
+          destruct HT as [HT | HT].
+          ++ apply in_flat_map_proof' in HT.
+             destruct HT as [E0 [O0 [pf0 HT]]].
+             simpl in HT.
+             repeat (destruct HT as [HT | HT]; [ inversion HT; subst; auto | ]); inversion HT.
+             admit.
+          ++ apply in_flat_map_proof' in HT.
+             destruct HT as [E0 [O0 [pf0 HT]]].
+             simpl in HT.
+             repeat (destruct HT as [HT | HT]; [ inversion HT; subst; auto | ]); inversion HT.
+Abort.
+
+Lemma rise_decoupled_init_odd : forall P O m,
+    {rise_decoupled}⊢ rise_decoupled_init →empty_trace P→ m ->
+    P (Odd O) = true.
+Proof.
+  intros P O m Hm.
+  inversion Hm as [? Hpos Hneg | ]; subst.
+  apply Hneg.
+  unfold is_enabled, enabled.
+  apply forallb_forall.
+  intros T HT.
+          unfold in_places, rise_decoupled in HT. simpl in HT.
+          apply in_flat_map in HT.
+          destruct HT as [[[e_in t] e_out] [HT H]]. simpl in *.
+          destruct (Dec e_out (Fall (Odd O))); [subst; rewrite eqb_eq in H| rewrite eqb_neq in H; auto].
+          inversion H as [ | H0]; [subst | inversion H0]; clear H.
+          apply in_app_or in HT.
+          destruct HT as [HT | HT].
+          ++ apply in_flat_map_proof' in HT.
+             destruct HT as [E0 [O0 [pf0 HT]]].
+             simpl in HT.
+             repeat (destruct HT as [HT | HT]; [ inversion HT; subst; auto | ]); inversion HT.
+          ++ apply in_flat_map_proof' in HT.
+             destruct HT as [E0 [O0 [pf0 HT]]].
+             simpl in HT.
+             repeat (destruct HT as [HT | HT]; [ inversion HT; subst; auto | ]); inversion HT.
+Qed.
+
 
 Lemma is_enabled_fire_neq : forall {transitions : Set} `{eq_dec transitions}
                                    (M : marked_graph (event even odd) transitions)
@@ -276,10 +313,15 @@ Admitted.
 
       (* Since l is opaque in the initial rise_decoupled state, it must be odd. *)
       destruct l as [O | E].
-      + (* Odd case *) rewrite sync_eval_odd_0. reflexivity.
+      + (* Odd case *) contradict Hopaque.
+        erewrite rise_decoupled_init_odd; eauto.
+        inversion 1.
       + (* Even case *) 
+
+rewrite sync_eval_even_0. reflexivity.
+
       contradict Hopaque. 
-      { erewrite rise_decoupled_init_even; [inversion 1 | eauto]. }
+      { erewrite rise_decoupled_init_odd; [inversion 1 | eauto]. }
     * simpl.
         inversion Hm as [ | e0' m0 m0' s' Henabled Hfire Hconsistent']; subst;
         rename m0 into m.
@@ -315,7 +357,7 @@ Admitted.
            rewrite IHs; [ |eexists; eauto | assumption |].
            2:{ eapply fall_enabled_even_opaque; eauto. (* LEMMA *) }
 
-           assert (H : num_events (Fall (Even E)) s = 1+num_events (Fall (Odd O)) s).
+           assert (H : num_events (Fall (Even E)) s = num_events (Fall (Odd O)) s).
            { eapply fall_enabled_even_odd; eauto. (* LEMMA *) }
            rewrite H.
 

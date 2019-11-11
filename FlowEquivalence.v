@@ -210,8 +210,8 @@ Section Circuits.
   Lemma sync_eval_even : forall (c : circuit) (st : state latch) n E,
         sync_eval c st n (Even E) = evenF c E (odd_state (sync_eval c st n)).
   Admitted.
-  Lemma sync_eval_odd_0 : forall c st O,
-        sync_eval c st 0 (Odd O) = st (Odd O).
+  Lemma sync_eval_even_0 : forall c st E,
+        sync_eval c st 0 (Even E) = st (Even E).
   Admitted.
   Lemma sync_eval_odd : forall c st n O,
         sync_eval c st (S n) (Odd O) = oddF c O (even_state (sync_eval c st n)).
