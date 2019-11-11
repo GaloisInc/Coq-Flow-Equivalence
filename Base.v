@@ -57,22 +57,59 @@ Defined.
 
   Lemma flat_map_app : forall {A B} (f : A -> list B) (ls1 ls2 : list A),
     flat_map f (ls1 ++ ls2) = flat_map f ls1 ++ flat_map f ls2.
-  Admitted.
+  Proof.
+    intros A B f ls1. induction ls1; intros ls2.
+    * reflexivity.
+    * simpl. rewrite <- app_assoc. rewrite IHls1. reflexivity.
+  Qed.
 
 
+  Lemma in_flat_map_proof : forall {A B C} (a : A) (b : B) (ls : list (A*B))
+                                   (f : forall a' b', In (a',b') ls -> list C),
+    (* f is proof irrelevant *)
+    (forall a' b' (pf1 pf2 : In (a',b') ls), f a' b' pf1 = f a' b' pf2) ->
+    forall (x : C)
+           (pf : In (a,b) ls),
+           In x (f a b pf) ->
+           In x (flat_map_proof ls f).
+  Proof.
+    intros A B C a b ls.
+    induction ls as [ | c ls]; intros f f_irrel x pf pf'.
+    * contradiction.
+    * inversion pf; subst.
+      ** simpl.
+         apply in_or_app.
+         left.
+         rewrite (f_irrel _ _ _ pf).
+         exact pf'.
+      ** simpl. 
+         destruct c as [a0 b0].
+         apply in_or_app.
+         right.
+         eapply (IHls _ _ x H).
+         rewrite (f_irrel _ _ _ pf).
+         exact pf'.
+  Unshelve. auto.
+  Qed.
 
-Lemma in_flat_map_proof : forall {A B C} (a : A) (b : B) (ls : list (A*B))
-                                 (f : forall a' b', In (a',b') ls -> list C)
-                                 (x : C)
-    (pf : In (a,b) ls),
-    In x (f a b pf) ->
-    In x (flat_map_proof ls f).
-Admitted.
-
-Lemma in_flat_map_proof' : forall {A B C} (ls : list (A*B))
-                                 (f : forall a' b', In (a',b') ls -> list C)
-                                 (x : C),
+  Lemma in_flat_map_proof' : forall {A B C} (ls : list (A*B))
+                                    (f : forall a' b', In (a',b') ls -> list C)
+                                    (x : C),
     In x (flat_map_proof ls f) ->
     exists a b (pf : In (a,b) ls), In x (f a b pf).
-Admitted.
+  Proof.
+    intros A B C ls.
+    induction ls as [ | [a b] ls]; intros f x pf.
+    * contradict pf.
+    * simpl in pf.
+      apply in_app_or in pf.
+      destruct pf as [pf | pf].
+      ** exists a, b. exists (in_eq (a,b) ls).
+         exact pf.
+      ** destruct (IHls _ x pf) as [a0 [b0 [pf0 IH]]].
+         exists a0, b0. simpl.
+         exists (in_cons (a,b) (a0,b0) ls pf0).
+         exact IH.
+  Qed.
+
 
