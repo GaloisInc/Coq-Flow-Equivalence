@@ -5,7 +5,6 @@ Open Scope list_scope.
 
 
 
-Search Nat.ltb.
 Require Import PeanoNat.
 Infix "<?" := (Nat.ltb).
 
@@ -25,14 +24,18 @@ Section RiseDecoupled.
 
 
   Inductive transitions_RD : Set :=
-  | Even_fall (A : even) : transitions_RD
-  | Even_rise (A : even) : transitions_RD
-  | Odd_fall  (B : odd) : transitions_RD
-  | Odd_rise  (B : odd) : transitions_RD
-  | Even_odd_fall (A : even) (B : odd) : In (A,B) (even_odd_neighbors c) -> transitions_RD (* A- → B- *)
-  | Odd_even_rise (A : even) (B : odd)  : In (A,B) (even_odd_neighbors c) -> transitions_RD (* B- → A+ *)
-  | Even_odd_rise (A : odd)  (B : even) : In (A,B) (odd_even_neighbors c) -> transitions_RD (* B- → A+ *)
-  | Odd_even_fall (A : odd)  (B : even) : In (A,B) (odd_even_neighbors c) -> transitions_RD (* A- → B- *)
+  | Even_fall (E : even) : transitions_RD
+  | Even_rise (E : even) : transitions_RD
+  | Odd_fall  (O : odd) : transitions_RD
+  | Odd_rise  (O : odd) : transitions_RD
+  (* E- → O- *)
+  | Even_odd_fall (E : even) (O : odd) : In (E,O) (even_odd_neighbors c) -> transitions_RD
+  (* O- → E+ *)
+  | Odd_even_rise (E : even) (O : odd)  : In (E,O) (even_odd_neighbors c) -> transitions_RD
+  (* E- → O+ *)
+  | Even_odd_rise (O : odd)  (E : even) : In (O,E) (odd_even_neighbors c) -> transitions_RD
+  (* O- → E- *)
+  | Odd_even_fall (O : odd)  (E : even) : In (O,E) (odd_even_neighbors c) -> transitions_RD
   .
 
 
@@ -41,9 +44,9 @@ Section RiseDecoupled.
     split. intros t1 t2.
     destruct Heven as [Heven'], Hodd as [Hodd'].
     destruct t1; destruct t2; try (right; inversion 1; fail);
-      try (destruct (Dec A A0) as [HA | HA];
+      try (destruct (Dec E E0) as [HA | HA];
         [subst; intuition | right; inversion 1; contradiction]);
-      try (destruct (Dec B B0) as [HB | HB];
+      try (destruct (Dec O O0) as [HB | HB];
         [subst; intuition | right; inversion 1; contradiction]).
     * rewrite (proof_irrelevance _ i i0). intuition.
     * rewrite (proof_irrelevance _ i i0). intuition.
@@ -54,7 +57,7 @@ Section RiseDecoupled.
 
   Definition rise_decoupled 
            : marked_graph (event even odd) transitions_RD :=
-  {| input_event_output := 
+  {| mg_triples := 
      let eo_f := fun (A : even) (B : odd) pf =>
                      [ (Rise (Even A), Even_fall A, Fall (Even A))
                      ; (Fall (Even A), Even_odd_fall A B pf, Fall (Odd B))
@@ -72,28 +75,17 @@ Section RiseDecoupled.
                      ]
      in flat_map_proof (even_odd_neighbors c) eo_f
      ++ flat_map_proof (odd_even_neighbors c) oe_f
+   ; mg_init := fun p => match p with 
+                         | Odd_even_fall _ _ _ => 1
+                         | Even_fall _ => 1
+                         | Odd_rise _ => 1
+                         | _ => 0
+                         end
    |}.
-
-  Definition rise_decoupled_init  : marking transitions_RD :=
-    fun t => match t with
-(*
-             | Even_fall e => 1
-             | Odd_even_fall _ _ _ => 1
-             | Odd_rise _  => 1
-             | _ => 0
-*)
-             | Even_odd_fall _ _ _ => 1
-             | Even_rise _ => 1
-             | Odd_fall _ => 1
-             | _ => 0
-             end.
-
-
 
 
 
 Open Scope nat_scope.
-Locate "<". Print marking.
 Inductive is_enabled_RD : event even odd -> marking transitions_RD -> Prop :=
 | Even_fall_enabled E m :
   0 < m (Even_fall E) ->
@@ -127,9 +119,8 @@ Proof.
     intros T pf_in.
     inversion H; subst.
     apply PeanoNat.Nat.ltb_lt.
-    unfold in_places in pf_in.
+    unfold preset in pf_in.
     unfold rise_decoupled in pf_in. simpl in pf_in.
-    Search In flat_map.
     apply in_flat_map in pf_in.
     destruct pf_in as [[[e1 T0] e2] [pf_in1 pf_in2]].
     simpl in pf_in2.
@@ -139,8 +130,7 @@ Proof.
         | rewrite eqb_neq in pf_in2; [contradiction | assumption] ].
     apply in_app_or in pf_in1.
     destruct pf_in1 as [pf_in1 | pf_in1].
-    ** Search In flat_map_proof.
-       apply in_flat_map_proof' in pf_in1.
+    ** apply in_flat_map_proof' in pf_in1.
        destruct pf_in1 as [E1 [O1 [pf1 pf]]].
        simpl in pf.
        destruct pf as [pf | [pf | [pf | [pf | [pf | pf]]]]];
@@ -162,7 +152,7 @@ Lemma is_enabled_RD_equiv : forall e m,
 Admitted.
 
 Lemma rise_decoupled_init_even : forall P E m,
-    {rise_decoupled}⊢ rise_decoupled_init →empty_trace P→ m ->
+    {rise_decoupled}⊢ empty_trace P ↓ m ->
     P (Even E) = true.
 Proof.
   intros P E m Hm.
@@ -171,38 +161,10 @@ Proof.
   unfold is_enabled, enabled.
   apply forallb_forall.
   intros T HT.
-          unfold in_places, rise_decoupled in HT. simpl in HT.
+          unfold preset, rise_decoupled in HT. simpl in HT.
           apply in_flat_map in HT.
           destruct HT as [[[e_in t] e_out] [HT H]]. simpl in *.
           destruct (Dec e_out (Fall (Even E))); [subst; rewrite eqb_eq in H| rewrite eqb_neq in H; auto].
-          inversion H as [ | H0]; [subst | inversion H0]; clear H.
-          apply in_app_or in HT.
-          destruct HT as [HT | HT].
-          ++ apply in_flat_map_proof' in HT.
-             destruct HT as [E0 [O0 [pf0 HT]]].
-             simpl in HT.
-             repeat (destruct HT as [HT | HT]; [ inversion HT; subst; auto | ]); inversion HT.
-             admit.
-          ++ apply in_flat_map_proof' in HT.
-             destruct HT as [E0 [O0 [pf0 HT]]].
-             simpl in HT.
-             repeat (destruct HT as [HT | HT]; [ inversion HT; subst; auto | ]); inversion HT.
-Abort.
-
-Lemma rise_decoupled_init_odd : forall P O m,
-    {rise_decoupled}⊢ rise_decoupled_init →empty_trace P→ m ->
-    P (Odd O) = true.
-Proof.
-  intros P O m Hm.
-  inversion Hm as [? Hpos Hneg | ]; subst.
-  apply Hneg.
-  unfold is_enabled, enabled.
-  apply forallb_forall.
-  intros T HT.
-          unfold in_places, rise_decoupled in HT. simpl in HT.
-          apply in_flat_map in HT.
-          destruct HT as [[[e_in t] e_out] [HT H]]. simpl in *.
-          destruct (Dec e_out (Fall (Odd O))); [subst; rewrite eqb_eq in H| rewrite eqb_neq in H; auto].
           inversion H as [ | H0]; [subst | inversion H0]; clear H.
           apply in_app_or in HT.
           destruct HT as [HT | HT].
@@ -217,95 +179,42 @@ Proof.
 Qed.
 
 
-Lemma is_enabled_fire_neq : forall {transitions : Set} `{eq_dec transitions}
-                                   (M : marked_graph (event even odd) transitions)
-                                   m e l,
-    e <> Rise l ->
-    e <> Fall l ->
-    is_enabled M (Fall l) (fire e M m) ->
-    is_enabled M (Fall l) m.
-Proof.
-    intros transitions Htransitions M m e l Hel1 Hel2 Henabled.
-    unfold is_enabled in *.
-    unfold enabled in *.
-    
-    apply forallb_forall. intros T Hin.
-
-    assert (Hfire : Nat.ltb 0 (fire e M m T) = true).
-    { destruct (forallb_forall (fun t => Nat.ltb 0 (fire e M m t)) (in_places _ M (Fall l)))
-        as [H1 H2].
-      apply H1; auto.
-    }
-    unfold fire in Hfire.
-Admitted.    
-
-  Lemma fall_enabled_transparent : forall s m l,
-    {rise_decoupled}⊢ rise_decoupled_init →s→ m ->
-    is_enabled rise_decoupled (Fall l) m ->
-    transparent s l = true.
-  Proof.
-    intros s m l pf.
-    induction pf as [lset Htransparent Hopaque | ]; intros Henabled.
-    * simpl. apply Hopaque.
-      assumption.
-    * simpl.
-      apply is_enabled_RD_equiv in Henabled.
-      destruct l as [E | O]; inversion Henabled; subst.
-      ** unfold update_transparency_predicate.
-(*
-      destruct (event_refers_to_latch even odd e l) eqn:Hel.
-      ++ destruct e as [O | E]; auto.
-         simpl in Hel.
-         
-         +++ reflexivity.
-         
-      ++ apply IHpf.
-         subst.
-         eapply is_enabled_fire_neq; eauto.
-  Qed.
-*)
-  Admitted.
-
-Lemma rise_enabled_opaque : forall s m l,
-    ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
-    is_enabled rise_decoupled (Rise l) m ->
-    transparent s l = false.
-Admitted.
-
 Lemma fall_enabled_even_opaque : forall s m O E,
-    ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
+    {rise_decoupled}⊢ s ↓ m ->
     is_enabled rise_decoupled (Fall (Odd O)) m ->
     In (E,O) (even_odd_neighbors c) ->
     transparent s (Even E) = false.
 Admitted.
 
 Lemma fall_enabled_odd_opaque : forall s m O E,
-    ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
+    {rise_decoupled}⊢ s ↓ m ->
     is_enabled rise_decoupled (Fall (Even E)) m ->
     In (O,E) (odd_even_neighbors c) ->
     transparent s (Odd O) = false.
 Admitted.
 
 Lemma fall_enabled_even_odd : forall s m O E,
-    ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
+    {rise_decoupled}⊢ s ↓ m ->
     is_enabled rise_decoupled (Fall (Odd O)) m ->
     In (E,O) (even_odd_neighbors c) ->
-    num_events (Fall (Even E)) s = num_events (Fall (Odd O)) s.
+    num_events (Fall (Even E)) s = 1 + num_events (Fall (Odd O)) s.
 Admitted.
 
 Lemma fall_enabled_odd_even : forall s m O E,
-    ls_consistent_with_MG rise_decoupled rise_decoupled_init s m ->
+    {rise_decoupled}⊢ s ↓ m ->
     is_enabled rise_decoupled (Fall (Even E)) m ->
     In (O,E) (odd_even_neighbors c) ->
-    num_events (Fall (Odd O)) s = 1+num_events (Fall (Even E)) s.
+    num_events (Fall (Odd O)) s = num_events (Fall (Even E)) s.
 Admitted.
 
 
 
   Theorem rise_decoupled_flow_equivalence :
-    flow_equivalence rise_decoupled rise_decoupled_init c init_st.
+    flow_equivalence rise_decoupled c init_st.
   Proof.
-    unfold flow_equivalence.
+    unfold flow_equivalence. 
+    (* need to strengthen the IH with the value of n *)
+
     induction t as [lset | e s];
       intros [m Hm] st Heval l Hopaque.
     * simpl. 
@@ -313,13 +222,13 @@ Admitted.
 
       (* Since l is opaque in the initial rise_decoupled state, it must be odd. *)
       destruct l as [O | E].
-      + (* Odd case *) contradict Hopaque.
-        erewrite rise_decoupled_init_odd; eauto.
+      + (* Odd case *) rewrite sync_eval_odd_0. reflexivity.
+      + (* Even case *) contradict Hopaque.
+        erewrite rise_decoupled_init_even; eauto.
         inversion 1.
-      + (* Even case *) 
-        rewrite sync_eval_even_0. reflexivity.
+
     * simpl.
-        inversion Hm as [ | e0' m0 m0' s' Henabled Hfire Hconsistent']; subst;
+      inversion Hm as [ | e0' m0 m0' s' Henabled Hfire Hconsistent']; subst;
         rename m0 into m.
       inversion Heval as [ | ? ? st' ? Heval' Hopaque' Htransparent']; subst.
       simpl in *.
@@ -340,7 +249,7 @@ Admitted.
         2:{ simpl. unfold update_transparency_predicate. simpl. rewrite eqb_eq. reflexivity. }
         rewrite (eval_transparent _ _ _ _ _ _ Heval').
         2:{ eapply fall_enabled_transparent; eauto. (* LEMMA*) }
-        unfold get_latch_value.
+        unfold next_state.
 
         destruct l as [O | E].
         ++ (* l = O *)
@@ -353,7 +262,7 @@ Admitted.
            rewrite IHs; [ |eexists; eauto | assumption |].
            2:{ eapply fall_enabled_even_opaque; eauto. (* LEMMA *) }
 
-           assert (H : num_events (Fall (Even E)) s =  num_events (Fall (Odd O)) s).
+           assert (H : num_events (Fall (Even E)) s = 1 + num_events (Fall (Odd O)) s).
            { eapply fall_enabled_even_odd; eauto. (* LEMMA *) }
            rewrite H.
 
@@ -369,7 +278,7 @@ Admitted.
            rewrite IHs; [ |eexists; eauto | assumption |].
            2:{ eapply fall_enabled_odd_opaque; eauto. (* LEMMA *) }
 
-           assert (H : num_events (Fall (Odd O)) s = 1+num_events (Fall (Even E)) s).
+           assert (H : num_events (Fall (Odd O)) s = num_events (Fall (Even E)) s).
            { eapply fall_enabled_odd_even; eauto. (* LEMMA *) }
            rewrite H.
            reflexivity.
