@@ -55,6 +55,7 @@ Section LatchSequence.
       right. inversion 1. contradiction.
   Defined.
 
+
   Definition update_transparency_predicate (e : event) (P : transparency_predicate) : transparency_predicate :=
     fun l => if Rise l =? e
              then true
@@ -81,8 +82,10 @@ Section LatchSequence.
   (* Calculate the set of transparent latches after executing the latch sequence s *)
   Fixpoint transparent (s : trace) : transparency_predicate :=
     match s with
-    | empty_trace ls  => ls
-    | next_trace e s' => update_transparency_predicate e (transparent s')
+    | empty_trace P   => P
+    | next_trace e s' => fun l => if Rise l =? e then true
+                                  else if Fall l =? e then false
+                                  else transparent s' l
     end.
 
 
@@ -170,116 +173,122 @@ Section Circuits.
     ; step_transparent : respects_transparencies c (update_transparency_predicate e P) st'
     }.
 
-  (* This is true for all marked graphs, not just fall decoupled *)
-  Lemma event_fall_invariant : forall c init_st t st l st',
-    c ⊢ init_st ⇒t⇒ st ->
-    async_step c (transparent t) st (Fall l) st' ->
-    forall l', st'(l') = st(l').
-  Proof.
-    intros c init_st t st l st' Ht [Hopaque Htransparent] l'.
-    destruct ((update_transparency_predicate (Fall l) (transparent t)) l')
-      eqn:Hl'.
-    * (* l' is transparent *)
+  Inductive neighbor c : latch -> latch  -> Prop :=
+  | EO_neighbor E O : In (E,O) (even_odd_neighbors c) -> neighbor c (Even E) (Odd O)
+  | OE_neighbor O E : In (O,E) (odd_even_neighbors c) -> neighbor c (Odd O) (Even E).
 
-      rewrite Htransparent; auto.
+(* Alternative async evaluation *)
+Inductive async_rel c init_st : latch -> bool (* whether the latch is transparent or not *) -> trace -> value -> Prop :=
+| async_nil l P : P l = false -> async_rel c init_st l false (empty_trace P) (init_st l)
+| async_transparent l t st v :
+  transparent t l = true ->
+  (forall l', neighbor c l' l -> async_rel c init_st l' (transparent t l') t (st l')) ->
+  v = next_state c st l ->
+  async_rel c init_st l true t v
 
-      unfold update_transparency_predicate in Hl'.
-      simpl in Hl'.
-      assert (Fall l' <> Fall l).
-      { inversion 1; subst. rewrite eqb_eq in Hl'. inversion Hl'. }
-      rewrite eqb_neq in Hl'; auto.
+| async_opaque l e t v :
+  transparent (next_trace e t) l = false ->
+  e <> Fall l ->
+  async_rel c init_st l false t v ->
+  async_rel c init_st l false (next_trace e t) v
 
-      erewrite (eval_transparent _ _ t st); eauto.
-      admit (* need induction? *).
-    * (* l' is opaque *)
-      unfold update_transparency_predicate in Hl'.
-      simpl in Hl'.
-Existing Instance latch_eq_dec.
-      destruct (Dec l' l).
-      ** subst.
-         erewrite Hopaque; eauto.
-      ** rewrite eqb_neq in Hl'; [ | inversion 1; contradiction].
-         rewrite Hopaque; auto.
-         unfold update_transparency_predicate. simpl.
-         rewrite eqb_neq; auto.
-         inversion 1; contradiction.
-  Admitted.
+| async_opaque_fall l e t v st :
+  e = Fall l -> (* i.e. l is transparent in t *)
+  (forall l', neighbor c l' l -> async_rel c init_st l' (transparent t l') t (st l')) ->
+  v = next_state c st l ->
+  async_rel c init_st l false (next_trace e t) v
+.
+
+Lemma async_rel_b : forall c init_st l b t v,
+    async_rel c init_st l b t v ->
+    transparent t l = b.
+Proof.
+  intros c init_st l b t v H.
+  induction H; auto.
+  subst. simpl. reduce_eqb. auto.
+Qed.
+
+Lemma async_rel_injective : forall l b1 t v1,
+    async_rel l b1 t v1 ->
+    forall b2 v2, async_rel l b2 t v2 -> v1 = v2 /\ b1 = b2.
+Proof.
+  intros l b1 t v1 H1.
+  induction H1 as [? ? Hopaque1 | ? ? ? ? Htransparent1 H1 | ? ? ? ? ? Hopaque1 H1]; intros b2 v2 H2.
+  * inversion H2; subst; auto. (*subst. simpl in *. rewrite H in *. absurd (false = true); auto.*)
+    simpl in *. rewrite Hopaque1 in *. reduce_eqb.
+  * inversion H2 as [? ? Hopaque2 | ? ? ? ? Htransparent2 ? | ? ? ? ? ? Hopaque2 ?]; subst.
+    1:{ contradict Hopaque2. simpl in *. rewrite Htransparent1. inversion 1. }
+    2:{ contradict Hopaque2. simpl in *. rewrite Htransparent1. inversion 1. }
+
+    intuition.
+    
+    apply next_state_eq.
+    intros l' Hneighbor.
+    eapply H; auto. exact true.
+  * inversion H2 as [? ? Hopaque2 | ? ? ? ? Htransparent2 ? | ? ? ? ? ? Hopaque2 ?]; subst.
+    1:{ contradict Htransparent2. simpl in *. rewrite Hopaque1. inversion 1. }
+
+    intuition.
+    specialize (IHH1 b0 v2 H).
+    destruct IHH1; auto.
+    Unshelve. exact true.
+Qed.
 
 
+
+Require Import Coq.Logic.FunctionalExtensionality.
+
+Lemma next_state_eq : forall c st1 st2 l,
+  (forall l', neighbor c l' l -> st1 l' = st2 l') ->
+  next_state c st1 l = next_state c st2 l.
+Proof.
+  intros c st1 st2 l H.
+  destruct l as [O | E]; simpl; apply f_equal; unfold even_state, odd_state;
+    apply functional_extensionality; intros [l' Hl']; simpl;
+    apply H; constructor; auto.
+Qed.
 
  
   (** Synchronous execution *)
   Fixpoint sync_odd (c : circuit) (st : state latch) (n : nat)
-                    {struct n} : state odd. Admitted.
-(*
-    fun O =>
+                    {struct n} : state odd := fun O =>
     match n with
     | 0 => st (Odd O)
     | S n' => next_state_odd c O (fun E => next_state_even c (projT1 E) (fun O => sync_odd c st n' (projT1 O)))
     end.
-*)
+
   Fixpoint sync_even (c : circuit) (st : state latch) (n : nat) 
-                            {struct n} : state even. Admitted.
-(*
-    fun E =>
+                            {struct n} : state even := fun E =>
     match n with
     | 0 => st (Even E)
     | S n' => next_state_even c E (fun O => sync_odd c st n' (projT1 O))
     end.
-*)
 
   Definition sync_eval (c : circuit) (st : state latch) (n : nat) 
-                   : state latch. Admitted.
-(* := fun l =>
+                   : state latch := fun l =>
     match l with
     | Even E => sync_even c st n E
     | Odd o  => sync_odd c st n o
     end.
-*)
 
-  (* Yes, this is what the paper says too *)
   Lemma sync_eval_odd_0 : forall c st O,
         sync_eval c st 0 (Odd O) = st (Odd O).
   Proof.
-(*
-    intros. destruct l; reflexivity.
+    intros. reflexivity.
   Qed.
-*)
-  Admitted.
 
 
-(* NOTE: if your execution model starts with the clock going low (e.g. even first), then you would need to reverse the order of synchronous execution and derive the following results:
+(* NOTE: if your execution model starts with the clock going low (e.g. even first), then you would need to reverse the order of synchronous execution:
 *)
 
   Lemma sync_eval_even : forall (c : circuit) (st : state latch) n E,
         sync_eval c st (S n) (Even E) = next_state_even c E (odd_state (sync_eval c st n)).
-  Admitted.
+  Proof. intros. simpl. auto. Qed.
   Lemma sync_eval_odd : forall c st n O,
         sync_eval c st (S n) (Odd O) = next_state_odd c O (even_state (sync_eval c st (S n))).
-  Admitted.
-
+  Proof. intros. simpl. auto. Qed.
 
 (*
-  Lemma sync_eval_even: forall c st n E,
-        sync_eval c st (S n) (Even E) = next_state_even c E (odd_state (sync_eval c st n)).
-  Proof.
-(*
-    intros. simpl. reflexivity.
-  Qed.
-*)
-Admitted.
-  Lemma sync_eval_odd : forall c st n O,
-        sync_eval c st (S n) (Odd O) = next_state_odd c O (even_state (sync_eval c st (S n))).
-  Proof.
-(*
-    intros. simpl.
-    destruct n; auto.
-  Qed.
-*)
-Admitted.
-*)
-
-
 Reserved Notation "{ c // init_st }⊢ l ⇓^{ n } v" (no associativity, at level 80).
 Inductive sync_rel (c : circuit) (init_st : state latch) : nat -> latch -> value -> Prop :=
 | Sync_odd_0 (O : odd) : { c // init_st }⊢ Odd O ⇓^{0} init_st(Odd O)
@@ -294,12 +303,14 @@ Inductive sync_rel (c : circuit) (init_st : state latch) : nat -> latch -> value
 
 where
   "{ c // init_st }⊢ l ⇓^{ n } v" := (sync_rel c init_st n l v).
+*)
 
 End Circuits.
 
 Notation " c '⊢' st '⇒' s '⇒' st' " := (eval c st s st') (no associativity, at level 80).
+(*
 Notation "{ c // init_st }⊢ l ⇓^{ n } v" := (sync_rel c init_st n l v) (no associativity, at level 80).
-
+*)
 
 (******************)
 (** Marked graphs *)
@@ -355,6 +366,14 @@ Section MarkedGraphs.
            else m p.
 
 
+  (* A marked graph is one such that each place has preset(p) <= 1 and postset(p) <= 1. *)
+  Definition wf_marked_graph {transitions places : Set}
+                             (M : marked_graph transitions places) := 
+    forall p e1 e2 e1' e2', In (e1,p,e2) (mg_triples M) ->
+                            In (e1',p,e2') (mg_triples M) ->
+                            e1 = e1' /\ e2 = e2'.
+
+
 End MarkedGraphs.
 
 (*********************)
@@ -363,17 +382,58 @@ End MarkedGraphs.
 
 Existing Instance event_eq_dec.
 
+Arguments mg_triples {transitions places}.
 
 
-Lemma is_enabled_fire_neq : forall {transitions : Set} `{eq_dec transitions}
-                                   (M : marked_graph event transitions)
+Lemma map_in : forall {A B : Type} (f : A -> B) (l : list A) (x : B),
+    In x (map f l) ->
+    exists y, In y l /\ x = f y.
+Proof.
+  induction l; intros x H.
+  * inversion H.
+  * simpl in H.
+    destruct H as [H | H]; subst.
+    + simpl. exists a; auto.
+    + destruct (IHl x H) as [Y [H1 H2]].
+      subst. exists Y. simpl. auto.
+Qed.
+
+Lemma in_input_event : forall {transition place : Set} (M : marked_graph transition place) t p,
+    In (t,p) (input_event M) <->
+    exists t', In (t,p,t') (mg_triples M).
+Proof.
+  intros transitions places M t p.
+  split.
+  * intros pfIn.
+    unfold input_event in pfIn.
+    apply map_in in pfIn.
+    destruct pfIn as [[[t1 p1] t2] [pfIn pfEq]]. simpl in *.
+    inversion pfEq; subst; clear pfEq.
+    exists t2. auto.
+  * intros [t' Hin].
+    unfold input_event. simpl. unfold Instances.list_fmap.
+    replace (t,p) with (fst (t,p,t')) by auto.
+    apply in_map.
+    auto.
+Qed.
+
+Lemma in_output_event : forall {transition place : Set} (M : marked_graph transition place) t p,
+    In (p,t) (output_event M) <->
+    exists t', In (t',p,t) (mg_triples M).
+Admitted.
+
+
+(*
+Lemma is_enabled_fire_neq : forall {places : Set} `{eq_dec places}
+                                   (M : marked_graph event places)
                                    m e l,
+    wf_marked_graph M ->
     e <> Rise l ->
     e <> Fall l ->
     is_enabled M (Fall l) (fire e M m) ->
     is_enabled M (Fall l) m.
 Proof.
-    intros transitions Htransitions M m e l Hel1 Hel2 Henabled.
+    intros places Hplaces M m e l  Hwf Hel1 Hel2 Henabled.
     unfold is_enabled in *.
     unfold enabled in *.
     
@@ -392,12 +452,41 @@ Proof.
       transitivity 1; auto.
     }
     destruct (in_dec' (e,T) (input_event M)) as [Hin'' | Hin''].
-    { (* e -T-> Fall l *)
-      admit.
-    }
-    { assumption. }
-Admitted.
+    { (* e -T-> Fall l *) Print enabled.
 
+      unfold preset in Hin.
+      inversion_In. simpl in *.
+      compare e0 (Fall l); inversion_In.
+
+      Search forallb.
+
+
+
+Print in_dec.
+
+      apply in_input_event in Hin''.
+      destruct Hin'' as [t' Hin''].
+      unfold wf_marked_graph in Hwf.
+      assert (H0 : e1 = e /\ Fall l = t').
+      { eapply Hwf; eauto. }
+      destruct H0; subst.
+
+
+      
+      unfold preset in Henabled.
+      
+      
+
+      unfold input_event in Hin''. simpl in *. unfold Instances.list_fmap in Hin''.
+      Search In map.
+      eapply in_map in Hin''. simpl.
+      apply in_flat_map in Hin.
+      destruct Hin as [[[e1 p] e2] [Htriple Hin]].
+      
+
+Print marked_graph.
+Admitted.
+*)
 
 Section FlowEquivalence.
 
@@ -421,50 +510,6 @@ Section FlowEquivalence.
     "{ MG }⊢ s ↓ m'" := (ls_consistent_with_MG MG s m').
 
 
-  Lemma fall_enabled_transparent : forall {places : Set} `{Hplaces : eq_dec places}
-                                          (M : marked_graph event places)
-                                          (t : trace)
-                                          (m : marking places)
-                                          (l : latch),
-    {M}⊢ t ↓ m ->
-    is_enabled M (Fall l) m ->
-    transparent t l = true.
-  Proof.
-    intros places Hplaces M t m l pf.
-    induction pf as [lset Htransparent Hopaque | ]; intros Henabled.
-    * simpl. apply Hopaque.
-      assumption.
-    * simpl.
-      destruct l as [O | E]; inversion Henabled; subst.
-      ** unfold update_transparency_predicate.
-         destruct (Dec (Rise (Odd O)) e).
-         { subst. rewrite eqb_eq. auto. }
-         rewrite eqb_neq; auto.
-         destruct (Dec (Fall (Odd O)) e).
-         { subst. rewrite eqb_eq. admit (* true *). }
-         rewrite eqb_neq; auto.
-         rewrite IHpf; auto.
-         eapply is_enabled_fire_neq; eauto.
-      ** unfold update_transparency_predicate.
-         destruct (Dec (Rise (Even E)) e).
-         { subst. rewrite eqb_eq. auto. }
-         rewrite eqb_neq; auto.
-         destruct (Dec (Fall (Even E)) e).
-         { subst. rewrite eqb_eq. admit (* true *). }
-         rewrite eqb_neq; auto.
-         rewrite IHpf; auto.
-         eapply is_enabled_fire_neq; eauto.
-    Admitted.
-
-Lemma rise_enabled_opaque :  forall {places : Set} `{Hplaces : eq_dec places}
-                                          (M : marked_graph event places)
-                                          (t : trace)
-                                          (m0 m : marking places)
-                                          (l : latch),
-    {M}⊢ t ↓ m ->
-    is_enabled M (Rise l) m ->
-    transparent t l = false.
-Admitted.
 
 
   Definition flow_equivalence {places : Set} `{Hplaces : eq_dec places}
@@ -528,7 +573,7 @@ Arguments next_state_odd {even odd}.
 Arguments next_state_even {even odd}.
 Arguments even_state {even odd P}.
 Arguments odd_state {even odd P}.
-Arguments sync_eval {even odd Heven Hodd}.
+Arguments sync_eval {even odd}.
 Arguments is_enabled {transitions places Htransitions}.
 Arguments respects_transparencies {even odd}.
 Arguments opaque_equivalence {even odd}.
@@ -536,9 +581,15 @@ Arguments opaque_equivalence {even odd}.
 Arguments update_transparency_predicate {even odd Heven Hodd}.
 
 
-Arguments sync_rel {even odd}.
+(*Arguments sync_rel {even odd}.
 Notation "< c // init_st >⊢ l ⇓^{ n } v" := (sync_rel c init_st n l v) (no associativity, at level 80).
+*)
 
 Existing Instance event_eq_dec.
  
 Arguments async_step {even odd Heven Hodd}.
+Arguments async_rel {even odd Heven Hodd}.
+
+Module FE_Tactics.
+Ltac reduce_transparent := try unfold update_transparency_predicate in *; simpl in *; reduce_eqb.
+End FE_Tactics.

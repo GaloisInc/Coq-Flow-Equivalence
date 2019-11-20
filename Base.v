@@ -113,3 +113,58 @@ Defined.
   Qed.
 
 
+
+
+Ltac inversion_In :=
+  repeat match goal with
+  | [ H : In _ [ _ ] |- _ ] => inversion H; subst; clear H
+  | [ H : In _ [] |- _ ] => inversion H
+  | [ H : In _ (flat_map _ _) |- _ ] => apply in_flat_map in H; destruct H as [? ?]
+  | [ H : _ * _ |- _ ] => destruct H as [? ?]
+  | [ H : _ /\ _ |- _ ] => destruct H as [? ?]
+  | [ H : (_ , _) = (_, _) |- _] => inversion H; subst; clear H
+  end.
+
+Ltac case_In :=
+  match goal with
+  | [ H : In _ [ _ ] |- _ ] => inversion H as [ | H0]
+  | [ H : In _ [] |- _ ] => inversion H
+  | [ H : In _ (_ :: _) |- _ ] => destruct H as [? | ?]
+
+  | [ H : In _ (_ ++ _) |- _ ] => apply in_app_or in H; destruct H as [H | H]
+  end; inversion_In.
+
+
+Ltac find_contradiction :=
+  try match goal with
+  | [ H : False |- _ ] => inversion H
+  | [ H : false = true |- _ ] => inversion H
+  | [ H : true = false |- _ ] => inversion H
+  | [ |- false <> true ] => inversion 1
+  | [ |- true <> false ] => inversion 1
+  | [ H : ?a = true, H' : ?a = false |- _ ] => rewrite H in H'; inversion H'
+  | [ H : ?a = true, H' : false = ?a |- _ ] => rewrite H in H'; inversion H'
+  | [ H : true = ?a, H' : ?a = false |- _ ] => rewrite <- H in H'; inversion H'
+  | [ H : true = ?a, H' : false = ?a |- _ ] => rewrite H in H'; inversion H'
+  end.
+
+
+Ltac reduce_eqb :=
+  repeat match goal with
+  | [ H : context[ ?x =? ?x ] |- _ ] => rewrite eqb_eq in H
+  | [ H : context[ ?x1 =? ?x2 ], H' : ?x1 <> ?x2 |- _] => rewrite eqb_neq in H; [ | auto]
+  | [ H : context[ ?x1 =? ?x2 ], H' : ?x2 <> ?x1 |- _] => rewrite eqb_neq in H; [ | auto]
+  | [ |- context[ ?x =? ?x ] ] => rewrite eqb_eq
+  | [ H' : ?x1 <> ?x2 |- context[ ?x1 =? ?x2 ] ] => rewrite eqb_neq; [ | auto]
+  | [ H' : ?x1 <> ?x2 |- context[ ?x2 =? ?x1 ] ] => rewrite eqb_neq; [ | auto]
+  end; find_contradiction.
+
+Ltac compare e1 e2 :=
+  destruct (Dec e1 e2) as [? | ?]; subst; reduce_eqb.
+
+Instance eq_dec_bool : eq_dec bool.
+Proof.
+  split. intros [ | ] [ | ]; try (right; inversion 1; fail); try (left; auto; fail).
+Defined.
+
+
