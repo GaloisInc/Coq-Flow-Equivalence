@@ -146,6 +146,8 @@ Ltac find_contradiction :=
   | [ H : ?a = true, H' : false = ?a |- _ ] => rewrite H in H'; inversion H'
   | [ H : true = ?a, H' : ?a = false |- _ ] => rewrite <- H in H'; inversion H'
   | [ H : true = ?a, H' : false = ?a |- _ ] => rewrite H in H'; inversion H'
+  | [ H : ?x <> ?x |- _ ] => contradiction
+  | [ H : ?x < ?x |- _ ] => apply Nat.lt_irrefl in H; contradiction
   end.
 
 

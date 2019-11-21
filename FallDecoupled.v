@@ -152,20 +152,6 @@ Admitted.
 
 
 
-  Lemma sync_eval_S : forall n l st,
-    (forall l', neighbor _ _ c l' l ->
-                 st l' = match l with
-                        | Even _ => sync_eval c init_st n l'
-                        | Odd _  => sync_eval c init_st (S n) l'
-                        end) ->
-    sync_eval c init_st (S n) l = next_state c st l.
-  Proof.
-    intros n [O | E] st Hst; subst.
-      + simpl. apply f_equal. apply functional_extensionality. intros [E HE]. simpl.
-        unfold even_state. simpl. rewrite Hst; auto. constructor; auto.
-      + simpl. apply f_equal. apply functional_extensionality. intros [O HO]. simpl.
-        unfold odd_state. simpl. rewrite Hst; auto. constructor; auto.
-  Qed.
 
   Lemma fall_decoupled_strong : forall l b t v,
     async_rel c init_st l b t v ->

@@ -9,6 +9,9 @@ Require Import List.
 Import ListNotations.
 Open Scope list_scope.
 
+Require Import Coq.Logic.FunctionalExtensionality.
+
+
 
 Section FE.
 
@@ -99,6 +102,8 @@ Section LatchSequence.
 
 
 End LatchSequence.
+
+Existing Instance event_eq_dec.
 
 
 (*************)
@@ -208,36 +213,6 @@ Proof.
   subst. simpl. reduce_eqb. auto.
 Qed.
 
-Lemma async_rel_injective : forall l b1 t v1,
-    async_rel l b1 t v1 ->
-    forall b2 v2, async_rel l b2 t v2 -> v1 = v2 /\ b1 = b2.
-Proof.
-  intros l b1 t v1 H1.
-  induction H1 as [? ? Hopaque1 | ? ? ? ? Htransparent1 H1 | ? ? ? ? ? Hopaque1 H1]; intros b2 v2 H2.
-  * inversion H2; subst; auto. (*subst. simpl in *. rewrite H in *. absurd (false = true); auto.*)
-    simpl in *. rewrite Hopaque1 in *. reduce_eqb.
-  * inversion H2 as [? ? Hopaque2 | ? ? ? ? Htransparent2 ? | ? ? ? ? ? Hopaque2 ?]; subst.
-    1:{ contradict Hopaque2. simpl in *. rewrite Htransparent1. inversion 1. }
-    2:{ contradict Hopaque2. simpl in *. rewrite Htransparent1. inversion 1. }
-
-    intuition.
-    
-    apply next_state_eq.
-    intros l' Hneighbor.
-    eapply H; auto. exact true.
-  * inversion H2 as [? ? Hopaque2 | ? ? ? ? Htransparent2 ? | ? ? ? ? ? Hopaque2 ?]; subst.
-    1:{ contradict Htransparent2. simpl in *. rewrite Hopaque1. inversion 1. }
-
-    intuition.
-    specialize (IHH1 b0 v2 H).
-    destruct IHH1; auto.
-    Unshelve. exact true.
-Qed.
-
-
-
-Require Import Coq.Logic.FunctionalExtensionality.
-
 Lemma next_state_eq : forall c st1 st2 l,
   (forall l', neighbor c l' l -> st1 l' = st2 l') ->
   next_state c st1 l = next_state c st2 l.
@@ -246,6 +221,27 @@ Proof.
   destruct l as [O | E]; simpl; apply f_equal; unfold even_state, odd_state;
     apply functional_extensionality; intros [l' Hl']; simpl;
     apply H; constructor; auto.
+Qed.
+
+
+Lemma async_rel_injective : forall c init_st l b1 t v1,
+    async_rel c init_st l b1 t v1 ->
+    forall b2 v2, async_rel c init_st l b2 t v2 -> v1 = v2.
+Proof.
+  intros c init_st l b1 t v1 H1.
+  induction H1; intros b2 v2 H2';
+    inversion H2'; subst; simpl in *; find_contradiction; auto.
+
+  * apply next_state_eq.
+    intros l' Hl'.
+    eapply H1; eauto.
+  * reduce_eqb.
+  * compare (Rise l) e.
+    eapply IHasync_rel; eauto.
+  * reduce_eqb.
+  * apply next_state_eq.
+    intros l' Hl'.
+    eapply H1; eauto.
 Qed.
 
  
@@ -287,6 +283,22 @@ Qed.
   Lemma sync_eval_odd : forall c st n O,
         sync_eval c st (S n) (Odd O) = next_state_odd c O (even_state (sync_eval c st (S n))).
   Proof. intros. simpl. auto. Qed.
+
+  Lemma sync_eval_S : forall c init_st n l st,
+    (forall l', neighbor c l' l ->
+                 st l' = match l with
+                        | Even _ => sync_eval c init_st n l'
+                        | Odd _  => sync_eval c init_st (S n) l'
+                        end) ->
+    sync_eval c init_st (S n) l = next_state c st l.
+  Proof.
+    intros c init_st n [O | E] st Hst; subst.
+      + simpl. apply f_equal. apply functional_extensionality. intros [E HE]. simpl.
+        unfold even_state. simpl. rewrite Hst; auto. constructor; auto.
+      + simpl. apply f_equal. apply functional_extensionality. intros [O HO]. simpl.
+        unfold odd_state. simpl. rewrite Hst; auto. constructor; auto.
+  Qed.
+
 
 (*
 Reserved Notation "{ c // init_st }⊢ l ⇓^{ n } v" (no associativity, at level 80).
@@ -380,7 +392,6 @@ End MarkedGraphs.
 (** Flow Equivalence *)
 (*********************)
 
-Existing Instance event_eq_dec.
 
 Arguments mg_triples {transitions places}.
 
@@ -521,6 +532,15 @@ Section FlowEquivalence.
         forall st, c ⊢ init_st ⇒ t ⇒ st ->
         forall l, transparent t l = false ->
                   st l = sync_eval c init_st (num_events (Fall l) t) l.
+
+  Definition flow_equivalence_rel {places : Set} `{Hplaces : eq_dec places}
+                              (M : marked_graph event places)
+                              (c : circuit) 
+                              (init_st : state latch) :=
+    forall l t v,
+      async_rel c init_st l false t v ->
+      (exists m, {M}⊢ t ↓ m) ->
+       v = sync_eval c init_st (num_events (Fall l) t) l.
 
 
 End FlowEquivalence.
