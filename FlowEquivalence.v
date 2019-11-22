@@ -330,27 +330,33 @@ Notation "{ c // init_st }⊢ l ⇓^{ n } v" := (sync_rel c init_st n l v) (no a
 
 Section MarkedGraphs.
 
-  Definition marking (places : Set) := places -> nat.
+  Variable transition : Set.
+  Variable place : Set.
 
-  Record marked_graph (transitions : Set) (places : Set) : Set :=
-  { mg_triples : list (transitions * places * transitions)
-  ; mg_init    : marking places
+  Definition marking := place -> nat.
+
+  Record marked_graph :=
+  { mg_triples : transition -> place -> transition -> Prop (* list (transitions * places * transitions) *)
+  ; mg_init    : marking
   }.
-  Arguments mg_triples {transitions places}.
+(*  Arguments mg_triples {transitions places}.*)
+(*
   Definition input_event {transitions places} 
                          (M : marked_graph transitions places) : list (transitions * places) :=
     fmap fst (mg_triples M).
   Definition output_event {transitions places}
                           (M : marked_graph transitions places) : list (places * transitions) :=
     fmap (fun ete => (snd (fst ete),snd ete)) (mg_triples M).
-
+*)
+(*
   Definition preset {transitions places : Set}
                        `{eq_dec transitions}
                        (M : marked_graph transitions places) (t : transitions) : list places :=
     let f := fun ete => if snd ete =? t then [snd (fst ete)] else [] in
     flat_map f (mg_triples M).
+*)
 
-  Definition enabled {transitions places : Set} `{Htransitions : eq_dec transitions}
+(*  Definition enabled {transitions places : Set} `{Htransitions : eq_dec transitions}
                      (e : transitions)
                      (M : marked_graph transitions places)
                      (m : marking places)
@@ -361,29 +367,45 @@ Section MarkedGraphs.
                         (e : transitions)
                         (m : marking places) :=
     enabled e M m = true.
+*)
+
+  Context `{Htransition : eq_dec transition} `{Hplace : eq_dec place}.
+
+  Definition is_enabled (M : marked_graph)
+                        (e : transition)
+                        (m : marking) :=
+    forall (p : place), (exists e0, mg_triples M e0 p e) -> 0 < m p.
+
+
+  Class mg_input_dec (M : marked_graph) :=
+    { input_dec : forall t p, {exists t', mg_triples M t p t'} + {~exists t', mg_triples M t p t'} }.
+  Class mg_output_dec (M : marked_graph) :=
+    { output_dec : forall p t, {exists t', mg_triples M t' p t} + {~exists t', mg_triples M t' p t} }.
+
+  Arguments input_dec M {mg_input_dec}.
+  Arguments output_dec M {mg_output_dec}.
+
 
   (* An event should only fire if the caller has independently checked that it
   is enabled. *) 
-  Definition fire {transitions places : Set}
-                  `{Htransitions : eq_dec transitions}
-                  `{Hplaces : eq_dec places}
-                  (t : transitions)
-                  (M : marked_graph transitions places)
-                  (m : marking places)
-                : marking places :=
-  fun p => if in_dec' (p,t) (output_event M) (* e0 →t→ e *)
+  Definition fire (t : transition)
+                  (M : marked_graph) `{mg_input_dec M} `{mg_output_dec M}
+                  (m : marking)
+                : marking :=
+  fun p => if output_dec M p t (* if ∃ t', t' →p→ t *)
            then m p - 1 (* remove markings on in-edges of e *)
-           else if in_dec' (t,p) (input_event M) (* e →t→ e0 *)
+           else if input_dec M t p (* if ∃ t', t →p→ t' *)
            then m p + 1 (* add marking to out-edges of e *)
            else m p.
 
 
+(*
   (* A marked graph is one such that each place has preset(p) <= 1 and postset(p) <= 1. *)
-  Definition wf_marked_graph {transitions places : Set}
-                             (M : marked_graph transitions places) := 
-    forall p e1 e2 e1' e2', In (e1,p,e2) (mg_triples M) ->
-                            In (e1',p,e2') (mg_triples M) ->
-                            e1 = e1' /\ e2 = e2'.
+  Definition wf_marked_graph (M : marked_graph) :=
+    forall p t1 t2 t1' t2', mg_triples M t1 p t2 ->
+                            mg_triples M t1' p t2' ->
+                            t1 = t1' /\ t2 = t2'.
+*)
 
 
 End MarkedGraphs.
@@ -393,7 +415,7 @@ End MarkedGraphs.
 (*********************)
 
 
-Arguments mg_triples {transitions places}.
+Arguments mg_triples {transition place}.
 
 
 Lemma map_in : forall {A B : Type} (f : A -> B) (l : list A) (x : B),
@@ -409,7 +431,9 @@ Proof.
       subst. exists Y. simpl. auto.
 Qed.
 
+(*
 Lemma in_input_event : forall {transition place : Set} (M : marked_graph transition place) t p,
+    (exists t', (t,p,
     In (t,p) (input_event M) <->
     exists t', In (t,p,t') (mg_triples M).
 Proof.
@@ -432,6 +456,7 @@ Lemma in_output_event : forall {transition place : Set} (M : marked_graph transi
     In (p,t) (output_event M) <->
     exists t', In (t',p,t) (mg_triples M).
 Admitted.
+*)
 
 
 (*
@@ -504,11 +529,17 @@ Section FlowEquivalence.
 
   Reserved Notation "{ MG }⊢ s ↓ m" (no associativity, at level 90).
 
-  Arguments mg_init {transitions places}.
+  Arguments mg_init {transition place}.
+  Arguments is_enabled {transition place}.
+  Arguments fire {transition place} t M {M_input_dec M_output_dec} : rename.
 
-  Inductive ls_consistent_with_MG {places : Set} `{Hplaces : eq_dec places}
-                                  (M : marked_graph event places)
-                                : trace -> marking places -> Prop :=
+  Arguments mg_input_dec {transition place}.
+  Arguments mg_output_dec {transition place}.
+
+  Inductive ls_consistent_with_MG {place : Set} `{Hplace : eq_dec place}
+                                  (M : marked_graph event place)
+                                  `{Hinput : mg_input_dec _ _ M} `{Houtput : mg_output_dec _ _ M}
+                                : trace -> marking place -> Prop :=
   | lsc_empty P : 
     (forall l, is_enabled M (Rise l) (mg_init M) -> P l = false) ->
     (forall l, is_enabled M (Fall l) (mg_init M) -> P l = true) ->
@@ -522,9 +553,10 @@ Section FlowEquivalence.
 
 
 
-
+(*
   Definition flow_equivalence {places : Set} `{Hplaces : eq_dec places}
                               (M : marked_graph event places)
+                              `{Hinput : mg_input_dec _ _ M} `{Houtput : mg_output_dec _ _ M}
                               (c : circuit) 
                               (init_st : state latch) :=
     forall (t : trace),
@@ -532,9 +564,11 @@ Section FlowEquivalence.
         forall st, c ⊢ init_st ⇒ t ⇒ st ->
         forall l, transparent t l = false ->
                   st l = sync_eval c init_st (num_events (Fall l) t) l.
+*)
 
-  Definition flow_equivalence_rel {places : Set} `{Hplaces : eq_dec places}
-                              (M : marked_graph event places)
+  Definition flow_equivalence {place : Set} `{Hplace : eq_dec place}
+                              (M : marked_graph event place)
+                              `{Hinput : mg_input_dec _ _ M} `{Houtput : mg_output_dec _ _ M}
                               (c : circuit) 
                               (init_st : state latch) :=
     forall l t v,
@@ -547,13 +581,12 @@ End FlowEquivalence.
 
 End FE.
 
-Arguments flow_equivalence {even odd Heven Hodd places Hplaces}.
-(*Arguments sync_eval {even odd} c. *)
+Arguments flow_equivalence {even odd Heven Hodd place Hplace} M {Hinput Houtput}.
 
-Arguments ls_consistent_with_MG {even odd Heven Hodd places Hplaces}.
+Arguments ls_consistent_with_MG {even odd place Hplace} M {Hinput Houtput}.
 
-Arguments mg_triples {transitions places}.
-Arguments mg_init {transitions places}.
+Arguments mg_triples {transition place}.
+Arguments mg_init {transition place}.
 
 Notation "{ MG }⊢ s ↓ m'" := (ls_consistent_with_MG MG s m')
                              (no associativity, at level 90).
@@ -565,6 +598,8 @@ Arguments transparent {even odd Heven Hodd}.
 
 Arguments empty_trace {even odd}.
 Arguments next_trace {even odd}.
+
+Arguments neighbor {even odd}.
 
 Arguments Rise {even odd}.
 Arguments Fall {even odd}.
@@ -582,11 +617,11 @@ Arguments Fall {even odd}.
 Arguments next_state {even odd}.
 
 
-Arguments preset {transitions places}.
+(*Arguments preset {transition place}.*)
 
 
-Arguments enabled {transitions places Htransitions}.
-Arguments fire {transitions places Htransitions Hplaces}.
+(*Arguments enabled {transitions places Htransitions}.*)
+Arguments fire {transition place} t M {Hinput Houtput} : rename.
 
 
 Arguments next_state_odd {even odd}.
@@ -594,7 +629,7 @@ Arguments next_state_even {even odd}.
 Arguments even_state {even odd P}.
 Arguments odd_state {even odd P}.
 Arguments sync_eval {even odd}.
-Arguments is_enabled {transitions places Htransitions}.
+Arguments is_enabled {transition place}.
 Arguments respects_transparencies {even odd}.
 Arguments opaque_equivalence {even odd}.
 
@@ -609,6 +644,10 @@ Existing Instance event_eq_dec.
  
 Arguments async_step {even odd Heven Hodd}.
 Arguments async_rel {even odd Heven Hodd}.
+
+Arguments mg_input_dec {transition place}.
+Arguments mg_output_dec {transition place}.
+
 
 Module FE_Tactics.
 Ltac reduce_transparent := try unfold update_transparency_predicate in *; simpl in *; reduce_eqb.
