@@ -136,19 +136,14 @@ Ltac case_In :=
 
 
 Ltac find_contradiction :=
+  try contradiction;
+  try discriminate;
   try match goal with
-  | [ H : False |- _ ] => inversion H
-  | [ H : false = true |- _ ] => inversion H
-  | [ H : true = false |- _ ] => inversion H
-  | [ |- false <> true ] => inversion 1
-  | [ |- true <> false ] => inversion 1
-  | [ H : ?a = true, H' : ?a = false |- _ ] => rewrite H in H'; inversion H'
-  | [ H : ?a = true, H' : false = ?a |- _ ] => rewrite H in H'; inversion H'
-  | [ H : true = ?a, H' : ?a = false |- _ ] => rewrite <- H in H'; inversion H'
-  | [ H : true = ?a, H' : false = ?a |- _ ] => rewrite H in H'; inversion H'
-  | [ H : ?x <> ?x |- _ ] => contradiction
+  | [ H : ?a = _, H' : ?a = _ |- _ ] => rewrite H in H'; discriminate
+  | [ H : ?a = _, H' : _ = ?a |- _ ] => rewrite H in H'; discriminate
+  | [ H : _ = ?a, H' : ?a = _ |- _ ] => rewrite <- H in H'; discriminate
+  | [ H : _ = ?a, H' : _ = ?a |- _ ] => rewrite H in H'; discriminate
   | [ H : ?x < ?x |- _ ] => apply Nat.lt_irrefl in H; contradiction
-  | [ H : ?P , H' : ~?P |- _ ] => contradiction
   end.
 
 

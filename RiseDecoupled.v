@@ -334,7 +334,7 @@ Defined.
 
 Lemma rise_decoupled_init_even : forall P E m,
     {rise_decoupled}⊢ empty_trace P ↓ m ->
-    P (Even E) = true.
+    P (Even E) = Transparent.
 Proof.
   intros P E m Hm.
   inversion Hm as [? Hpos Hneg | ]; subst.
@@ -511,14 +511,14 @@ Abort.
 *)
 
 
-Lemma fall_enabled_even_opaque : forall s m O E,
-    {rise_decoupled}⊢ s ↓ m ->
+Lemma fall_enabled_even_opaque : forall t m O E,
+    {rise_decoupled}⊢ t ↓ m ->
 (*    is_enabled rise_decoupled (Fall (Odd O)) m -> *)
     0 < m (Even_odd_fall E O) ->
     In (E,O) (even_odd_neighbors c) ->
-    transparent s (Even E) = false.
+    transparent t (Even E) = Opaque.
 Proof.
-  intros t; induction t as [P | e t]; intros m O E Hm Henabled Hneighbor.
+  induction t as [P | t IH e]; intros m O E Hm Henabled Hneighbor.
   * simpl in *.
     inversion Hm; subst.
 
@@ -551,7 +551,7 @@ Proof.
       omega.
       (* since m0(E- → O-) = 0 or 1, it cannot be the case that 0 < m0(E- → O-)-1 *)
     }
-    { eapply IHt; eauto. }
+    { eapply IH; eauto. }
 Qed.
 
 Lemma fall_enabled_odd_opaque : forall t m O E,
@@ -559,9 +559,9 @@ Lemma fall_enabled_odd_opaque : forall t m O E,
     0 < m (Odd_even_fall O E) ->
 (*    is_enabled rise_decoupled (Fall (Even E)) m ->*)
     In (O,E) (odd_even_neighbors c) ->
-    transparent t (Odd O) = false.
+    transparent t (Odd O) = Opaque.
 Proof.
-  intros t; induction t as [P | e t]; intros m O E Hm Henabled Hneighbor.
+  intros t; induction t as [P | t IHt e]; intros m O E Hm Henabled Hneighbor.
 
   * simpl in *.
     inversion Hm; subst.
@@ -600,7 +600,7 @@ Lemma fall_enabled_even_odd_strong : forall s m O E,
   /\ (0 < m (Odd_even_rise E O) -> num_events (Fall (Even E)) s = num_events (Fall (Odd O)) s)
   /\ (0 < m (Even_fall E) -> num_events (Fall (Even E)) s = num_events (Fall (Odd O)) s).
 Proof.
-  intros t; induction t as [P | e t];
+  intros t; induction t as [P | t IHt e];
     intros m O E Hm  Hneighbor; repeat split; intros Henabled;
     inversion Hm; subst;
     unfold fire in Henabled;
@@ -693,7 +693,7 @@ Lemma fall_enabled_odd_even_strong : forall t m O E,
   /\ (0 < m (Even_odd_rise O E) -> num_events (Fall (Even E)) t = 1 + num_events (Fall (Odd O)) t)
   /\ (0 < m (Odd_fall O) -> num_events (Fall (Even E)) t = 1 + num_events (Fall (Odd O)) t).
 Proof.
-  induction t as [P | e t];
+  induction t as [P | t IHt e];
     intros m O E Hm  Hneighbor; repeat split; intros Henabled;
     inversion Hm; subst;
     unfold fire in Henabled;
@@ -781,7 +781,7 @@ Proof.
   dependent induction Hrel; intros [m Hm].
   * destruct l as [O | E].
     (* l must be odd *)
-    2:{ assert (P (Even E) = true).
+    2:{ assert (P (Even E) = Transparent).
         { inversion Hm as [P' Htransparent Hopaque | ].
           rewrite Hopaque; [auto | ].
           apply RD_is_enabled_equiv.
