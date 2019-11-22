@@ -111,11 +111,82 @@ Section RiseDecoupled.
                          end
    |}.
 
-About input_RD.
+
+Inductive triples_RD : event even odd -> transitions_RD -> event even odd -> Prop :=
+| RD_even_fall_EO E O : In (E,O) (even_odd_neighbors c) ->
+                     triples_RD (Rise (Even E)) (Even_fall E) (Fall (Even E))
+| RD_even_odd_fall E O : In (E,O) (even_odd_neighbors c) ->
+                         triples_RD (Fall (Even E)) (Even_odd_fall E O) (Fall (Odd O))
+| RD_odd_even_rise E O : In (E,O) (even_odd_neighbors c) ->
+                     triples_RD (Fall (Odd O)) (Odd_even_rise E O) (Rise (Even E))
+| RD_odd_fall_EO E O : In (E,O) (even_odd_neighbors c) ->
+                    triples_RD (Rise (Odd O)) (Odd_fall O) (Fall (Odd O))
+| RD_odd_rise E O : In (E,O) (even_odd_neighbors c) ->
+                    triples_RD (Fall (Odd O)) (Odd_rise O) (Rise (Odd O))
+
+
+| RD_odd_fall_OE O E : In (O,E) (odd_even_neighbors c) ->
+                       triples_RD (Rise (Odd O)) (Odd_fall O) (Fall (Odd O))
+| RD_odd_even_fall O E : In (O,E) (odd_even_neighbors c) ->
+                         triples_RD (Fall (Odd O)) (Odd_even_fall O E) (Fall (Even E))
+| RD_even_odd_rise O E : In (O,E) (odd_even_neighbors c) ->
+                     triples_RD (Fall (Even E)) (Even_odd_rise O E) (Rise (Odd O))
+| RD_even_fall_OE O E : In (O,E) (odd_even_neighbors c) ->
+                    triples_RD (Rise (Even E)) (Even_fall E) (Fall (Even E))
+| RD_even_rise O E : In (O,E) (odd_even_neighbors c) ->
+                    triples_RD (Fall (Even E)) (Even_rise E) (Rise (Even E))
+.
+
+
+.
+
 Lemma rd_triples : forall e1 p e2,
-      In (e1, p, e2) (mg_triples rise_decoupled) <->
+      In (e1, p, e2) (mg_triples rise_decoupled) ->
       e1 = input_RD p /\ e2 = output_RD p.
-Admitted.
+Proof.
+  intros e1 p e2.
+  { intros Hin.
+    simpl in Hin.
+    apply in_app_or in Hin.
+    destruct Hin as [Hin | Hin].
+    + apply in_flat_map in Hin.
+      destruct Hin as [[E O] [Hneighbors Hin]].
+      simpl in Hin.
+      repeat (destruct Hin as [Hin | Hin]; [inversion Hin; auto | ]).
+      contradiction.
+    + apply in_flat_map in Hin.
+      destruct Hin as [[E O] [Hneighbors Hin]].
+      simpl in Hin.
+      repeat (destruct Hin as [Hin | Hin]; [inversion Hin; auto | ]).
+      contradiction.
+  }
+Qed.
+
+
+Lemma rd_triples_inv : forall e1 p e2,
+      e1 = input_RD p ->
+      e2 = output_RD p -> 
+      In (e1, p, e2) (mg_triples rise_decoupled) ->
+
+Proof.
+  intros e1 p e2.
+  { intros Hin.
+    simpl in Hin.
+    apply in_app_or in Hin.
+    destruct Hin as [Hin | Hin].
+    + apply in_flat_map in Hin.
+      destruct Hin as [[E O] [Hneighbors Hin]].
+      simpl in Hin.
+      repeat (destruct Hin as [Hin | Hin]; [inversion Hin; auto | ]).
+      contradiction.
+    + apply in_flat_map in Hin.
+      destruct Hin as [[E O] [Hneighbors Hin]].
+      simpl in Hin.
+      repeat (destruct Hin as [Hin | Hin]; [inversion Hin; auto | ]).
+      contradiction.
+  }
+Qed.
+
 
 
 
@@ -314,6 +385,14 @@ Proof.
   + reflexivity.
   + subst. unfold fire.
     repeat compare_next;
+    get_enabled_constraints;
+    try omega.
+    2:{ clear n3. contradict n2.
+
+        apply <- in_output_event; eauto.
+        eexists. 
+
+    repeat compare_next.
       get_enabled_constraints; omega.
 Qed.
 
@@ -477,41 +556,40 @@ Lemma fall_enabled_even_odd_strong : forall s m O E,
   /\ (0 < m (Odd_even_rise E O) -> num_events (Fall (Even E)) s = num_events (Fall (Odd O)) s)
   /\ (0 < m (Even_fall E) -> num_events (Fall (Even E)) s = num_events (Fall (Odd O)) s).
 Proof.
-  intros t; induction t as [P | e t]; intros m O E Hm  Hneighbor; repeat split; intros Henabled.
+  intros t; induction t as [P | e t];
+    intros m O E Hm  Hneighbor; repeat split; intros Henabled;
+    inversion Hm; subst;
+    unfold fire in Henabled; simpl in Henabled;
+    find_contradiction;
+    match goal with
+    | [ H : In (_, _) (even_odd_neighbors _)
+      , H' : {rise_decoupled}⊢ _ ↓ _ |- _ ] =>
+      set (Hloop := rd_loop_eo _ _ H' _ _ H);
+      specialize (IHt _ _ _ H' H);
+      destruct IHt as [IH1 [IH2 IH3]]
+    | [ H : In (_, _) (odd_even_neighbors _)
+      , H' : {rise_decoupled}⊢ _ ↓ _ |- _ ] =>
+      set (Hloop := rd_loop_oe _ _ H' _ _ H);
+      specialize (IHt _ _ _ H' H);
+      destruct IHt as [IH1 [IH2 IH3]]
+    end.
 
-  * inversion Hm; subst.
-    simpl in Henabled.
-    find_contradiction.
-
-
-  * inversion Hm; subst.
-    unfold fire in Henabled.
-    simpl.
+  * simpl.
     compare (Fall (Even E) : event even odd) e; simpl; reduce_eqb.
-    { specialize (IHt _ _ _ H4 Hneighbor).
-      destruct IHt as [IH1 [IH2 IH3]].
+    { 
       rewrite IH3; auto.
       get_enabled_constraints; auto.
     }
     compare (Fall (Odd O) : event even odd) e; simpl; reduce_eqb.
     { repeat compare_next; reduce_eqb.
       contradict Henabled.
-      set (Hloop := rd_loop_eo _ _ H4 _ _ Hneighbor).
       omega.
     }
     repeat compare_next; reduce_eqb.
-    { specialize (IHt _ _ _ H4 Hneighbor).
-      destruct IHt as [IH1 [IH2 IH3]].
-      apply IH1; auto.
+    { apply IH1; auto.
     }
 
-
-  * inversion Hm; subst.
-    unfold fire in Henabled.
-    specialize (IHt _ _ _ H4 Hneighbor).
-    destruct IHt as [IH1 [IH2 IH3]].
-    set (Hloop := rd_loop_eo _ _ H4 _ _ Hneighbor).
-    simpl.
+  * simpl.
     compare (Fall (Even E) : event even odd) e; simpl; reduce_eqb.
     { repeat compare_next; reduce_eqb. 
       get_enabled_constraints.
@@ -529,13 +607,7 @@ Proof.
     }
     { apply IH2; auto. }
 
-  * inversion Hm; subst.
-    unfold fire in Henabled.
-    specialize (IHt _ _ _ H4 Hneighbor).
-    destruct IHt as [IH1 [IH2 IH3]].
-    set (Hloop := rd_loop_eo _ _ H4 _ _ Hneighbor).
-
-    simpl.
+  * simpl.
     compare (Fall (Even E) : event even odd) e; simpl; reduce_eqb.
     { repeat compare_next; reduce_eqb.
       get_enabled_constraints.
@@ -569,12 +641,93 @@ Proof.
 Qed.
 
 
+Lemma fall_enabled_odd_even_strong : forall t m O E,
+    {rise_decoupled}⊢ t ↓ m ->
+    In (O,E) (odd_even_neighbors c) ->
+
+     (0 < m (Odd_even_fall O E) -> num_events (Fall (Even E)) t = num_events (Fall (Odd O)) t)
+  /\ (0 < m (Even_odd_rise O E) -> num_events (Fall (Even E)) t = 1 + num_events (Fall (Odd O)) t)
+  /\ (0 < m (Odd_fall O) -> num_events (Fall (Even E)) t = 1 + num_events (Fall (Odd O)) t).
+Proof.
+  induction t as [P | e t];
+    intros m O E Hm  Hneighbor; repeat split; intros Henabled;
+    inversion Hm; subst;
+    unfold fire in Henabled; simpl in Henabled;
+    find_contradiction;
+    match goal with
+    | [ H : In (_, _) (even_odd_neighbors _)
+      , H' : {rise_decoupled}⊢ _ ↓ _ |- _ ] =>
+      set (Hloop := rd_loop_eo _ _ H' _ _ H);
+      specialize (IHt _ _ _ H' H);
+      destruct IHt as [IH1 [IH2 IH3]]
+    | [ H : In (_, _) (odd_even_neighbors _)
+      , H' : {rise_decoupled}⊢ _ ↓ _ |- _ ] =>
+      set (Hloop := rd_loop_oe _ _ H' _ _ H);
+      specialize (IHt _ _ _ H' H);
+      destruct IHt as [IH1 [IH2 IH3]]
+    end.
+
+  * simpl.
+    compare (Fall (Even E) : event even odd) e; simpl; reduce_eqb.
+    { repeat compare_next; reduce_eqb.
+      contradict Henabled.
+      omega.
+    }
+    compare (Fall (Odd O) : event even odd) e; simpl; reduce_eqb.
+    { 
+      rewrite IH3; auto.
+      get_enabled_constraints; auto.
+    }
+    repeat compare_next; reduce_eqb.
+    { apply IH1; auto.
+    }
+
+  * simpl.
+    compare (Fall (Even E) : event even odd) e; simpl; reduce_eqb.
+    { rewrite IH1; auto.
+      get_enabled_constraints; auto.
+    }
+    compare (Fall (Odd O) : event even odd) e; simpl; reduce_eqb.
+    { repeat compare_next; reduce_eqb.
+      get_enabled_constraints.
+      contradict Henabled.
+      omega.
+    }
+    repeat compare_next; reduce_eqb.
+    { contradict Henabled. omega. }
+    { rewrite IH2; auto. }
+
+  * simpl.
+    compare (Fall (Even E) : event even odd) e; simpl; reduce_eqb.
+    { rewrite IH1; auto.
+      get_enabled_constraints; auto.
+    }
+    compare (Fall (Odd O) : event even odd) e; simpl; reduce_eqb.
+    { repeat compare_next; reduce_eqb.
+      get_enabled_constraints.
+      contradict Henabled.
+      omega.
+    }
+    repeat compare_next; reduce_eqb.
+    { get_enabled_constraints.
+      rewrite IH2; auto.
+    }
+    { rewrite IH3; auto. }
+Qed.
+
 Lemma fall_enabled_odd_even : forall s m O E,
     {rise_decoupled}⊢ s ↓ m ->
     is_enabled rise_decoupled (Fall (Even E)) m ->
     In (O,E) (odd_even_neighbors c) ->
     num_events (Fall (Odd O)) s = num_events (Fall (Even E)) s.
-Admitted.
+Proof.
+  intros t m O E Hm Henabled Hneighbors.
+  set (H := fall_enabled_odd_even_strong t m O E Hm Hneighbors).
+  destruct H as [H1 [H2 H3]].
+  rewrite H1; auto.
+  get_enabled_constraints; auto.
+Qed.
+
 
 
 
