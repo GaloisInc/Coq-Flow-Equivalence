@@ -87,61 +87,20 @@ Inductive triples_RD : event even odd -> places_RD -> event even odd -> Prop :=
 | RD_even_fall E : triples_RD (Rise (Even E)) (Even_fall E) (Fall (Even E))
 
 
-(*
-| RD_even_fall_EO E O : In (E,O) (even_odd_neighbors c) ->
-                     triples_RD (Rise (Even E)) (Even_fall E) (Fall (Even E))
-*)
 | RD_even_odd_fall E O : In (E,O) (even_odd_neighbors c) ->
                          triples_RD (Fall (Even E)) (Even_odd_fall E O) (Fall (Odd O))
 | RD_odd_even_rise E O : In (E,O) (even_odd_neighbors c) ->
                      triples_RD (Fall (Odd O)) (Odd_even_rise E O) (Rise (Even E))
-(*
-| RD_odd_fall_EO E O : In (E,O) (even_odd_neighbors c) ->
-                    triples_RD (Rise (Odd O)) (Odd_fall O) (Fall (Odd O))
-| RD_odd_rise E O : In (E,O) (even_odd_neighbors c) ->
-                    triples_RD (Fall (Odd O)) (Odd_rise O) (Rise (Odd O))
-*)
-
-
-(*
-| RD_odd_fall_OE O E : In (O,E) (odd_even_neighbors c) ->
-                       triples_RD (Rise (Odd O)) (Odd_fall O) (Fall (Odd O))
-*)
 | RD_odd_even_fall O E : In (O,E) (odd_even_neighbors c) ->
                          triples_RD (Fall (Odd O)) (Odd_even_fall O E) (Fall (Even E))
 | RD_even_odd_rise O E : In (O,E) (odd_even_neighbors c) ->
                      triples_RD (Fall (Even E)) (Even_odd_rise O E) (Rise (Odd O))
-(*
-| RD_even_fall_OE O E : In (O,E) (odd_even_neighbors c) ->
-                    triples_RD (Rise (Even E)) (Even_fall E) (Fall (Even E))
-| RD_even_rise O E : In (O,E) (odd_even_neighbors c) ->
-                    triples_RD (Fall (Even E)) (Even_rise E) (Rise (Even E))
-*)
 .
 
 
   Definition rise_decoupled 
            : marked_graph (event even odd) places_RD :=
   {| mg_triples := triples_RD
-(*
-     let eo_f := fun (eo : even * odd) => let (E,O) := eo in
-                     [ (Rise (Even E), Even_fall E, Fall (Even E))
-                     ; (Fall (Even E), Even_odd_fall E O, Fall (Odd O))
-                     ; (Fall (Odd O), Odd_even_rise E O, Rise (Even E))
-                     ; (Rise (Odd O), Odd_fall O, Fall (Odd O))
-                     ; (Fall (Odd O), Odd_rise O, Rise (Odd O))
-                     ]
-     in
-     let oe_f := fun (oe : odd * even) => let (O,E) := oe in
-                     [ (Rise (Odd O), Odd_fall O, Fall (Odd O))
-                     ; (Fall (Odd O), Odd_even_fall O E, Fall (Even E))
-                     ; (Fall (Even E), Even_odd_rise O E, Rise (Odd O))
-                     ; (Rise (Even E), Even_fall E, Fall (Even E))
-                     ; (Fall (Even E), Even_rise E, Rise (Even E))
-                     ]
-     in flat_map eo_f (even_odd_neighbors c)
-     ++ flat_map oe_f (odd_even_neighbors c)
-*)
    ; mg_init := fun p => match p with 
                          | Odd_even_fall _ _ => 1
                          | Even_fall _ => 1
@@ -158,85 +117,25 @@ Inductive triples_RD : event even odd -> places_RD -> event even odd -> Prop :=
 
 
 
-(*
-
-Lemma rd_triples : forall e1 p e2,
-      In (e1, p, e2) (mg_triples rise_decoupled) ->
-      e1 = input_RD p /\ e2 = output_RD p.
-Proof.
-  intros e1 p e2.
-  { intros Hin.
-    simpl in Hin.
-    apply in_app_or in Hin.
-    destruct Hin as [Hin | Hin].
-    + apply in_flat_map in Hin.
-      destruct Hin as [[E O] [Hneighbors Hin]].
-      simpl in Hin.
-      repeat (destruct Hin as [Hin | Hin]; [inversion Hin; auto | ]).
-      contradiction.
-    + apply in_flat_map in Hin.
-      destruct Hin as [[E O] [Hneighbors Hin]].
-      simpl in Hin.
-      repeat (destruct Hin as [Hin | Hin]; [inversion Hin; auto | ]).
-      contradiction.
-  }
-Qed.
-
-
-Lemma rd_triples_inv : forall e1 p e2,
-      e1 = input_RD p ->
-      e2 = output_RD p -> 
-      In (e1, p, e2) (mg_triples rise_decoupled) ->
-
-Proof.
-  intros e1 p e2.
-  { intros Hin.
-    simpl in Hin.
-    apply in_app_or in Hin.
-    destruct Hin as [Hin | Hin].
-    + apply in_flat_map in Hin.
-      destruct Hin as [[E O] [Hneighbors Hin]].
-      simpl in Hin.
-      repeat (destruct Hin as [Hin | Hin]; [inversion Hin; auto | ]).
-      contradiction.
-    + apply in_flat_map in Hin.
-      destruct Hin as [[E O] [Hneighbors Hin]].
-      simpl in Hin.
-      repeat (destruct Hin as [Hin | Hin]; [inversion Hin; auto | ]).
-      contradiction.
-  }
-Qed.
-*)
-
-
-
 Open Scope nat_scope.
 Inductive is_enabled_RD : event even odd -> marking places_RD -> Prop :=
 | Even_fall_enabled E m :
-(*  (forall O (pf : In (E,O) (even_odd_neighbors c)),*)
-         ( 0 < m (Even_fall E)) ->
-(*  (forall O (pf : In (O,E) (odd_even_neighbors c)),
-          0 < m (Even_fall E)) ->*)
+         0 < m (Even_fall E) ->
   (forall O (pf : In (O,E) (odd_even_neighbors c)),
           0 < m (Odd_even_fall O E)) ->
   is_enabled_RD (Fall (Even E)) m
 | Even_rise_enabled E m :
-(*  (forall O (pf : In (O,E) (odd_even_neighbors c)),*)
-         ( 0 < m (Even_rise E)) ->
+         0 < m (Even_rise E) ->
   (forall O (pf : In (E,O) (even_odd_neighbors c)),
           0 < m  (Odd_even_rise E O)) ->
   is_enabled_RD (Rise (Even E)) m
 | Odd_fall_enabled O m :
-(*  (forall E (pf : In (E,O) (even_odd_neighbors c)),*)
-         ( 0 < m (Odd_fall O)) ->
-(*  (forall E (pf : In (O,E) (odd_even_neighbors c)),
-          0 < m (Odd_fall O)) ->*)
+         0 < m (Odd_fall O) ->
   (forall E (pf : In (E,O) (even_odd_neighbors c)),
           0 < m (Even_odd_fall E O)) ->
   is_enabled_RD (Fall (Odd O)) m
 | Odd_rise_enabled O m :
-(*  (forall E (pf : In (E,O) (even_odd_neighbors c)),*)
-       (   0 < m (Odd_rise O)) ->
+          0 < m (Odd_rise O) ->
   (forall E (pf : In (O,E) (odd_even_neighbors c)),
           0 < m (Even_odd_rise O E)) ->
   is_enabled_RD (Rise (Odd O)) m
@@ -249,27 +148,7 @@ Proof.
     intros p [e0 Htriples];
     inversion Htriples; subst; eauto.
 Qed.
-  
-(*
-  Ltac in_preset := 
-  match goal with
-  | [ |- In ?t (preset _ rise_decoupled ?e) ] => apply in_flat_map; exists (input_RD t, t, e);
-    split; [ | simpl; reduce_eqb; simpl; auto ];
-    apply in_or_app
-  end;
-  try (left;
-       repeat match goal with
-       | [ |- In (_, ?t _, _) (flat_map _ _) ] => apply in_flat_map
-       | [ E : even , O : odd |- exists x : even * odd, _ ] => exists (E,O)
-       | [ E : even , O : odd |- exists x : odd * even, _ ] => exists (E,O)
-       end; intuition; fail);
-  try (right;
-       repeat match goal with
-       | [ |- In (_, ?t _, _) (flat_map _ _) ] => apply in_flat_map
-       | [ E : even , O : odd |- exists x : even * odd, _ ] => exists (E,O)
-       | [ E : even , O : odd |- exists x : odd * even, _ ] => exists (O,E)
-       end; intuition; fail).
-*)
+ 
 
 Lemma is_enabled_RD_equiv : forall e m,
     is_enabled rise_decoupled e m ->
@@ -372,7 +251,6 @@ Arguments output_dec {transition place} M {Houtput} : rename.
 
   Ltac compare_next :=
     match goal with
-(*    | [ |- context [ eqb ?x1 ?x2 ] ] => compare x1 x2; auto*)
     | [ |- context[ output_dec ?M ?p ?t ] ] => compare_output M p t
     | [ |- context[ input_dec ?M ?t ?p ] ] => compare_input M t p
     | [ H : context[ output_dec ?M ?p ?t ] |- _ ] => compare_output M p t
@@ -409,43 +287,6 @@ Ltac get_enabled_constraints :=
   try match goal with
   | [ H : is_enabled rise_decoupled _ _ |- _ ] => apply is_enabled_RD_equiv in H; inversion H; subst
   end; specialize_enabled_constraints.
-
-(*
-Lemma rd_init_even : forall P E m,
-    {rise_decoupled}⊢ empty_trace P ↓ m ->
-    P (Even E) = Transparent.
-Proof.
-  intros P E m Hm.
-  inversion Hm as [? Hconsistent | ]; subst.
-  specialize (Hconsistent (Even E)).
-  inversion Hconsistent; subst; auto.
-  * get_enabled_constraints; simpl in *; find_contradiction.
-  * contradict H0.
-    apply RD_is_enabled_equiv.
-    constructor; auto.
-Qed.
-
-
-Lemma has_right_neighbor_dec :
-    forall l, sumbool (exists l', neighbor c l l') (~ exists l', neighbor c l l').
-Admitted.
-
-Lemma rd_init_odd : forall P O m,
-    {rise_decoupled}⊢ empty_trace P ↓ m ->
-    P (Odd O) = Opaque.
-Proof.
-  intros P O m Hm.
-  inversion Hm as [? Hconsistent | ]; subst.
-  specialize (Hconsistent (Odd O)).
-  inversion Hconsistent; subst; auto.
-  * get_enabled_constraints. simpl in *. find_contradiction.
-  * destruct (has_right_neighbor_dec (Odd O)) as [[l' Hneighbor] | Hneighbor].
-    + inversion Hneighbor; subst.
-      (* OK, e- can fire, but what about other right neighbors? We need to do induction on the number of right neighbors?? *)
-      admit.
-    + admit.
-Admitted.
-*)
 
 
 Lemma rd_loop_eo : forall t m,
@@ -498,20 +339,6 @@ Proof.
 Qed.
 
 (*
-Lemma enabled_input_0 : forall t m,
-    {rise_decoupled}⊢ t ↓ m ->
-    forall p, is_enabled_RD (input_RD p) m ->
-    (forall p' : places_RD, m p' = 0 \/ m p' = 1) ->
-    m p = 0.
-Proof.
-  intros t m Hm. induction Hm; intros p Henabled IH.
-  + admit.
-  + subst. unfold fire.
-    compare_next. admit (*?*).
-    compare_next. admit.
-Abort.
-
-
 Lemma rd_safe : forall t m,
     {rise_decoupled}⊢ t ↓ m ->
     forall p, m(p) = 0 \/ m(p) = 1.
@@ -576,7 +403,6 @@ Qed.
 Lemma fall_enabled_odd_opaque : forall t m O E,
     {rise_decoupled}⊢ t ↓ m ->
     0 < m (Odd_even_fall O E) ->
-(*    is_enabled rise_decoupled (Fall (Even E)) m ->*)
     In (O,E) (odd_even_neighbors c) ->
     transparent P_RD t (Odd O) = Opaque.
 Proof.
@@ -795,12 +621,6 @@ Proof.
   intros l t v Hrel.
   dependent induction Hrel; intros [m Hm].
   * destruct l as [O | E]; auto.
-(*    (* l must be odd *) simpl.
-    2:{ simpl. assert (P (Even E) = Transparent) by (eapply rd_init_even; eauto).
-        find_contradiction.
-    }
-    reflexivity.
-*)
   * inversion Hm as [ | e0 m0 ? t' Henabled Hfire Hm']; subst; rename m0 into m.
     simpl in *.
     compare (Rise l) e.

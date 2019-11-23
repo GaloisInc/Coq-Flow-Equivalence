@@ -77,11 +77,6 @@ Section LatchSequence.
 
   (* A trace is a list of events. *)
   Definition trace := list event.
-(*
-  Inductive trace : Set :=
-  | empty_trace (*P : transparency_predicate*) : trace
-  | next_trace (next : trace) (e : event) : trace.       
-*)
 
   (* Calculate the set of transparent latches after executing the trace t *)
   Fixpoint transparent (P : transparency_predicate) (s : trace) : transparency_predicate :=
@@ -149,7 +144,6 @@ Section Circuits.
   (** Async execution *)
 
 
-(* Alternative async evaluation *)
   Reserved Notation "⟨ c , st , P ⟩⊢ t ↓ l ↦{ O } v" (no associativity, at level 90).
   Inductive async_rel (c : circuit) (st0 : state latch) (P0 : transparency_predicate)
                     : trace -> latch -> opacity -> value -> Prop :=
@@ -272,30 +266,7 @@ Qed.
         unfold odd_state. simpl. rewrite Hst; auto. constructor; auto.
   Qed.
 
-
-(*
-Reserved Notation "{ c // init_st }⊢ l ⇓^{ n } v" (no associativity, at level 80).
-Inductive sync_rel (c : circuit) (init_st : state latch) : nat -> latch -> value -> Prop :=
-| Sync_odd_0 (O : odd) : { c // init_st }⊢ Odd O ⇓^{0} init_st(Odd O)
-| Sync_odd_S (O : odd) (n : nat) (st0 : state latch) :
-    (forall (E : even) (pf : In (E,O) (even_odd_neighbors c)), 
-            { c // init_st }⊢ Even E ⇓^{S n} st0(Even E)) ->
-    { c // init_st }⊢ Odd O ⇓^{S n} next_state c st0 (Odd O)
-| Sync_even_S (E : even) (n : nat) (st0 : state latch) :
-    (forall (O : odd) (pf : In (O,E) (odd_even_neighbors c)), 
-            { c // init_st }⊢ Odd O ⇓^{n} st0(Odd O)) ->
-    { c // init_st }⊢ Even E ⇓^{S n} next_state c st0 (Even E)
-
-where
-  "{ c // init_st }⊢ l ⇓^{ n } v" := (sync_rel c init_st n l v).
-*)
-
 End Circuits.
-
-(*Notation " c '⊢' st '⇒' s '⇒' st' " := (eval c st s st') (no associativity, at level 80).*)
-(*
-Notation "{ c // init_st }⊢ l ⇓^{ n } v" := (sync_rel c init_st n l v) (no associativity, at level 80).
-*)
 
 Notation "⟨ c , st , P ⟩⊢ t ↓ l ↦{ O } v" := (async_rel c st P t l O v) (no associativity, at level 90).
 
@@ -376,20 +347,6 @@ End MarkedGraphs.
 Arguments mg_reachable {transition place} M {Hinput Houtput}.
 Notation "{ MG }⊢ s ↓ m" := (mg_reachable MG s m) (no associativity, at level 90).
 
-(*
-Lemma map_in : forall {A B : Type} (f : A -> B) (l : list A) (x : B),
-    In x (map f l) ->
-    exists y, In y l /\ x = f y.
-Proof.
-  induction l; intros x H.
-  * inversion H.
-  * simpl in H.
-    destruct H as [H | H]; subst.
-    + simpl. exists a; auto.
-    + destruct (IHl x H) as [Y [H1 H2]].
-      subst. exists Y. simpl. auto.
-Qed.
-*)
 
 Section FlowEquivalence.
 
@@ -435,10 +392,6 @@ Arguments Odd {even odd}.
 Arguments Even {even odd}.
 Arguments transparent {even odd Heven Hodd}.
 
-(*
-Arguments empty_trace {even odd}.
-Arguments next_trace {even odd}.
-*)
 
 Arguments neighbor {even odd}.
 
@@ -446,8 +399,6 @@ Arguments Rise {even odd}.
 Arguments Fall {even odd}.
 Arguments num_events {even odd Heven Hodd}.
 
-(*Arguments eval {even odd Heven Hodd}.*)
-(*Notation " c '⊢' st '⇒' s '⇒' st' " := (eval c st s st') (no associativity, at level 80).*)
 
 Arguments odd_even_neighbors {even odd}.
 Arguments even_odd_neighbors {even odd}.
@@ -458,10 +409,7 @@ Arguments Fall {even odd}.
 Arguments next_state {even odd}.
 
 
-(*Arguments preset {transition place}.*)
 
-
-(*Arguments enabled {transitions places Htransitions}.*)
 Arguments fire {transition place} t M {Hinput Houtput} : rename.
 
 
@@ -471,17 +419,12 @@ Arguments even_state {even odd P}.
 Arguments odd_state {even odd P}.
 Arguments sync_eval {even odd}.
 Arguments is_enabled {transition place}.
-(*
-Arguments respects_transparencies {even odd}.
-Arguments opaque_equivalence {even odd}.
-*)
 
 Arguments update_transparency_predicate {even odd Heven Hodd}.
 
 
 Existing Instance event_eq_dec.
  
-(*Arguments async_step {even odd Heven Hodd}.*)
 Arguments async_rel {even odd Heven Hodd}.
 Notation "⟨ c , st , P ⟩⊢ t ↓ l ↦{ O } v" := (async_rel c st P t l O v) 
           (no associativity, at level 90).
