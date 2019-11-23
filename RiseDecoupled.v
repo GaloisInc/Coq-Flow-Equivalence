@@ -150,6 +150,12 @@ Inductive triples_RD : event even odd -> places_RD -> event even odd -> Prop :=
                          end
    |}.
 
+  Definition P_RD : transparency_predicate even odd :=
+    fun l => match l with
+             | Even _ => Transparent
+             | Odd _  => Opaque
+             end.
+
 
 
 (*
@@ -404,7 +410,7 @@ Ltac get_enabled_constraints :=
   | [ H : is_enabled rise_decoupled _ _ |- _ ] => apply is_enabled_RD_equiv in H; inversion H; subst
   end; specialize_enabled_constraints.
 
-
+(*
 Lemma rd_init_even : forall P E m,
     {rise_decoupled}⊢ empty_trace P ↓ m ->
     P (Even E) = Transparent.
@@ -439,6 +445,7 @@ Proof.
       admit.
     + admit.
 Admitted.
+*)
 
 
 Lemma rd_loop_eo : forall t m,
@@ -528,17 +535,15 @@ Abort.
 
 Lemma fall_enabled_even_opaque : forall t m O E,
     {rise_decoupled}⊢ t ↓ m ->
-(*    is_enabled rise_decoupled (Fall (Odd O)) m -> *)
     0 < m (Even_odd_fall E O) ->
     In (E,O) (even_odd_neighbors c) ->
-    transparent t (Even E) = Opaque.
+    transparent P_RD t (Even E) = Opaque.
 Proof.
-  induction t as [P | t IH e]; intros m O E Hm Henabled Hneighbor.
+  induction t as [ | e t]; intros m O E Hm Henabled Hneighbor.
   * simpl in *.
     inversion Hm; subst.
-
-    specialize (H0 (Even E)).
-    inversion H0; subst; auto; get_enabled_constraints; simpl in *; find_contradiction.
+    simpl in Henabled.
+    find_contradiction.
 
   * simpl.
     inversion Hm; subst.
@@ -565,7 +570,7 @@ Proof.
       omega.
       (* since m0(E- → O-) = 0 or 1, it cannot be the case that 0 < m0(E- → O-)-1 *)
     }
-    { eapply IH; eauto. }
+    { eapply IHt; eauto. }
 Qed.
 
 Lemma fall_enabled_odd_opaque : forall t m O E,
@@ -573,12 +578,11 @@ Lemma fall_enabled_odd_opaque : forall t m O E,
     0 < m (Odd_even_fall O E) ->
 (*    is_enabled rise_decoupled (Fall (Even E)) m ->*)
     In (O,E) (odd_even_neighbors c) ->
-    transparent t (Odd O) = Opaque.
+    transparent P_RD t (Odd O) = Opaque.
 Proof.
-  intros t; induction t as [P | t IHt e]; intros m O E Hm Henabled Hneighbor.
+  intros t; induction t as [ | e t]; intros m O E Hm Henabled Hneighbor.
 
-  * simpl in *.
-    eapply rd_init_odd; eauto.
+  * reflexivity.
 
   * simpl.
     inversion Hm; subst.
@@ -611,7 +615,7 @@ Lemma fall_enabled_even_odd_strong : forall s m O E,
   /\ (0 < m (Odd_even_rise E O) -> num_events (Fall (Even E)) s = num_events (Fall (Odd O)) s)
   /\ (0 < m (Even_fall E) -> num_events (Fall (Even E)) s = num_events (Fall (Odd O)) s).
 Proof.
-  intros t; induction t as [P | t IHt e];
+  intros t; induction t as [| e t];
     intros m O E Hm  Hneighbor; repeat split; intros Henabled;
     inversion Hm; subst;
     unfold fire in Henabled;
@@ -704,7 +708,7 @@ Lemma fall_enabled_odd_even_strong : forall t m O E,
   /\ (0 < m (Even_odd_rise O E) -> num_events (Fall (Even E)) t = 1 + num_events (Fall (Odd O)) t)
   /\ (0 < m (Odd_fall O) -> num_events (Fall (Even E)) t = 1 + num_events (Fall (Odd O)) t).
 Proof.
-  induction t as [P | t IHt e];
+  induction t as [| e t];
     intros m O E Hm  Hneighbor; repeat split; intros Henabled;
     inversion Hm; subst;
     unfold fire in Henabled;
@@ -786,16 +790,17 @@ Qed.
 
 
 
-Theorem rise_decoupled_flow_equivalence_rel : flow_equivalence rise_decoupled c init_st.
+Theorem rise_decoupled_flow_equivalence_rel : flow_equivalence rise_decoupled c init_st P_RD.
 Proof.
   intros l t v Hrel.
   dependent induction Hrel; intros [m Hm].
-  * destruct l as [O | E].
-    (* l must be odd *)
-    2:{ assert (P (Even E) = Transparent) by (eapply rd_init_even; eauto).
+  * destruct l as [O | E]; auto.
+(*    (* l must be odd *) simpl.
+    2:{ simpl. assert (P (Even E) = Transparent) by (eapply rd_init_even; eauto).
         find_contradiction.
     }
     reflexivity.
+*)
   * inversion Hm as [ | e0 m0 ? t' Henabled Hfire Hm']; subst; rename m0 into m.
     simpl in *.
     compare (Rise l) e.
