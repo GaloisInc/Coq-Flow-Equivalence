@@ -275,16 +275,7 @@ Proof.
     constructor; intros; apply Henabled; eexists; try (econstructor; eauto; fail).
 Qed.
 
-(*
-Lemma has_right_neighbor_dec :
-    forall l, sumbool (exists l', neighbor c l l') (~ exists l', neighbor c l l').
-Proof.
-    
-  intros [O | E].
-  * set (ls := odd_even_neighbors c).
-    
-    destruct (in_dec' 
-*)
+
 
 Ltac test_dec :=
       try (right; intros [t' H]; inversion H; subst; find_contradiction; fail);
@@ -332,17 +323,6 @@ Proof.
 Defined.
 
 
-Lemma rise_decoupled_init_even : forall P E m,
-    {rise_decoupled}⊢ empty_trace P ↓ m ->
-    P (Even E) = Transparent.
-Proof.
-  intros P E m Hm.
-  inversion Hm as [? Hpos Hneg | ]; subst.
-  apply Hneg.
-  unfold is_enabled.
-  intros p [e Hp].
-  inversion Hp; subst; auto.
-Qed.
 
 (*
   Ltac simplify_in_FE :=
@@ -424,6 +404,41 @@ Ltac get_enabled_constraints :=
   | [ H : is_enabled rise_decoupled _ _ |- _ ] => apply is_enabled_RD_equiv in H; inversion H; subst
   end; specialize_enabled_constraints.
 
+
+Lemma rd_init_even : forall P E m,
+    {rise_decoupled}⊢ empty_trace P ↓ m ->
+    P (Even E) = Transparent.
+Proof.
+  intros P E m Hm.
+  inversion Hm as [? Hconsistent | ]; subst.
+  specialize (Hconsistent (Even E)).
+  inversion Hconsistent; subst; auto.
+  * get_enabled_constraints; simpl in *; find_contradiction.
+  * contradict H0.
+    apply RD_is_enabled_equiv.
+    constructor; auto.
+Qed.
+
+
+Lemma has_right_neighbor_dec :
+    forall l, sumbool (exists l', neighbor c l l') (~ exists l', neighbor c l l').
+Admitted.
+
+Lemma rd_init_odd : forall P O m,
+    {rise_decoupled}⊢ empty_trace P ↓ m ->
+    P (Odd O) = Opaque.
+Proof.
+  intros P O m Hm.
+  inversion Hm as [? Hconsistent | ]; subst.
+  specialize (Hconsistent (Odd O)).
+  inversion Hconsistent; subst; auto.
+  * get_enabled_constraints. simpl in *. find_contradiction.
+  * destruct (has_right_neighbor_dec (Odd O)) as [[l' Hneighbor] | Hneighbor].
+    + inversion Hneighbor; subst.
+      (* OK, e- can fire, but what about other right neighbors? We need to do induction on the number of right neighbors?? *)
+      admit.
+    + admit.
+Admitted.
 
 
 Lemma rd_loop_eo : forall t m,
@@ -522,9 +537,8 @@ Proof.
   * simpl in *.
     inversion Hm; subst.
 
-    apply H0.
-    apply RD_is_enabled_equiv.
-    constructor; auto.
+    specialize (H0 (Even E)).
+    inversion H0; subst; auto; get_enabled_constraints; simpl in *; find_contradiction.
 
   * simpl.
     inversion Hm; subst.
@@ -564,10 +578,7 @@ Proof.
   intros t; induction t as [P | t IHt e]; intros m O E Hm Henabled Hneighbor.
 
   * simpl in *.
-    inversion Hm; subst.
-    (* I think the precondition of H0 is not enough to know that P(Odd O) = false, since neither O+ nor O- are enabled in the initial state. *)
-(*    apply H0.*)
-    admit.
+    eapply rd_init_odd; eauto.
 
   * simpl.
     inversion Hm; subst.
@@ -591,7 +602,7 @@ Proof.
       omega.
     }
     { eapply IHt; eauto. }
-Admitted.
+Qed.
 
 Lemma fall_enabled_even_odd_strong : forall s m O E,
     {rise_decoupled}⊢ s ↓ m ->
@@ -781,12 +792,7 @@ Proof.
   dependent induction Hrel; intros [m Hm].
   * destruct l as [O | E].
     (* l must be odd *)
-    2:{ assert (P (Even E) = Transparent).
-        { inversion Hm as [P' Htransparent Hopaque | ].
-          rewrite Hopaque; [auto | ].
-          apply RD_is_enabled_equiv.
-          constructor; intros; auto.
-        }
+    2:{ assert (P (Even E) = Transparent) by (eapply rd_init_even; eauto).
         find_contradiction.
     }
     reflexivity.

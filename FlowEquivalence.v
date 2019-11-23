@@ -416,7 +416,6 @@ Section FlowEquivalence.
   Arguments mg_output_dec {transition place}.
 
 
-(*
   Inductive consistent_P {place : Set} `{Hplace : eq_dec place}
                          (M : marked_graph event place)
                         `{Hinput : mg_input_dec _ _ M} `{Houtput : mg_output_dec _ _ M}
@@ -430,15 +429,17 @@ Section FlowEquivalence.
     (forall e, is_enabled M e m -> consistent_P M P (fire e M m) l) ->
     consistent_P M P m l
   .
-*)
 
   Inductive ls_consistent_with_MG {place : Set} `{Hplace : eq_dec place}
                                   (M : marked_graph event place)
                                   `{Hinput : mg_input_dec _ _ M} `{Houtput : mg_output_dec _ _ M}
                                 : trace -> marking place -> Prop :=
   | lsc_empty P : 
+    (forall l, consistent_P M P (mg_init M) l) ->
+(*
     (forall l, is_enabled M (Rise l) (mg_init M) -> P l = Opaque) ->
     (forall l, is_enabled M (Fall l) (mg_init M) -> P l = Transparent) ->
+*)
     {M}⊢ empty_trace P ↓ mg_init M
   | lsc_cons e m m' t' : is_enabled M e m ->
                 fire e M m = m' ->
