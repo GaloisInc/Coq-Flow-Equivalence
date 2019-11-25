@@ -150,15 +150,23 @@ Ltac find_contradiction :=
 Ltac reduce_eqb :=
   repeat match goal with
   | [ H : context[ ?x =? ?x ] |- _ ] => rewrite eqb_eq in H
-  | [ H : context[ ?x1 =? ?x2 ], H' : ?x1 <> ?x2 |- _] => rewrite eqb_neq in H; [ | auto]
-  | [ H : context[ ?x1 =? ?x2 ], H' : ?x2 <> ?x1 |- _] => rewrite eqb_neq in H; [ | auto]
+  | [ H : context[ ?x1 =? ?x2 ], H' : ?x1 <> ?x2 |- _] => rewrite (eqb_neq _ x1 x2) in H; [ | auto]
+  | [ H : context[ ?x1 =? ?x2 ], H' : ?x2 <> ?x1 |- _] => rewrite (eqb_neq _ x1 x2) in H; [ | auto]
   | [ |- context[ ?x =? ?x ] ] => rewrite eqb_eq
-  | [ H' : ?x1 <> ?x2 |- context[ ?x1 =? ?x2 ] ] => rewrite eqb_neq; [ | auto]
-  | [ H' : ?x1 <> ?x2 |- context[ ?x2 =? ?x1 ] ] => rewrite eqb_neq; [ | auto]
+  | [ H' : ?x1 <> ?x2 |- context[ ?x1 =? ?x2 ] ] => rewrite (eqb_neq _ x1 x2); [ | auto]
+  | [ H' : ?x1 <> ?x2 |- context[ ?x2 =? ?x1 ] ] => rewrite (eqb_neq _ x1 x2); [ | auto]
   end; find_contradiction.
 
 Ltac compare e1 e2 :=
   destruct (Dec e1 e2) as [? | ?]; subst; reduce_eqb.
+
+Ltac compare_next :=
+    match goal with
+    | [ |- context[ eqb ?e1 ?e2 ] ] => let tp := type of e1 in
+                                       compare (e1 : tp) (e2 : tp)
+    | [ H : context[ eqb ?e1 ?e2 ] |- _ ] => let tp := type of e1 in compare (e1 : tp) (e2 : tp)
+    end.
+
 
 Instance eq_dec_bool : eq_dec bool.
 Proof.
