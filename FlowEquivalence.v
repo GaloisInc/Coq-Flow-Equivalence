@@ -290,13 +290,9 @@ Section MarkedGraphs.
   ; init_marking : forall t1 t2, place t1 t2 -> nat
   }.
 
-
-  Definition marking (M : marked_graph) := forall t1 t2, place M t1 t2 -> nat.
-  Definition get_marking {M} (m : marking M) {t1 t2 : transition} (p : place M t1 t2) : nat :=
-    m t1 t2 p.
-  Coercion get_marking : place >-> nat.
-
-(*  Context `{Hevent : eq_dec event} `{Hplace : eq_dec place}.*)
+  Definition marking (M : marked_graph) := forall {t1 t2}, place M t1 t2 -> nat.
+  Definition get_marking {M} {t1 t2} (m : marking M)  (p : place M t1 t2) : nat := m _ _ p.
+  Coercion get_marking : marking >-> Funclass.
 
   Definition is_enabled (M : marked_graph)
                         (t : transition)
@@ -348,6 +344,101 @@ Section MarkedGraphs.
   where
     "{ MG }⊢ t ↓ m'" := (mg_reachable MG t m').
 
+
+  Inductive mg_path (M : marked_graph) : transition -> transition -> Set :=
+  | mg_single_path t1 t2 : place M t1 t2 -> mg_path M t1 t2
+  | mg_step_path t1 t2 t3 : place M t1 t2 -> mg_path M t2 t3 -> mg_path M t1 t3
+  .
+  Arguments mg_single_path {M t1 t2}.
+  Arguments mg_step_path {M t1 t2 t3}.
+  Definition mg_loop (M : marked_graph) (t : transition) := mg_path M t t.
+
+  Fixpoint path_cost {M} {t1 t2} (m : marking M) (p : mg_path M t1 t2) : nat :=
+    match p with
+    | mg_single_path p => m _ _ p
+    | mg_step_path p p' => m _ _ p + path_cost m p'
+    end.
+
+Locate "+".
+  Definition fire_effect (t : transition) {M t1 t2} (p : place M t1 t2) (res : nat) : nat :=
+    if t =? t2 then res-1
+    else if t =? t1 then res+1
+    else res.
+
+  Fixpoint path_effect (t : transition) {M t1 t2} (p : mg_path M t1 t2) (res : nat) : nat :=
+    match p with
+    | mg_single_path p => fire_effect t p res
+    | mg_step_path p p' => path_effect t p' (fire_effect t p res)
+    end.
+
+Require Import Omega.
+
+  Lemma fire_effect_plus : forall (t : transition) {M t1 t2} (p : place M t1 t2) (res1 res2 : nat),
+    res2 > 0 ->
+    fire_effect t p (res1 + res2) = res1 + fire_effect t p res2.
+  Proof.
+    induction res1; intros; auto.
+    simpl.
+    unfold fire_effect. 
+    repeat compare_next; omega.
+  Qed.
+
+  Lemma path_effect_plus : forall (t : transition) {M t1 t2} (p : mg_path M t1 t2) (res1 res2 : nat),
+    res2 > 0 ->
+    path_effect t p (res1 + res2) = res1 + path_effect t p res2.
+  Proof.
+    induction p; intros.
+    * simpl. apply fire_effect_plus; auto.
+    * simpl.
+      rewrite fire_effect_plus; auto.
+      rewrite IHp; auto.
+  Abort.
+
+  Lemma fire_preserves_paths : forall M t1 t2 (p : mg_path M t1 t2) e m,
+    is_enabled M e m ->
+    path_cost (fire e M m) p = path_effect e p (path_cost m p).
+  Proof.
+    intros M t1 t2 p.
+    induction p; intros e m Henabled.
+    + simpl. reflexivity. 
+    + simpl.
+      rewrite IHp; auto.
+      unfold fire.
+      compare_next.
+      ++ unfold is_enabled in Henabled.
+         specialize (Henabled t1 p).
+         unfold fire_effect.
+         reduce_eqb.
+         transitivity (path_effect t2 p0 ((m t1 t2 p - 1) + path_cost m p0)).
+         2:{ f_equal. omega. } Search (_ + _ = _ + _).
+
+         admit (*??*).
+      ++ compare_next.
+         2:{ 
+   Abort.
+   
+
+  Lemma fire_preserves_loops : forall M t (p : mg_loop M t) e m,
+    is_enabled M e m ->
+    path_cost (fire e M m) p = path_cost m p.
+  Abort.
+
+  Lemma mg_preserves_loops : forall M ts m,
+    {M}⊢ ts ↓ m ->
+    forall t (p : mg_loop M t),
+      path_cost m p = path_cost (init_marking M) p.
+  Proof.
+    intros M ts m Hm.
+    induction Hm as [ | e m m' ts' Henabled Hfire Hm];
+      intros t p.
+    * reflexivity.
+    * subst.
+(*      rewrite fire_preserves_loops; auto.*)
+  Abort.
+
+
+  
+ unfold fire.
 
 End MarkedGraphs.
 
@@ -441,7 +532,7 @@ Notation "⟨ c , st , P ⟩⊢ t ↓ l ↦{ O } v" := (async c st P t l O v)
 
 
 Arguments marking {transition}.
-Arguments get_marking {transition} M m {t1 t2}.
+Arguments get_marking {transition} M {t1 t2}.
 
 
 
