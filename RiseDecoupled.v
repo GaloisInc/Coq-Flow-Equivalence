@@ -12,7 +12,6 @@ Existing Instance event_eq_dec.
 Existing Instance latch_eq_dec.
 
 Require Import Coq.Logic.FunctionalExtensionality.
-Import Coq.Logic.ProofIrrelevance.
 Require Import Coq.Program.Equality.
 
 
@@ -54,7 +53,7 @@ Section RiseDecoupled.
     | Odd_rise o => Fall (Odd o)
     | Even_odd_fall E o => Fall (Even E)
     | Odd_even_rise E o => Fall (Odd o)
-    | Even_odd_rise o E => Fall (Even E)
+⟨    | Even_odd_rise o E => Fall (Even E)
     | Odd_even_fall o E => Fall (Odd o)
     end.
   Definition output_RD (t : rd_place) : event even odd :=
@@ -118,17 +117,12 @@ Print marked_graph.
                                       end
     |}.
                                     
-  Definition P_RD : transparency_predicate even odd :=
+  Definition P_RD : tstate even odd :=
     fun l => match l with
              | Even _ => Transparent
              | Odd _  => Opaque
              end.
 
-
-About marking.
-Arguments marking {transition}.
-About get_marking.
-Arguments get_marking {transition} M m {t1 t2}.
 Open Scope nat_scope.
 
 About get_marking.
@@ -339,7 +333,7 @@ Lemma fall_enabled_even_opaque : forall t m O E
     (pf : In (E,O) (even_odd_neighbors c)),
     {rise_decoupled}⊢ t ↓ m ->
     0 < m _ _ (Even_odd_fall E O pf) ->
-    transparent P_RD t (Even E) = Opaque.
+    transparent t P_RD (Even E) = Opaque.
 Proof.
   induction t as [ | e t]; intros m O E Hneighbor Hm Henabled.
   * simpl in *.
@@ -375,7 +369,7 @@ Lemma fall_enabled_odd_opaque : forall t m O E
     (pf : In (O,E) (odd_even_neighbors c)),
     {rise_decoupled}⊢ t ↓ m ->
     0 < m _ _ (Odd_even_fall O E pf) ->
-    transparent P_RD t (Odd O) = Opaque.
+    transparent t P_RD (Odd O) = Opaque.
 Proof.
   intros t; induction t as [ | e t]; intros m O E Hneighbor Hm Henabled.
   * reflexivity.
@@ -494,15 +488,17 @@ Qed.
 
 Theorem rise_decoupled_flow_equivalence_rel : flow_equivalence rise_decoupled c init_st P_RD.
 Proof.
-  intros l t v Hrel.
-  dependent induction Hrel; intros [m Hm].
+  intros l t v [m Hm] Hrel.
+  revert m Hm.
+  dependent induction Hrel; intros m Hm.
   * destruct l as [O | E]; auto.
-  * inversion Hm as [ | e0 m0 ? t' Henabled Hfire Hm']; subst; rename m0 into m.
+    find_contradiction.
+  * inversion Hm as [ | e0 m0 ? t0' Henabled Hfire Hm']; subst; rename m0 into m.
     simpl in *.
     repeat compare_next.
     eapply IHHrel; eauto.
 
-  * inversion Hm as [ | e0 m0 ? t' Henabled Hfire Hm']; subst; rename m0 into m.
+  * inversion Hm as [ | e0 m0 ? t0' Henabled Hfire Hm']; subst; rename m0 into m.
     simpl in *.
     reduce_eqb.
     erewrite sync_eval_S; eauto.

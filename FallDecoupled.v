@@ -12,7 +12,7 @@ Existing Instance event_eq_dec.
 Existing Instance latch_eq_dec.
 
 Require Import Coq.Logic.FunctionalExtensionality.
-Import Coq.Logic.ProofIrrelevance.
+Require Import Coq.Program.Equality.
 
 
 Section FallDecoupled.
@@ -23,80 +23,65 @@ Section FallDecoupled.
   Variable init_st : state (latch even odd).
 
 
-  Inductive transitions_FD : Set :=
-  | Even_fall (A : even) : transitions_FD
-  | Even_rise (A : even) : transitions_FD
-  | Odd_fall  (B : odd) : transitions_FD
-  | Odd_rise  (B : odd) : transitions_FD
-  | Even_rise_odd_rise (E : even) (O : odd) : (*In (E,O) (even_odd_neighbors c) ->*) transitions_FD (* E+ → O+ *)
-  | Odd_fall_even_rise (E : even) (O : odd) : (*In (E,O) (even_odd_neighbors c) ->*) transitions_FD (* O- → E+ *)
-  | Odd_rise_even_rise (O : odd) (E : even) : (*In (O,E) (odd_even_neighbors c) ->*) transitions_FD (* O+ → E+ *)
-  | Even_fall_odd_rise (O : odd) (E : even) : (*In (O,E) (odd_even_neighbors c) ->*) transitions_FD (* E- → O+ *)
+  Inductive fd_place : event even odd -> event even odd -> Set :=
+  | Even_fall (E : even) : fd_place (Rise (Even E)) (Fall (Even E))
+  | Even_rise (E : even) : fd_place (Fall (Even E)) (Rise (Even E))
+  | Odd_fall  (O : odd) : fd_place (Rise (Odd O)) (Fall (Odd O))
+  | Odd_rise  (O : odd) : fd_place (Fall (Odd O)) (Rise (Odd O))
+    (* E+ → O+ *)
+  | Even_rise_odd_rise (E : even) (O : odd) : In (E,O) (even_odd_neighbors c) ->
+                                              fd_place (Rise (Even E)) (Rise (Odd O))
+    (* O- → E+ *)
+  | Odd_fall_even_rise (E : even) (O : odd) : In (E,O) (even_odd_neighbors c) ->
+                                              fd_place (Fall (Odd O)) (Rise (Even E))
+    (* O+ → E+ *)
+  | Odd_rise_even_rise (O : odd) (E : even) : In (O,E) (odd_even_neighbors c) ->
+                                              fd_place (Rise (Odd O)) (Rise (Even E))
+    (* E- → O+ *)
+  | Even_fall_odd_rise (O : odd) (E : even) : In (O,E) (odd_even_neighbors c) ->
+                                              fd_place (Fall (Even E)) (Rise (Odd O))
   .
-  Instance eqdecFD : eq_dec transitions_FD.
-  Proof.
-    split. intros t1 t2.
-    destruct Heven as [Heven'], Hodd as [Hodd'].
-    destruct t1; destruct t2; try (right; inversion 1; fail);
-      try (destruct (Dec A A0) as [HA | HA];
-        [subst; intuition | right; inversion 1; contradiction]);
-      try (destruct (Dec B B0) as [HB | HB];
-        [subst; intuition | right; inversion 1; contradiction]).
-  Admitted.
 
   Require Import Monad.
 
   Definition fall_decoupled 
-           : marked_graph (event even odd) transitions_FD :=
-  {| mg_triples := 
-     let eo_f := fun (EO : even * odd) => let (E,O) := EO in
-                     [ (Rise (Even E), Even_fall E, Fall (Even E))
-                     ; (Fall (Even E), Even_rise E, Rise (Even E))
-                     ; (Rise (Even E), Even_rise_odd_rise E O (*pf*), Rise (Odd O))
-                     ; (Fall (Odd O), Odd_fall_even_rise E O (*pf*), Rise (Even E))
-                     ; (Rise (Odd O), Odd_fall O, Fall (Odd O))
-                     ]
-     in
-     let oe_f := fun (OE : odd * even) => let (O,E) := OE in
-                     [ (Rise (Odd O), Odd_fall O, Fall (Odd O))
-                     ; (Fall (Odd O), Odd_rise O, Rise (Odd O))
-                     ; (Rise (Odd O), Odd_rise_even_rise O E (*pf*), Rise (Even E))
-                     ; (Fall (Even E), Even_fall_odd_rise O E (*pf*), Rise (Odd O))
-                     ; (Rise (Even E), Even_fall E, Fall (Even E))
-                     ]
-     in flat_map eo_f (even_odd_neighbors c)
-     ++ flat_map oe_f (odd_even_neighbors c)
-   ; mg_init := fun p => match p with
-                | Even_rise_odd_rise _ _ => 1
-                | Even_fall _ => 1
-                | Odd_rise _ => 1
-                | _ => 0
-                end
+           : marked_graph (event even odd) :=
+    {| place := fd_place
+     ; init_marking := fun t1 t2 p => match p with
+                                      | Even_rise_odd_rise _ _ _ => 1
+                                      | Even_fall _ => 1
+                                      | Odd_rise _ => 1
+                                      | _ => 0
+                                      end
    |}.
 
+  Definition P_FD : tstate even odd :=
+    fun l => match l with
+             | Even _ => Transparent
+             | Odd _  => Opaque
+             end.
 
-Inductive is_enabled_FD : event even odd -> marking transitions_FD -> Prop :=
-| Even_fall_enabled E m :
-  0 < m (Even_fall E) ->
+
+Inductive is_enabled_FD : event even odd -> marking fall_decoupled -> Prop :=
+| Even_fall_enabled E (m : marking fall_decoupled) :
+  0 < m _ _ (Even_fall E) ->
   is_enabled_FD (Fall (Even E)) m
-| Even_rise_enabled E m :
+| Even_rise_enabled E (m : marking fall_decoupled) :
   (forall O (pf : In (O,E) (odd_even_neighbors c)),
-          0 < m (Odd_rise_even_rise O E)) ->
+          0 < m _ _ (Odd_rise_even_rise O E pf)) ->
+  (0 < m _ _ (Even_rise E)) ->
   (forall O (pf : In (E,O) (even_odd_neighbors c)),
-          0 < m (Even_rise E)) ->
-  (forall O (pf : In (E,O) (even_odd_neighbors c)),
-          0 < m (Odd_fall_even_rise E O)) ->
+          0 < m _ _ (Odd_fall_even_rise E O pf)) ->
   is_enabled_FD (Rise (Even E)) m
-| Odd_fall_enabled O m :
-  0 < m (Odd_fall O) ->
+| Odd_fall_enabled O (m : marking fall_decoupled) :
+  0 < m _ _ (Odd_fall O) ->
   is_enabled_FD (Fall (Odd O)) m
-| Odd_rise_enabled O m :
+| Odd_rise_enabled O (m : marking fall_decoupled) :
   (forall E (pf : In (E,O) (even_odd_neighbors c)),
-          0 < m (Even_rise_odd_rise E O)) ->
+          0 < m _ _ (Even_rise_odd_rise E O pf)) ->
+  (0 < m _ _ (Odd_rise O)) ->
   (forall E (pf : In (O,E) (odd_even_neighbors c)),
-          0 < m (Odd_rise O)) ->
-  (forall E (pf : In (O,E) (odd_even_neighbors c)),
-          0 < m (Even_fall_odd_rise O E)) ->
+          0 < m _ _ (Even_fall_odd_rise O E pf)) ->
   is_enabled_FD (Rise (Odd O)) m
 .
 
@@ -107,71 +92,246 @@ Lemma FD_is_enabled_equiv : forall e m,
 Proof.
   destruct e as [[O | E] | [O | E]];
     intros m; inversion 1; subst;
-    apply forallb_forall; intros T pf_in;
-    apply PeanoNat.Nat.ltb_lt;
-
-    unfold preset in pf_in;
-    inversion_In; simpl in *.
-
-  * compare e (Rise (Odd O) : event even odd); inversion_In. 
-    repeat case_In; eauto.
-  * compare e (Rise (Even E) : event even odd); inversion_In. 
-    repeat case_In; eauto.
-  * compare e (Fall (Odd O) : event even odd); inversion_In. 
-    repeat case_In; eauto.
-  * compare e (Fall (Even E) : event even odd); inversion_In. 
-    repeat case_In; eauto.
+    intros e0 p;
+    simpl in p;
+    dependent destruction p;
+    auto.
 Qed.
-  
-Lemma is_enabled_RD_equiv : forall e m,
+
+
+Lemma is_enabled_FD_equiv : forall e m,
     is_enabled fall_decoupled e m ->
     is_enabled_FD e m.
 Proof.
   intros e m Henabled.
-  unfold is_enabled, enabled in Henabled.
-  destruct e as [[O | E] | [O | E]].
-  * constructor; intros E pfE.
-    + apply PeanoNat.Nat.ltb_lt.
-      destruct (forallb_forall (fun t => 0 <? m t) (preset _ fall_decoupled (Rise (Odd O))))
-        as [Hforall _].
-      specialize (Hforall Henabled).
-      apply Hforall.
-      unfold preset. unfold fall_decoupled. simpl.
-      apply in_flat_map.
-      exists (Rise (Even E), Even_rise_odd_rise E O, Rise (Odd O)).
-      split.
-      2:{ simpl. rewrite eqb_eq. simpl. auto. }
-      apply in_or_app.
-      left.
-      apply in_flat_map.
-      exists (E,O). split; auto.
-      simpl. auto.
-  (* good *)
+  unfold is_enabled in *.
+  destruct e as [[O | E] | [O | E]];
+    constructor; intros; apply Henabled; eexists; try (econstructor; eauto; fail).
+Qed.
+  
+
+
+Ltac specialize_enabled_constraints :=
+  repeat match goal with
+  | [ HEO : In (_,_) (even_odd_neighbors c)
+    , H : forall x, In _ (even_odd_neighbors c) -> _
+    |- _] => specialize (H _ HEO)
+  | [ HEO : In (_,_) (even_odd_neighbors c)
+    , H : forall x y, In _ (even_odd_neighbors c) -> _
+    |- _] => specialize (H _ _ HEO)
+  | [ HOE : In (_,_) (odd_even_neighbors c)
+    , H : forall x, In _ (odd_even_neighbors c) -> _
+    |- _] => specialize (H _ HOE)
+  | [ HOE : In (_,_) (odd_even_neighbors c)
+    , H : forall x y, In _ (odd_even_neighbors c) -> _
+    |- _] => specialize (H _ _ HOE)
+  | [ O : odd , HO : forall (o' : odd), _ = _ |- _ ] => specialize (HO O)
+  | [ E : even , HE : forall (e' : even), _ = _ |- _ ] => specialize (HE E)
+  | [ O : odd , HO : forall (o' : odd), _ < _ |- _ ] => specialize (HO O)
+  | [ E : even , HE : forall (e' : even), _ < _ |- _ ] => specialize (HE E)
+
+  end.
+
+Ltac get_enabled_constraints :=
+  try match goal with
+  | [ H : is_enabled fall_decoupled _ _ |- _ ] => apply is_enabled_FD_equiv in H; inversion H; subst
+  end; specialize_enabled_constraints.
+
+
+
+Lemma odd_loop : forall t m,
+    {fall_decoupled}⊢ t ↓ m ->
+    forall O, m _ _ (Odd_rise O) + m _ _ (Odd_fall O) = 1.
 Admitted.
 
 
+Require Import Omega. 
+
+Lemma num_events_odd_rise_fall : forall t m,
+    {fall_decoupled}⊢ t ↓ m ->
+    forall O,
+    (m _ _ (Odd_fall O) = 1 -> num_events (Rise (Odd O)) t = 1 + num_events (Fall (Odd O)) t) /\
+    (m _ _ (Odd_rise O) = 1 -> num_events (Rise (Odd O)) t = num_events (Fall (Odd O)) t).
+Proof.
+Print mg_reachable.
+  intros t m Hm; induction Hm as [ | e' m m' t' Hm Hm'];
+    intros O op v Hv.
+  * split; intros Hinit; simpl in *; auto; find_contradiction.
+  * simpl in *.
+    split; intros Hinit; simpl in *; auto.
+    + repeat compare_next; auto.
+      { get_enabled_constraints.
+        unfold fire in *.
+        reduce_eqb.
+
+        inversion Hv; subst; simpl in *; reduce_eqb; find_contradiction.
+        assert (Hasync : ⟨c,init_st,P_FD⟩⊢ t' ↓ Odd O ↦{Transparent} next_state c st (Odd O)).
+        { econstructor; auto.
+          { (* if (Fall l) is enabled in m~t, then l is transparent in t *)
+            admit. }
+          { intros l' Hneighbor. specialize (H3 l' Hneighbor).
+            inversion Hneighbor; subst.
+            simpl in H3.
+          
+        }
 
 
 
-  Lemma fall_decoupled_strong : forall l b t v,
-    async_rel c init_st l b t v ->
+        contradict Hinit. 
+        omega.
+        simpl in *.
+
+  
+
+Lemma num_events_rise_fall : forall t l op v,
+    ⟨ c , init_st , P_FD ⟩⊢ t ↓ l ↦{ op } v ->
+    forall m,
+    {fall_decoupled}⊢ t ↓ m ->
+    (op = Opaque -> num_events (Fall l) t =
+                      match l with
+                      | Odd o => num_events (Rise (Odd o)) t
+                      | Even e => 1 + num_events (Rise (Even e)) t
+                      end)
+    /\
+    (op = Transparent -> num_events (Rise l) t = 
+                           match l with
+                           | Odd o => 1 + num_events (Fall (Odd o)) t
+                           | Even e => num_events (Fall (Even e)) t
+                           end).
+Proof.
+  induction t as [ | e t]; intros l op v Hv m Hm.
+  * split; intros Hop; subst; 
+    destruct l as [O | E];
+    simpl; auto;
+    inversion Hv;
+    inversion Hm;
+    subst;
+    find_contradiction.
+
+  * simpl in *.
+    repeat compare_next; auto.
+    + (* e = l- *)
+      inversion Hm; subst.
+      split; intros Hop; subst.
+      { inversion Hv; subst; find_contradiction.
+        assert (Hasync : ⟨c,init_st,P_FD⟩⊢ t ↓ l ↦{Transparent} next_state c st l).
+        { econstructor; auto.
+          (* if (Fall l) is enabled in m~t, then l is transparent in t *)
+          admit.
+        }
+        specialize (IHt _ _ _ Hasync _ H4).
+        destruct IHt as [IHt1 IHt2].
+        specialize (IHt2 eq_refl).
+        destruct l as [O | E]; reduce_eqb; auto.
+      }
+
+      { inversion Hv; subst; find_contradiction.
+        destruct l; reduce_eqb.
+        
+
+        assert (Hasync : ⟨c,init_st,P_FD⟩⊢ t ↓ l ↦{Transparent} next_state c st l).
+        { econstructor; auto.
+          (* if (Fall l) is enabled in m~t, then l is transparent in t *)
+          admit.
+        }
+
+        rewrite IHt2.
+    }
+        
+    
+
+    split; intros Hop; subst;
+    simpl;
+    auto;
+    inversion Hm; subst.
+    inversion Hv; subst;
+    find_contradiction;
+    try match goal with
+    | [ IH : forall l op v, ⟨c, init_st, P_FD⟩⊢ ?t ↓ l ↦{ op } v ->
+             forall m, {fall_decoupled}⊢ ?t ↓ m ->
+             _ /\ _
+      , H : ⟨c,init_st, P_FD⟩⊢ ?t ↓ _ ↦{_} _
+      , H' : {fall_decoupled}⊢ ?t ↓ _
+      |- _ ] =>
+        specialize (IH _ _ _ H _ H');
+        destruct IH as [IH1 IH2]
+    end.
+
+  * simpl in *. repeat compare_next; auto.
+  * simpl in *. repeat compare_next.
+    get_enabled_constraints.
+    specialize (IHt _ _ _ Hasync _ H4).
+    destruct IHt as [IH1 IH2].
+    rewrite IH2; auto.
+  * simpl in *. repeat compare_next; auto.
+    { get_enabled_constraints. 
+    assert (Hasync : ⟨c,init_st,P_FD⟩⊢ t ↓ Odd O ↦{Transparent} next_state c st l).
+    { econstructor; auto.
+      (* if (Fall l) is enabled in m~t, then l is transparent in t *)
+      admit.
+    }
+      
+
+
+
+
+
+
+specialize (IHt (Odd O) _ _ H6 _ H4).
+      destruct IHt as [IH1 IH2].
+      auto.
+    }
+  * simpl in *. repeat compare_next.
+    { 
+      , 
+specialize (IHt (Odd O) _ _ H6 _ H4).
+      destruct IHt as [IH1 IH2].
+      auto.
+    }
+    
+
+  intros t l op v Hasync.
+  induction Hasync; intros m Hm; split; intros Hop; subst; find_contradiction.
+  * destruct l; auto. find_contradiction.
+  * destructl 
+
+    inversion Hv; subst; simpl in *;
+    repeat compare_next; eauto;
+    destruct l as [O | E]; repeat compare_next; try (erewrite IHt; eauto; fail).
+    { erewrite IHt
+    
+Admitted.
+
+
+Lemma num_events_odd_opaque : forall t  m O op v,
+    ⟨ c , init_st , P_FD ⟩⊢ t ↓ Odd O ↦{ Opaque } v ->
+    {fall_decoupled}⊢ t ↓ m ->
+    num_events (Rise (Odd O)) t = num_events (Fall (Odd O)) t.
+
+Lemma num_events_even_opaque : forall t m E v,
+    ⟨ c , init_st , P_FD ⟩⊢ t ↓ Even E ↦{ Opaque } v ->
+    {fall_decoupled}⊢ t ↓ m ->
+    num_events (Fall (Even E)) t = 1 + num_events (Rise (Even E)) t.
+Admitted. 
+
+
+
+  Lemma fall_decoupled_strong : forall l t o v,
+    ⟨ c , init_st , P_FD ⟩⊢ t ↓ l ↦{ o } v ->
       forall m, {fall_decoupled}⊢ t ↓ m ->
       forall n,
       n = match l with
-          | Odd o => num_events (Rise (Odd o)) t
-          | Even e => 1 + num_events (Rise (Even e)) t
+          | Odd o' => num_events (Rise (Odd o')) t
+          | Even e' => 1 + num_events (Rise (Even e')) t
           end ->
       v = sync_eval c init_st n l.
   Proof.
-    intros l b t v Hrel.
+    intros l t O v Hrel.
     induction Hrel; intros m Hm n Hn.
     * (* Because l is opaque in the initial marking, l must be odd. *)
       inversion Hm; subst.
       destruct l as [O | E].
-      2:{ contradict H. rewrite H2; [inversion 1 | ].
-          apply FD_is_enabled_equiv.
-          constructor; auto.
-      }
+      2:{ inversion H. }
       simpl. reflexivity.
     * (* l is transparent *)
       rewrite H2.
@@ -189,14 +349,14 @@ Admitted.
     erewrite H1; eauto.
     
     inversion Hl'; subst.
-    { assert (Hfact : transparent t (Odd O) = true ->
+    { assert (Hfact : transparent P_FD t (Odd O) = Transparent ->
                       num_events (Rise (Odd O)) t = 1+ num_events (Rise (Even E)) t)
         by admit.
       rewrite Hfact in Hn; auto.
       inversion Hn.
       reflexivity.
     }
-    { assert (Hfact : transparent t (Even E) = true ->
+    { assert (Hfact : transparent P_FD t (Even E) = Transparent ->
                       num_events (Rise (Even E)) t = num_events (Rise (Odd O)) t)
         by admit.
       inversion Hn.
@@ -232,19 +392,33 @@ Admitted.
      inversion Hl'; subst.
      { rewrite Hn.
        f_equal. simpl.
-       assert (Hfact : transparent t (Odd O) = true ->
+       assert (Hfact : transparent P_FD t (Odd O) = Transparent ->
                       num_events (Rise (Odd O)) t = 1+ num_events (Rise (Even E)) t)
         by admit.
        rewrite Hfact; auto.
        { (* since O- is enabled in t, O must be transparent in t *) admit. }
      }
     { inversion Hn; subst.
-      assert (Hfact : transparent t (Even E) = true ->
+      assert (Hfact : transparent P_FD t (Even E) = Transparent ->
                       num_events (Rise (Even E)) t = num_events (Rise (Odd O)) t)
         by admit.
       rewrite <- Hfact; auto.
       { (* since E- is enabled in t, E must be transparent in t *) admit. }
-Admitted.    
+Admitted.
+
+
+
+  Theorem fall_decoupled_flow_equivalence :
+    flow_equivalence fall_decoupled c init_st P_FD.
+  Proof.
+    intros l t v Heval [m Hm].
+    erewrite (fall_decoupled_strong l t Opaque v Heval m Hm); eauto.
+    
+    destruct l as [O | E].
+    + erewrite num_events_odd_opaque; eauto.
+    + erewrite num_events_even_opaque; eauto.
+  Qed.
+    
 
 
 
@@ -294,18 +468,18 @@ Lemma event_fall_invariant_fd : forall l b t v,
     async_rel c init_st l (transparent (next_trace e t) l) (next_trace e t) v.
 Proof.
     intros.
-    simpl. unfold update_transparency_predicate.
+    simpl. unfold fire_tstate.
     reduce_eqb.
     compare (Fall l) e.
     { (* e = Fall l *)
       econstructor; eauto.
-      simpl. unfold update_transparency_predicate.
+      simpl. unfold fire_tstate.
       reduce_eqb. auto.
     }
 
     compare (transparent t l) false.
     { rewrite e0. econstructor; eauto.
-      simpl. unfold update_transparency_predicate.
+      simpl. unfold fire_tstate.
       reduce_eqb; auto.
     }
 
@@ -326,13 +500,13 @@ Require Import Coq.Program.Equality.
   * inversion Heqt'.
   * inversion Hm; subst.
     simpl in Htransparent.
-    unfold update_transparency_predicate in Htransparent.
+    unfold fire_tstate in Htransparent.
     reduce_eqb.
     compare (Fall l) e'.
     eapply async_transparent; auto.
     intros l' Hneighbor.
     assert (transparent (next_trace e' t') l' = false).
-    { simpl. unfold update_transparency_predicate.
+    { simpl. unfold fire_tstate.
       (* since e' is enabled in m0 ~ t', if e' = Rise l', then l must have been
       opaque, which is a contradiction. *)
       (* if e' = Fall l', then we're good. *)
@@ -383,13 +557,13 @@ Fixpoint length_trace (t : trace even odd) : nat :=
   Proof.
     intros n l v Hrel.
     induction Hrel; intros t st st' e Hst Hstep He Htransparent.
-    * simpl in Htransparent. unfold update_transparency_predicate in *.
+    * simpl in Htransparent. unfold fire_tstate in *.
       reduce_eqb.
       compare (Fall (Odd O) : event even odd) e; [contradict Htransparent; auto | ].
       destruct Hstep.
       
 
-    * simpl in Htransparent. unfold update_transparency_predicate in *.
+    * simpl in Htransparent. unfold fire_tstate in *.
       reduce_eqb.
       
 
@@ -449,9 +623,9 @@ Fixpoint length_trace (t : trace even odd) : nat :=
       inversion Hst as [P0 Htransparencies | ]; subst.
      
 
-    destruct ((update_transparency_predicate (Fall l) P) l')
+    destruct ((fire_tstate (Fall l) P) l')
       eqn:Hl';
-      unfold update_transparency_predicate in Hl';
+      unfold fire_tstate in Hl';
       simpl in Hl'.
     + (* l is transparent *)
       compare l l'; [contradict Hl'; auto | ].
@@ -459,13 +633,13 @@ Fixpoint length_trace (t : trace even odd) : nat :=
       
      
 
-    destruct ((update_transparency_predicate (Fall l) (transparent t)) l')
+    destruct ((fire_tstate (Fall l) (transparent t)) l')
       eqn:Hl'.
     * (* l' is transparent *)
 
       rewrite Htransparent; auto.
 
-      unfold update_transparency_predicate in Hl'.
+      unfold fire_tstate in Hl'.
       simpl in Hl'.
       assert (Fall l' <> Fall l).
       { inversion 1; subst. rewrite eqb_eq in Hl'. inversion Hl'. }
@@ -476,7 +650,7 @@ Fixpoint length_trace (t : trace even odd) : nat :=
 
       admit (* need induction? *).
     * (* l' is opaque *)
-      unfold update_transparency_predicate in Hl'.
+      unfold fire_tstate in Hl'.
       simpl in Hl'.
 Existing Instance latch_eq_dec.
       destruct (Dec l' l).
@@ -484,7 +658,7 @@ Existing Instance latch_eq_dec.
          erewrite Hopaque; eauto.
       ** rewrite eqb_neq in Hl'; [ | inversion 1; contradiction].
          rewrite Hopaque; auto.
-         unfold update_transparency_predicate. simpl.
+         unfold fire_tstate. simpl.
          rewrite eqb_neq; auto.
          inversion 1; contradiction.
 *)
@@ -550,7 +724,7 @@ Opaque sync_eval.
       (* If e = l+, then l is transparent in (e::t) *)
       { subst. rewrite eqb_eq.
         rewrite Htransparent'.
-        2:{ unfold update_transparency_predicate. rewrite eqb_eq. auto. }
+        2:{ unfold fire_tstate. rewrite eqb_eq. auto. }
         simpl.
         rewrite sync_eval_odd.
         
@@ -592,7 +766,7 @@ Opaque sync_eval.
       (* If e = l+, then l is transparent in (e::t) *)
       { subst. rewrite eqb_eq.
         rewrite Htransparent'.
-        2:{ unfold update_transparency_predicate. rewrite eqb_eq. auto. }
+        2:{ unfold fire_tstate. rewrite eqb_eq. auto. }
         simpl.
         rewrite sync_eval_even.
         
@@ -623,18 +797,6 @@ Opaque sync_eval.
   Qed.
       
 
-Lemma num_events_odd_opaque : forall t st m O,
-    c ⊢ init_st ⇒t⇒ st ->
-    {fall_decoupled}⊢ t ↓ m ->
-    transparent t (Odd O) = false ->
-    num_events (Rise (Odd O)) t = num_events (Fall (Odd O)) t.
-Admitted.
-Lemma num_events_even_opaque : forall t st m E,
-    c ⊢ init_st ⇒t⇒ st ->
-    {fall_decoupled}⊢ t ↓ m ->
-    transparent t (Even E) = false ->
-    num_events (Fall (Even E)) t = 1 + num_events (Rise (Even E)) t.
-Admitted. 
 
         
   Theorem fall_decoupled_flow_equivalence :
