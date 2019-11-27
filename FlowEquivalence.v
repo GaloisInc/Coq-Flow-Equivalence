@@ -10,6 +10,7 @@ Import ListNotations.
 Open Scope list_scope.
 
 Require Import Coq.Logic.FunctionalExtensionality.
+Require Import Omega.
 
 
 
@@ -266,6 +267,23 @@ Qed.
         unfold odd_state. simpl. rewrite Hst; auto. constructor; auto.
   Qed.
 
+  Lemma sync_eval_gt : forall c init_st n l st,
+    0 < n ->
+    (forall l', neighbor c l' l ->
+                 st l' = match l with
+                        | Even _ => sync_eval c init_st (n-1) l'
+                        | Odd _  => sync_eval c init_st n l'
+                        end) ->
+    sync_eval c init_st n l = next_state c st l.
+  Proof.
+    intros.
+    destruct n; [find_contradiction | ].
+    replace (S n - 1) with n in * by omega.
+    apply sync_eval_S; auto.
+  Qed.
+
+
+
 End Circuits.
 
 Notation "⟨ c , st , P ⟩⊢ t ↓ l ↦{ O } v" := (async c st P t l O v) (no associativity, at level 90).
@@ -279,36 +297,22 @@ Section MarkedGraphs.
 
   Variable transition : Set.
   Context `{Htransition : eq_dec transition}.
-(*
-  Variable place : transition -> transition -> Set.
-
-  Definition marking := forall t1 t2, place t1 t2 -> nat.
-*)
 
   Record marked_graph :=
   { place : transition -> transition -> Set
   ; init_marking : forall t1 t2, place t1 t2 -> nat
   }.
 
-  Definition marking (M : marked_graph) := forall {t1 t2}, place M t1 t2 -> nat.
-  Definition get_marking {M} {t1 t2} (m : marking M)  (p : place M t1 t2) : nat := m _ _ p.
+  Definition marking (M : marked_graph) := forall t1 t2, place M t1 t2 -> nat.
+(*
+  Definition get_marking {M} {t1 t2} (m : marking M) (p : place M t1 t2) : nat := m _ _ p.
   Coercion get_marking : marking >-> Funclass.
+*)
 
   Definition is_enabled (M : marked_graph)
                         (t : transition)
                         (m : marking M) :=
     forall (t0 : transition) (p : place M t0 t), 0 < m _ _ p.
-
-(*
-  Class mg_input_dec (M : marked_graph) :=
-    { input_dec : forall t, {t' : transition & place M t t'} + ({t' : transition & place M t t'} -> Prop) }.
-
-  Class mg_output_dec (M : marked_graph) :=
-    { output_dec : forall t, {t' : transition & place M t' t} + ({t' : transition & place M t' t} -> Prop) }.
-
-  Arguments input_dec M {mg_input_dec}.
-  Arguments output_dec M {mg_output_dec}.
-*)
 
   (* A transition should only fire if the caller has independently checked that it
   is enabled. *) 
@@ -359,7 +363,6 @@ Section MarkedGraphs.
     | mg_step_path p p' => m _ _ p + path_cost m p'
     end.
 
-Locate "+".
   Definition fire_effect (t : transition) {M t1 t2} (p : place M t1 t2) (res : nat) : nat :=
     if t =? t2 then res-1
     else if t =? t1 then res+1
@@ -370,8 +373,6 @@ Locate "+".
     | mg_single_path p => fire_effect t p res
     | mg_step_path p p' => path_effect t p' (fire_effect t p res)
     end.
-
-Require Import Omega.
 
   Lemma fire_effect_plus : forall (t : transition) {M t1 t2} (p : place M t1 t2) (res1 res2 : nat),
     res2 > 0 ->
@@ -410,7 +411,7 @@ Require Import Omega.
          unfold fire_effect.
          reduce_eqb.
          transitivity (path_effect t2 p0 ((m t1 t2 p - 1) + path_cost m p0)).
-         2:{ f_equal. omega. } Search (_ + _ = _ + _).
+         2:{ f_equal. omega. }
 
          admit (*??*).
       ++ compare_next.
@@ -436,9 +437,6 @@ Require Import Omega.
 (*      rewrite fire_preserves_loops; auto.*)
   Abort.
 
-
-  
- unfold fire.
 
 End MarkedGraphs.
 
@@ -532,7 +530,7 @@ Notation "⟨ c , st , P ⟩⊢ t ↓ l ↦{ O } v" := (async c st P t l O v)
 
 
 Arguments marking {transition}.
-Arguments get_marking {transition} M {t1 t2}.
+(*Arguments get_marking {transition} M {t1 t2}.*)
 
 
 

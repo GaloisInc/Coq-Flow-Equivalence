@@ -105,7 +105,6 @@ Inductive triples_RD : event even odd -> rd_place -> event even odd -> Prop :=
 .
 *)
 
-Print marked_graph.
 
   Definition rise_decoupled : marked_graph (event even odd) :=
     {| place := rd_place
@@ -125,8 +124,7 @@ Print marked_graph.
 
 Open Scope nat_scope.
 
-About get_marking.
-Definition get_rd_marking m {t1 t2} (p : place rise_decoupled t1 t2) := get_marking rise_decoupled m p.
+(*Definition get_rd_marking m {t1 t2} (p : place rise_decoupled t1 t2) := get_marking rise_decoupled m p.*)
 
 Inductive is_enabled_RD : event even odd -> marking rise_decoupled -> Prop :=
 | Even_fall_enabled E (m : marking rise_decoupled) :
@@ -219,7 +217,7 @@ Ltac test_dec :=
    *)
 
 
-
+(*
 Ltac unfold_rd_marking :=
   repeat match goal with
   | [ H : context [ get_rd_marking ] |- _ ] => unfold get_rd_marking, get_marking in *
@@ -228,6 +226,7 @@ Ltac unfold_rd_marking :=
   | [ |- context[ get_marking ] ] => unfold get_marking
 
   end.
+*)
 
 
 Ltac specialize_enabled_constraints :=
@@ -285,7 +284,7 @@ Lemma rd_loop_oe : forall t m,
     {rise_decoupled}⊢ t ↓ m ->
     forall O E (pf : In (O,E) (odd_even_neighbors c)),
         m _ _ (Odd_fall O) + m _ _ (Odd_even_fall O E pf)
-                                      + m _ _ (Even_odd_rise O E pf) = 1.
+                           + m _ _ (Even_odd_rise O E pf) = 1.
 Proof.
   intros t m Hm.
   induction Hm; intros O E pfOE.

@@ -144,6 +144,8 @@ Ltac find_contradiction :=
   | [ H : _ = ?a, H' : ?a = _ |- _ ] => rewrite <- H in H'; discriminate
   | [ H : _ = ?a, H' : _ = ?a |- _ ] => rewrite H in H'; discriminate
   | [ H : ?x < ?x |- _ ] => apply Nat.lt_irrefl in H; contradiction
+  | [ H : ?x > ?x |- _ ] => apply Nat.lt_irrefl in H; contradiction
+
   end.
 
 
