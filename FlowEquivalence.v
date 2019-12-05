@@ -27,6 +27,7 @@ Section LatchSequence.
   | Odd : odd -> latch
   | Even : even -> latch
   .
+
   Arguments latch : clear implicits.
   Inductive event : Set :=
   | Rise : latch -> event
@@ -75,30 +76,37 @@ Section LatchSequence.
   end.
   Definition is_odd (l : latch) : bool := negb (is_even l).
 
+  Inductive tail_list (A : Type) :=
+  | t_empty : tail_list A
+  | t_next : tail_list A -> A -> tail_list A.
+  Arguments t_empty {A}.
+  Arguments t_next {A}.
 
-  (* A trace is a list of events. *)
-  Definition trace := list event.
+  Definition trace := tail_list event.
 
   (* Calculate the set of transparent latches after executing the trace t *)
   Fixpoint transparent (t : trace) (P : tstate) : tstate :=
     match t with
-    | [] => P
-    | e :: t' => fun l => if Rise l =? e then Transparent
-                          else if Fall l =? e then Opaque
-                          else transparent t' P l
+    | t_empty => P
+    | t_next t' e => fun l => if Rise l =? e then Transparent
+                              else if Fall l =? e then Opaque
+                              else transparent t' P l
     end.
-
 
   Fixpoint num_events (e : event) (t : trace) : nat :=
     match t with
-    | [] => 0
-    | e' :: t' => if e =? e'
-                  then 1 + num_events e t'
-                  else num_events e t'
+    | t_empty => 0
+    | t_next t' e' => if e =? e'
+                      then 1 + num_events e t'
+                      else num_events e t'
     end.
 
 
 End LatchSequence.
+
+Arguments t_empty {A}.
+Arguments t_next {A}.
+
 
 Existing Instance event_eq_dec.
 
@@ -149,7 +157,7 @@ Section Circuits.
                     : trace -> latch -> opacity -> value -> Prop :=
   | async_nil : forall l, 
     P0 l = Opaque ->
-    ⟨c,st0,P0⟩⊢ [] ↓ l ↦{Opaque} st0 l
+    ⟨c,st0,P0⟩⊢ t_empty ↓ l ↦{Opaque} st0 l
 
   | async_transparent : forall l t st v,
     transparent t P0 l = Transparent ->
@@ -158,16 +166,16 @@ Section Circuits.
     ⟨c,st0,P0⟩⊢ t ↓ l ↦{Transparent} v
 
   | async_opaque : forall l e t' v,
-    transparent (e :: t') P0 l = Opaque ->
+    transparent (t_next t' e) P0 l = Opaque ->
     e <> Fall l ->
     ⟨c,st0,P0⟩⊢ t' ↓ l ↦{Opaque} v ->
-    ⟨c,st0,P0⟩⊢ e :: t' ↓ l ↦{Opaque} v
+    ⟨c,st0,P0⟩⊢ t_next t' e ↓ l ↦{Opaque} v
 
   | async_opaque_fall : forall l e t' v st,
     e = Fall l ->
     (forall l', neighbor c l' l -> ⟨c,st0,P0⟩⊢ t' ↓ l' ↦{transparent t' P0 l'} st l') ->
     v = next_state c st l ->
-    ⟨c,st0,P0⟩⊢ e :: t' ↓ l ↦{Opaque} v
+    ⟨c,st0,P0⟩⊢ t_next t' e ↓ l ↦{Opaque} v
 
   where "⟨ c , st , P ⟩⊢ t ↓ l ↦{ O } v" := (async c st P t l O v).
 
@@ -338,13 +346,13 @@ Section MarkedGraphs.
 
   Reserved Notation "{ MG }⊢ t ↓ m" (no associativity, at level 90). 
   Inductive mg_reachable (M : marked_graph)
-                        : list transition -> marking M -> Prop :=
-  | mg_empty : {M}⊢ [] ↓ init_marking M
+                        : tail_list transition -> marking M -> Prop :=
+  | mg_empty : {M}⊢ t_empty ↓ init_marking M
   | mg_cons : forall e m m' t',
     is_enabled M e m ->
     fire e M m = m' ->
     {M}⊢ t' ↓ m ->
-    {M}⊢ e :: t' ↓ m'
+    {M}⊢ t_next t' e ↓ m'
   where
     "{ MG }⊢ t ↓ m'" := (mg_reachable MG t m').
 
@@ -533,6 +541,8 @@ Arguments marking {transition}.
 (*Arguments get_marking {transition} M {t1 t2}.*)
 
 
+  Arguments t_empty {A}.
+  Arguments t_next {A}.
 
 (*
 Arguments mg_input_dec {transition place}.

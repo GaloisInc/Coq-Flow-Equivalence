@@ -334,7 +334,7 @@ Lemma fall_enabled_even_opaque : forall t m O E
     0 < m _ _ (Even_odd_fall E O pf) ->
     transparent t P_RD (Even E) = Opaque.
 Proof.
-  induction t as [ | e t]; intros m O E Hneighbor Hm Henabled.
+  induction t as [ | t ? e]; intros m O E Hneighbor Hm Henabled.
   * simpl in *.
     inversion Hm; subst.
     simpl in Henabled.
@@ -370,7 +370,7 @@ Lemma fall_enabled_odd_opaque : forall t m O E
     0 < m _ _ (Odd_even_fall O E pf) ->
     transparent t P_RD (Odd O) = Opaque.
 Proof.
-  intros t; induction t as [ | e t]; intros m O E Hneighbor Hm Henabled.
+  intros t; induction t as [ | t ? e]; intros m O E Hneighbor Hm Henabled.
   * reflexivity.
   * simpl.
     inversion Hm; subst.
@@ -403,7 +403,7 @@ Lemma fall_enabled_even_odd_strong : forall s m O E,
   /\ (0 < m _ _ (Odd_even_rise E O pf) -> num_events (Fall (Even E)) s = num_events (Fall (Odd O)) s)
   /\ (0 < m _ _ (Even_fall E) -> num_events (Fall (Even E)) s = num_events (Fall (Odd O)) s).
 Proof.
-  intros t; induction t as [| e t];
+  intros t; induction t as [ | t ? e];
     intros m O E Hm  Hneighbor; repeat split; intros Henabled;
     inversion Hm; subst;
     unfold fire in Henabled;
@@ -448,7 +448,7 @@ Lemma fall_enabled_odd_even_strong : forall t m O E,
   /\ (0 < m _ _ (Even_odd_rise O E pf) -> num_events (Fall (Even E)) t = 1 + num_events (Fall (Odd O)) t)
   /\ (0 < m _ _ (Odd_fall O) -> num_events (Fall (Even E)) t = 1 + num_events (Fall (Odd O)) t).
 Proof.
-  induction t as [| e t];
+  induction t as [| t ? e];
     intros m O E Hm  Hneighbor; repeat split; intros Henabled;
     inversion Hm; subst;
     unfold fire in Henabled;
