@@ -1,4 +1,4 @@
-all: RiseDecoupled.vo FallDecoupled.vo
+all: RiseDecoupled.vo FallDecoupled.vo Desynchronization.vo
 
 Monad.vo: Monad.v
 	coqc Monad.v
@@ -14,3 +14,6 @@ RiseDecoupled.vo: RiseDecoupled.v FlowEquivalence.vo Monad.vo Base.vo
 
 FallDecoupled.vo: FallDecoupled.v FlowEquivalence.vo Monad.vo Base.vo
 	coqc FallDecoupled.v
+
+Desynchronization.vo: Desynchronization.v FlowEquivalence.vo Monad.vo Base.vo
+	coqc Desynchronization.v

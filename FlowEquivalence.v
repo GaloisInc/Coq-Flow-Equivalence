@@ -81,6 +81,8 @@ Section LatchSequence.
   | t_next : tail_list A -> A -> tail_list A.
   Arguments t_empty {A}.
   Arguments t_next {A}.
+  Infix ":>" := t_next (left associativity, at level 73).
+
 
   Definition trace := tail_list event.
 
@@ -117,9 +119,10 @@ Existing Instance event_eq_dec.
 
 Section Circuits.
 
+  (* Latches need not hold single bits; in practice, they will hold arbitrary values *)
   Inductive value := 
-  | B0 : value
-  | B1 : value
+  | Bit : bool -> value
+  | Int : Z -> value
   | X  : value.
 
   Definition state (tp : Set) := tp -> value.
@@ -543,6 +546,8 @@ Arguments marking {transition}.
 
   Arguments t_empty {A}.
   Arguments t_next {A}.
+  Infix ":>" := t_next (left associativity, at level 73).
+
 
 (*
 Arguments mg_input_dec {transition place}.

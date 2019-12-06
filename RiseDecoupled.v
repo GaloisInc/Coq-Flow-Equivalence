@@ -485,7 +485,7 @@ Qed.
 
 
 
-Theorem rise_decoupled_flow_equivalence_rel : flow_equivalence rise_decoupled c init_st P_RD.
+Theorem rise_decoupled_flow_equivalence : flow_equivalence rise_decoupled c init_st P_RD.
 Proof.
   intros l t v [m Hm] Hrel.
   revert m Hm.
