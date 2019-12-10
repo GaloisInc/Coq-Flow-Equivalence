@@ -555,5 +555,69 @@ Arguments mg_output_dec {transition place}.
 *)
 
 Module FE_Tactics.
-Ltac reduce_transparent := try unfold fire_tstate in *; simpl in *; reduce_eqb.
+
+Lemma neighbor_neq : forall {even odd} (c : circuit even odd) l l',
+    neighbor c l l' -> l <> l'.
+Proof.
+  intros even odd c l l' H.
+  destruct H; discriminate.
+Qed.
+
+
+  Ltac find_event_contradiction :=
+    try match goal with
+      | [ H : Fall _ = Rise _ |- _ ] => inversion H 
+      | [ H : Fall (Even _) = Fall (Odd _) |- _ ] => inversion H
+      | [ H : Fall (Odd _) = Fall (Even _) |- _ ] => inversion H
+      | [ H : Rise _ = Fall _ |- _ ] => inversion H
+      | [ H : Rise (Even _) = Rise (Odd _) |- _ ] => inversion H
+      | [ H : Rise (Odd _) = Rise (Even _) |- _ ] => inversion H
+      | [ H : neighbor _ ?l ?l'
+        , H' : Rise _ = Rise _ |- _ ] =>
+        absurd (l = l'); [ apply (neighbor_neq _ _ _ H) | inversion H'; auto ]
+      | [ H : neighbor _ ?l ?l'
+        , H' : Fall _ = Fall _ |- _ ] =>
+        absurd (l = l'); [ apply (neighbor_neq _ _ _ H) | inversion H'; auto ]
+      | [ H : neighbor _ (Odd _ ) (Odd _) |- _ ] => inversion H
+      | [ H : neighbor _ (Even _ ) (Even _) |- _ ] => inversion H
+    end.
+
+Ltac specialize_enabled_constraints :=
+  repeat match goal with
+  | [ HEO : In (_,_) (even_odd_neighbors _)
+    , H : forall x, In _ (even_odd_neighbors ?c) -> _
+    |- _] => specialize (H _ HEO)
+  | [ HEO : In (_,_) (even_odd_neighbors _)
+    , H : forall x y, In _ (even_odd_neighbors _) -> _
+    |- _] => specialize (H _ _ HEO)
+  | [ HOE : In (_,_) (odd_even_neighbors _)
+    , H : forall x, In _ (odd_even_neighbors _) -> _
+    |- _] => specialize (H _ HOE)
+  | [ HOE : In (_,_) (odd_even_neighbors _)
+    , H : forall x y, In _ (odd_even_neighbors _) -> _
+    |- _] => specialize (H _ _ HOE)
+
+  | [ Hneighbor : neighbor _ ?l ?l'
+    , H' : forall x, neighbor _ ?l x -> _
+    |- _ ] => specialize (H' l' Hneighbor)
+  | [ Hneighbor : neighbor _ ?l ?l'
+    , H' : forall x, neighbor _ x ?l' -> _
+    |- _ ] => specialize (H' l Hneighbor)
+  | [ Hneighbor : neighbor _ ?l ?l'
+    , H' : forall x y, neighbor _ _ _ -> _
+    |- _ ] => specialize (H' _ _ Hneighbor)
+
+  | [ O : ?odd , HO : forall (o' : ?odd), _ = _ |- _ ] => specialize (HO O)
+  | [ E : ?even , HE : forall (e' : ?even), _ = _ |- _ ] => specialize (HE E)
+  | [ O : ?odd , HO : forall (o' : ?odd), _ < _ |- _ ] => specialize (HO O)
+  | [ E : ?even , HE : forall (e' : ?even), _ < _ |- _ ] => specialize (HE E)
+  | [ O : ?odd , Hl : forall (l : latch _ _), _ = _ |- _ ] => specialize (Hl (Odd O))
+  | [ E : ?even , Hl : forall (l : latch _ _), _ = _ |- _ ] => specialize (Hl (Even E))
+  | [ l : latch _ _ , Hl : forall (l : latch _ _), _ = _ |- _ ] => specialize (Hl l)
+  | [ O : ?odd , Hl : forall (l : latch _ _), _ < _ |- _ ] => specialize (Hl (Odd O))
+  | [ E : ?even , Hl : forall (l : latch _ _), _ < _ |- _ ] => specialize (Hl (Even E))
+  | [ l : latch _ _ , Hl : forall (l : latch _ _), _ < _ |- _ ] => specialize (Hl l)
+
+  | [ H : ?P, H' : ?P -> _ |- _ ] => specialize (H' H)
+  end.
 End FE_Tactics.
