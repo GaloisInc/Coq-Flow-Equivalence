@@ -81,7 +81,7 @@ Section LatchSequence.
   | t_next : tail_list A -> A -> tail_list A.
   Arguments t_empty {A}.
   Arguments t_next {A}.
-  Infix ":>" := t_next (left associativity, at level 73).
+  Infix "▷" := t_next (left associativity, at level 73).
 
 
   Definition trace := tail_list event.
@@ -90,7 +90,7 @@ Section LatchSequence.
   Fixpoint transparent (t : trace) (P : tstate) : tstate :=
     match t with
     | t_empty => P
-    | t_next t' e => fun l => if Rise l =? e then Transparent
+    | t' ▷ e => fun l => if Rise l =? e then Transparent
                               else if Fall l =? e then Opaque
                               else transparent t' P l
     end.
@@ -98,9 +98,9 @@ Section LatchSequence.
   Fixpoint num_events (e : event) (t : trace) : nat :=
     match t with
     | t_empty => 0
-    | t_next t' e' => if e =? e'
-                      then 1 + num_events e t'
-                      else num_events e t'
+    | t' ▷ e' => if e =? e'
+                 then 1 + num_events e t'
+                 else num_events e t'
     end.
 
 
@@ -108,7 +108,7 @@ End LatchSequence.
 
 Arguments t_empty {A}.
 Arguments t_next {A}.
-
+Infix "▷" := t_next (left associativity, at level 73).
 
 Existing Instance event_eq_dec.
 
@@ -169,16 +169,16 @@ Section Circuits.
     ⟨c,st0,P0⟩⊢ t ↓ l ↦{Transparent} v
 
   | async_opaque : forall l e t' v,
-    transparent (t_next t' e) P0 l = Opaque ->
+    transparent (t' ▷ e) P0 l = Opaque ->
     e <> Fall l ->
     ⟨c,st0,P0⟩⊢ t' ↓ l ↦{Opaque} v ->
-    ⟨c,st0,P0⟩⊢ t_next t' e ↓ l ↦{Opaque} v
+    ⟨c,st0,P0⟩⊢ t' ▷ e ↓ l ↦{Opaque} v
 
   | async_opaque_fall : forall l e t' v st,
     e = Fall l ->
     (forall l', neighbor c l' l -> ⟨c,st0,P0⟩⊢ t' ↓ l' ↦{transparent t' P0 l'} st l') ->
     v = next_state c st l ->
-    ⟨c,st0,P0⟩⊢ t_next t' e ↓ l ↦{Opaque} v
+    ⟨c,st0,P0⟩⊢ t' ▷ e ↓ l ↦{Opaque} v
 
   where "⟨ c , st , P ⟩⊢ t ↓ l ↦{ O } v" := (async c st P t l O v).
 
@@ -355,7 +355,7 @@ Section MarkedGraphs.
     is_enabled M e m ->
     fire e M m = m' ->
     {M}⊢ t' ↓ m ->
-    {M}⊢ t_next t' e ↓ m'
+    {M}⊢ t' ▷ e ↓ m'
   where
     "{ MG }⊢ t ↓ m'" := (mg_reachable MG t m').
 
@@ -544,9 +544,9 @@ Arguments marking {transition}.
 (*Arguments get_marking {transition} M {t1 t2}.*)
 
 
-  Arguments t_empty {A}.
-  Arguments t_next {A}.
-  Infix ":>" := t_next (left associativity, at level 73).
+Arguments t_empty {A}.
+Arguments t_next {A}.
+Infix "▷" := t_next (left associativity, at level 73).
 
 
 (*

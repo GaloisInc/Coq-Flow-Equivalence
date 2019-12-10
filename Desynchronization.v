@@ -175,14 +175,14 @@ Qed.
   Variable init_st : state (latch d_even d_odd).
 
   Definition counter_trace : trace d_even d_odd :=
-    t_empty :> Rise (Odd B) :> Fall (Odd B) 
-            :> Fall (Even C) :> Rise (Even C)
-            :> Rise (Odd B) :> Fall (Even C)
-            :> Fall (Even A) :> Rise (Even A)
-            :> Fall (Odd B)
-            :> Fall (Even A) :> Rise (Even A) :> Fall (Even A)
-            :> Rise (Odd B) :> Fall (Odd B)
-            :> Rise (Even C) :> Fall (Even C).
+    t_empty ▷ Rise (Odd B) ▷ Fall (Odd B) 
+            ▷ Fall (Even C) ▷ Rise (Even C)
+            ▷ Rise (Odd B) ▷ Fall (Even C)
+            ▷ Fall (Even A) ▷ Rise (Even A)
+            ▷ Fall (Odd B)
+            ▷ Fall (Even A) ▷ Rise (Even A) ▷ Fall (Even A)
+            ▷ Rise (Odd B) ▷ Fall (Odd B)
+            ▷ Rise (Even C) ▷ Fall (Even C).
 
     
 Ltac inversion_neighbors :=

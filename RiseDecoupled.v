@@ -25,6 +25,8 @@ Section RiseDecoupled.
 
 
   Inductive rd_place : event even odd -> event even odd -> Set :=
+
+
   | Even_fall (E : even) : rd_place (Rise (Even E)) (Fall (Even E))
   | Even_rise (E : even) : rd_place (Fall (Even E)) (Rise (Even E))
   | Odd_fall  (O : odd) : rd_place (Rise (Odd O)) (Fall (Odd O))
@@ -42,68 +44,6 @@ Section RiseDecoupled.
   | Odd_even_fall (O : odd)  (E : even) : In (O,E) (odd_even_neighbors c) ->
                                           rd_place (Fall (Odd O)) (Fall (Even E))
   .
-
-
-(*
-  Definition input_RD (t : rd_place) : event even odd :=
-    match t with
-    | Even_fall E => Rise (Even E)
-    | Even_rise E => Fall (Even E)
-    | Odd_fall o => Rise  (Odd o)
-    | Odd_rise o => Fall (Odd o)
-    | Even_odd_fall E o => Fall (Even E)
-    | Odd_even_rise E o => Fall (Odd o)
-⟨    | Even_odd_rise o E => Fall (Even E)
-    | Odd_even_fall o E => Fall (Odd o)
-    end.
-  Definition output_RD (t : rd_place) : event even odd :=
-    match t with
-    | Even_fall E => Fall (Even E)
-    | Even_rise E => Rise (Even E)
-    | Odd_fall o =>  Fall (Odd o)
-    | Odd_rise o =>  Rise (Odd o)
-    | Even_odd_fall E o => Fall (Odd o)
-    | Odd_even_rise E o => Rise (Even E)
-    | Even_odd_rise o E => Rise (Odd o)
-    | Odd_even_fall o E => Fall (Even E)
-    end.
-*)
-
-(*
-
-  Instance eqdecRD : eq_dec rd_place.
-  Proof.
-    split. intros t1 t2.
-    destruct Heven as [Heven'], Hodd as [Hodd'].
-    destruct t1; destruct t2; try (right; inversion 1; fail);
-      try (destruct (Dec E E0) as [HA | HA];
-        [subst; intuition | right; inversion 1; contradiction]);
-      try (destruct (Dec O O0) as [HB | HB];
-        [subst; intuition | right; inversion 1; contradiction]).
-  Qed.
-
-*)
-
-
-(*
-Inductive triples_RD : event even odd -> rd_place -> event even odd -> Prop :=
-
-| RD_odd_rise O : triples_RD (Fall (Odd O)) (Odd_rise O) (Rise (Odd O))
-| RD_odd_fall O : triples_RD (Rise (Odd O)) (Odd_fall O) (Fall (Odd O))
-| RD_even_rise E : triples_RD (Fall (Even E)) (Even_rise E) (Rise (Even E))
-| RD_even_fall E : triples_RD (Rise (Even E)) (Even_fall E) (Fall (Even E))
-
-
-| RD_even_odd_fall E O : In (E,O) (even_odd_neighbors c) ->
-                         triples_RD (Fall (Even E)) (Even_odd_fall E O) (Fall (Odd O))
-| RD_odd_even_rise E O : In (E,O) (even_odd_neighbors c) ->
-                     triples_RD (Fall (Odd O)) (Odd_even_rise E O) (Rise (Even E))
-| RD_odd_even_fall O E : In (O,E) (odd_even_neighbors c) ->
-                         triples_RD (Fall (Odd O)) (Odd_even_fall O E) (Fall (Even E))
-| RD_even_odd_rise O E : In (O,E) (odd_even_neighbors c) ->
-                     triples_RD (Fall (Even E)) (Even_odd_rise O E) (Rise (Odd O))
-.
-*)
 
 
   Definition rise_decoupled : marked_graph (event even odd) :=
@@ -186,47 +126,6 @@ Ltac test_dec :=
       | [ H : Rise (Even _) = Rise (Odd _) |- _ ] => inversion H
       | [ H : Rise (Odd _) = Rise (Even _) |- _ ] => inversion H
     end.
-(*
-  Ltac compare_input M p t := 
-    let H := fresh "Heq" in
-    destruct (input_dec M p t) as [[? H] | H];
-    [ inversion H; subst | try (contradict H; eexists; econstructor; eauto; fail)];
-    find_event_contradiction.
-
-  Ltac compare_output M p t := 
-    let H := fresh "Heq" in
-    destruct (output_dec M p t) as [[? H] | H];
-    [ inversion H; subst | ];
-    find_event_contradiction.
-
-  Ltac compare_next :=
-    match goal with
-    | [ |- context[ output_dec ?M ?p ?t ] ] => compare_output M p t
-    | [ |- context[ input_dec ?M ?t ?p ] ] => compare_input M t p
-    | [ H : context[ output_dec ?M ?p ?t ] |- _ ] => compare_output M p t
-    | [ H : context[ input_dec ?M ?t ?p ] |- _ ] => compare_input M t p
-
-    end.
-  Ltac find_triple_contradiction :=
-    repeat match goal with
-      | [ H : ~ exists t', mg_triples rise_decoupled t' ?p ?e |- _ ] =>
-          contradict H; eexists; econstructor; eauto
-      | [ H : ~ exists t', mg_triples rise_decoupled ?e ?p t' |- _ ] =>
-          contradict H; eexists; econstructor; eauto
-    end.
-   *)
-
-
-(*
-Ltac unfold_rd_marking :=
-  repeat match goal with
-  | [ H : context [ get_rd_marking ] |- _ ] => unfold get_rd_marking, get_marking in *
-  | [ |- context[ get_rd_marking ] ] => unfold get_rd_marking, get_marking
-  | [ H : context [ get_marking ] |- _ ] => unfold get_marking in *
-  | [ |- context[ get_marking ] ] => unfold get_marking
-
-  end.
-*)
 
 
 Ltac specialize_enabled_constraints :=
