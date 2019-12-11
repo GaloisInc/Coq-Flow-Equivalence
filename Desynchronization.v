@@ -25,60 +25,37 @@ Section Desynchronization.
 
 
   Inductive desync_place : event even odd -> event even odd -> Set :=
-  | Even_fall (E : even) : desync_place (Rise (Even E)) (Fall (Even E))
-  | Even_rise (E : even) : desync_place (Fall (Even E)) (Rise (Even E))
-  | Odd_fall  (O : odd) : desync_place (Rise (Odd O)) (Fall (Odd O))
-  | Odd_rise  (O : odd) : desync_place (Fall (Odd O)) (Rise (Odd O))
-  | Even_rise_odd_fall E O : In (E,O) (even_odd_neighbors c) ->
-                             desync_place (Rise (Even E)) (Fall (Odd O))
-  | Odd_fall_even_rise E O : In (E,O) (even_odd_neighbors c) ->
-                             desync_place (Fall (Odd O)) (Rise (Even E))
-  | Odd_rise_even_fall O E : In (O,E) (odd_even_neighbors c) ->
-                             desync_place (Rise (Odd O)) (Fall (Even E))
-  | Even_fall_odd_rise O E : In (O,E) (odd_even_neighbors c) ->
-                             desync_place (Fall (Even E)) (Rise (Odd O)).
+  | latch_fall (l : latch even odd) : desync_place (Rise l) (Fall l)
+  | latch_rise (l : latch even odd) : desync_place (Fall l) (Rise l)
+  | neighbor_fall : forall l l', neighbor c l l' -> desync_place (Rise l) (Fall l')
+  | neighbor_rise : forall l l', neighbor c l l' -> desync_place (Fall l') (Rise l).
 
   Definition desynchronization : marked_graph (event even odd) :=
     {| place := desync_place
      ; init_marking := fun t1 t2 p => match p with
-                                      | Even_fall _ => 1
-                                      | Odd_rise  _ => 1
-                                      | Even_rise_odd_fall _ _ _ => 1
-                                      | Even_fall_odd_rise _ _ _ => 1
+                                      | latch_rise _ => 1
+                                      | neighbor_fall (Even _) (Odd _) _ => 1
+                                      | neighbor_rise (Odd _) (Even _) _ => 1
                                       | _ => 0
                                       end
     |}.
 
-  Definition P_FD : tstate even odd :=
+  Definition P_D : tstate even odd :=
     fun l => match l with
-             | Even _ => Transparent
+             | Even _ => Opaque
              | Odd _  => Opaque
              end.
 
 Inductive is_enabled_desync : event even odd -> marking desynchronization -> Prop :=
-| Even_fall_enabled E (m : marking desynchronization) :
-  0 < m _ _ (Even_fall E) ->
-  (forall O (pf : In (O,E) (odd_even_neighbors c)),
-          0 < m _ _ (Odd_rise_even_fall O E pf)) ->
-  is_enabled_desync (Fall (Even E)) m
-| Even_rise_enabled E (m : marking desynchronization) :
-  0 < m _ _ (Even_rise E) ->
-  (forall O (pf : In (E,O) (even_odd_neighbors c)),
-          0 < m _ _ (Odd_fall_even_rise E O pf)) ->
-  is_enabled_desync (Rise (Even E)) m
-| Odd_fall_enabled O (m : marking desynchronization) :
-  0 < m _ _ (Odd_fall O) ->
-  (forall E (pf : In (E,O) (even_odd_neighbors c)),
-          0 < m _ _ (Even_rise_odd_fall E O pf)) ->
-  is_enabled_desync (Fall (Odd O)) m
-| Odd_rise_enabled O (m : marking desynchronization) :
-  0 < m _ _ (Odd_rise O) ->
-  (forall E (pf : In (O,E) (odd_even_neighbors c)),
-          0 < m _ _ (Even_fall_odd_rise O E pf)) ->
-  is_enabled_desync (Rise (Odd O)) m
-
+| latch_fall_enbled l (m : marking desynchronization) :
+    0 < m _ _ (latch_fall l) ->
+    (forall l0 (pf : neighbor c l0 l), 0 < m _ _ (neighbor_fall l0 l pf)) ->
+    is_enabled_desync (Fall l) m
+| latch_rise_enabled l (m : marking desynchronization) :
+    0 < m _ _ (latch_rise l) ->
+    (forall l' (pf : neighbor c l l'), 0 < m _ _ (neighbor_rise l l' pf)) ->
+    is_enabled_desync (Rise l) m
 .
-
 
 
 Lemma desync_is_enabled_equiv : forall e m,
@@ -106,7 +83,7 @@ Qed.
 
 End Desynchronization.
 
-Arguments P_FD {even odd}.
+Arguments P_D {even odd}.
 Arguments desynchronization {even odd}.
 
 Section Counterexample.
@@ -129,6 +106,8 @@ Section Counterexample.
   Variable next_state_A : unit -> value.
   Variable next_state_B : value -> value.
   Variable next_state_C : value -> value.
+  Variable init_st : state (latch d_even d_odd).
+
 
   Program Definition c : circuit d_even d_odd :=
     {| even_odd_neighbors := [ (A,B) ]
@@ -143,6 +122,12 @@ Section Counterexample.
         | B => fun st => next_state_B (st (existT _ A _))
         end
      |}.
+
+  Lemma sync_2_3_neq :
+    sync_eval c init_st 1 (Even C) <> sync_eval c init_st 2 (Even C).
+  simpl.
+
+
 
   Lemma exists_not_forall : forall A (P : A -> Prop),
     (exists x, ~P x) ->
@@ -172,17 +157,30 @@ Proof.
 Qed.
 
 
-  Variable init_st : state (latch d_even d_odd).
+
 
   Definition counter_trace : trace d_even d_odd :=
-    t_empty ▷ Rise (Odd B) ▷ Fall (Odd B) 
-            ▷ Fall (Even C) ▷ Rise (Even C)
-            ▷ Rise (Odd B) ▷ Fall (Even C)
-            ▷ Fall (Even A) ▷ Rise (Even A)
+    t_empty ▷ Rise (Odd B)
+            ▷ Rise (Even C)
             ▷ Fall (Odd B)
-            ▷ Fall (Even A) ▷ Rise (Even A) ▷ Fall (Even A)
-            ▷ Rise (Odd B) ▷ Fall (Odd B)
-            ▷ Rise (Even C) ▷ Fall (Even C).
+            ▷ Fall (Even C)
+            ▷ Rise (Even C)
+            ▷ Rise (Odd B)
+            ▷ Fall (Even C)
+(* should be an error here *)
+(*
+            ▷ Rise (Even A)
+            ▷ Fall (Odd B)
+            ▷ Fall (Even A)
+            ▷ Rise (Even A)
+            ▷ Rise (Odd B)
+            ▷ Fall (Even A)
+            ▷ Fall (Odd B)
+            ▷ Rise (Even C)
+            ▷ Rise (Even A)
+            ▷ Fall (Even C)
+            ▷ Fall (Even A)
+*).
 
     
 Ltac inversion_neighbors :=
@@ -193,6 +191,10 @@ Ltac inversion_neighbors :=
     destruct (c_odd_even_neighbors _ _ H); try discriminate; subst; clear
   | [ H : In (_, _) (even_odd_neighbors c) |- _ ] =>
     destruct (c_even_odd_neighbors _ _ H); try discriminate; subst; clear
+  end;
+  match goal with
+  | [ H : neighbor c _ _ |- _ ] =>
+    inversion H
   end.
 
     
@@ -204,11 +206,10 @@ Ltac inversion_neighbors :=
     unfold counter_trace.
   
     repeat (try (econstructor; [ | reflexivity | ])); try (econstructor; fail);
-
     apply desync_is_enabled_equiv; constructor; auto; intros;
-    inversion_neighbors;
-       try (repeat (unfold fire at 1; simpl; auto); fail).
-  Qed.    
+    inversion_neighbors.
+(*       try (repeat (unfold fire at 1; simpl; auto); fail).*)
+  Admitted.
 
  Lemma counter_eval :
     ⟨c,init_st,P_FD⟩⊢ counter_trace ↓ Even C ↦{Opaque}

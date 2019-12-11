@@ -225,19 +225,21 @@ Qed.
 
  
   (** Synchronous execution *)
-  Fixpoint sync_odd (c : circuit) (st : state latch) (n : nat)
-                    {struct n} : state odd := fun O =>
-    match n with
-    | 0 => st (Odd O)
-    | S n' => next_state_o c O (fun E => next_state_e c (projT1 E) (fun O => sync_odd c st n' (projT1 O)))
-    end.
 
   Fixpoint sync_even (c : circuit) (st : state latch) (n : nat) 
                             {struct n} : state even := fun E =>
     match n with
-    | 0 => X (*st (Even E)*)
-    | S n' => next_state_e c E (fun O => sync_odd c st n' (projT1 O))
+    | 0 => st (Even E)
+    | S n' => next_state_e c E (fun O => next_state_o c (projT1 O) (fun E => sync_even c st n' (projT1 E)))
     end.
+
+  Fixpoint sync_odd (c : circuit) (st : state latch) (n : nat)
+                    {struct n} : state odd := fun O =>
+    match n with
+    | 0 => X
+    | S n' => next_state_o c O (fun E => sync_even c st n' (projT1 E))
+    end.
+
 
   Definition sync_eval (c : circuit) (st : state latch) (n : nat) 
                    : state latch := fun l =>
@@ -246,28 +248,25 @@ Qed.
     | Odd o  => sync_odd c st n o
     end.
 
-  Lemma sync_eval_odd_0 : forall c st O,
-        sync_eval c st 0 (Odd O) = st (Odd O).
+  Lemma sync_eval_odd_0 : forall c st E,
+        sync_eval c st 0 (Even E) = st (Even E).
   Proof.
     intros. reflexivity.
   Qed.
 
 
-  (* NOTE: if your execution model starts with the clock going low (e.g. even
-     first), then you would need to reverse the order of synchronous execution. *)
-
   Lemma sync_eval_even : forall (c : circuit) (st : state latch) n E,
-        sync_eval c st (S n) (Even E) = next_state_e c E (odd_state (sync_eval c st n)).
+        sync_eval c st (S n) (Even E) = next_state_e c E (odd_state (sync_eval c st (S n))).
   Proof. auto. Qed.
   Lemma sync_eval_odd : forall c st n O,
-        sync_eval c st (S n) (Odd O) = next_state_o c O (even_state (sync_eval c st (S n))).
+        sync_eval c st (S n) (Odd O) = next_state_o c O (even_state (sync_eval c st n)).
   Proof. auto. Qed.
 
   Lemma sync_eval_S : forall c init_st n l st,
     (forall l', neighbor c l' l ->
                  st l' = match l with
-                        | Even _ => sync_eval c init_st n l'
-                        | Odd _  => sync_eval c init_st (S n) l'
+                        | Even _ => sync_eval c init_st (S n) l'
+                        | Odd _  => sync_eval c init_st n l'
                         end) ->
     sync_eval c init_st (S n) l = next_state c st l.
   Proof.
@@ -282,8 +281,8 @@ Qed.
     0 < n ->
     (forall l', neighbor c l' l ->
                  st l' = match l with
-                        | Even _ => sync_eval c init_st (n-1) l'
-                        | Odd _  => sync_eval c init_st n l'
+                        | Even _ => sync_eval c init_st n l'
+                        | Odd _  => sync_eval c init_st (n-1) l'
                         end) ->
     sync_eval c init_st n l = next_state c st l.
   Proof.
