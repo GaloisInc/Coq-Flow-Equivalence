@@ -225,25 +225,24 @@ Qed.
 
  
   (** Synchronous execution *)
-  Fixpoint sync_odd (c : circuit) (st : state latch) (n : nat)
-                    {struct n} : state odd := fun O =>
-    match n with
-    | 0 => st (Odd O)
-    | S n' => next_state_o c O (fun E => next_state_e c (projT1 E) (fun O => sync_odd c st n' (projT1 O)))
-    end.
-
-  Fixpoint sync_even (c : circuit) (st : state latch) (n : nat) 
-                            {struct n} : state even := fun E =>
-    match n with
-    | 0 => X (*st (Even E)*)
-    | S n' => next_state_e c E (fun O => sync_odd c st n' (projT1 O))
-    end.
-
-  Definition sync_eval (c : circuit) (st : state latch) (n : nat) 
-                   : state latch := fun l =>
+  Definition sync_update_odd (c : circuit) (st : state latch) : state latch :=
+    fun l =>
     match l with
-    | Even E => sync_even c st n E
-    | Odd o  => sync_odd c st n o
+    | Odd o => next_state_o c o (even_state st)
+    | Even e => st (Even e)
+    end.
+
+  Definition sync_update_even (c : circuit) (st : state latch) : state latch :=
+    fun l =>
+    match l with
+    | Odd o => st (Odd o)
+    | Even e => next_state_e c e (odd_state st)
+    end.
+
+  Fixpoint sync_eval (c : circuit) (st : state latch) (n : nat) : state latch :=
+    match n with
+    | 0 => st
+    | S n' => sync_update_odd c (sync_update_even c (sync_eval c st n'))
     end.
 
   Lemma sync_eval_odd_0 : forall c st O,
