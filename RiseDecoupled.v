@@ -248,7 +248,6 @@ Proof.
   revert m Hm.
   dependent induction Hrel; intros m Hm.
   * destruct l as [O | E]; auto.
-    find_contradiction.
   * inversion Hm as [ | e0 m0 ? t0' Henabled Hfire Hm']; subst; rename m0 into m.
     simpl in *.
     repeat compare_next.
