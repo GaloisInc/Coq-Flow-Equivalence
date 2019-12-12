@@ -42,17 +42,17 @@ Section RiseDecoupled.
   Definition rise_decoupled : marked_graph (event even odd) :=
     {| place := rd_place
      ; init_marking := fun t1 t2 p => match p with
-                                      | latch_fall (Even _) => 1
-                                      | latch_rise (Odd _) => 1
-                                      | neighbor_fall_fall (Odd _) (Even _) _ => 1
+                                      | latch_fall (Odd _) => 1
+                                      | latch_rise (Even _) => 1
+                                      | neighbor_fall_fall (Even _) (Odd _) _ => 1
                                       | _ => 0
                                       end
     |}.
                                     
   Definition P_RD : tstate even odd :=
     fun l => match l with
-             | Even _ => Transparent
-             | Odd _  => Opaque
+             | Even _ => Opaque
+             | Odd _  => Transparent
              end.
 
 Open Scope nat_scope.
@@ -173,12 +173,12 @@ Lemma fall_enabled_even_odd_strong : forall t m,
     {rise_decoupled}⊢ t ↓ m ->
     forall E O (pf : neighbor c (Even E) (Odd O)),
     (0 < m _ _ (neighbor_fall_fall _ _ pf) ->
-        num_events (Fall (Even E)) t = 1 + num_events (Fall (Odd O)) t) /\
+        num_events (Fall (Odd O)) t = num_events (Fall (Even E)) t) /\
 
     (0 < m _ _ (neighbor_fall_rise _ _ pf) ->
-        num_events (Fall (Even E)) t = num_events (Fall (Odd O)) t) /\
+        num_events (Fall (Odd O)) t = 1+num_events (Fall (Even E)) t) /\
     (0 < m _ _ (latch_fall (Even E)) ->
-        num_events (Fall (Even E)) t = num_events (Fall (Odd O)) t).
+        num_events (Fall (Odd O)) t = 1+num_events (Fall (Even E)) t).
 Proof.
   intros t m Hm; induction Hm; intros E O pf;
     repeat split; intros Henabled;
@@ -200,13 +200,13 @@ Lemma fall_enabled_odd_even_strong : forall t m,
     {rise_decoupled}⊢ t ↓ m ->
     forall O E (pf : neighbor c (Odd O) (Even E)),
     (0 < m _ _ (neighbor_fall_fall _ _ pf) ->
-        num_events (Fall (Even E)) t = num_events (Fall (Odd O)) t) /\
+        num_events (Fall (Odd O)) t = 1+num_events (Fall (Even E)) t) /\
 
     (0 < m _ _ (neighbor_fall_rise _ _ pf) ->
-        num_events (Fall (Even E)) t = 1 + num_events (Fall (Odd O)) t) /\
+        num_events (Fall (Odd O)) t = num_events (Fall (Even E)) t) /\
 
     (0 < m _ _ (latch_fall (Odd O)) ->
-        num_events (Fall (Even E)) t = 1 + num_events (Fall (Odd O)) t).
+        num_events (Fall (Odd O)) t = num_events (Fall (Even E)) t).
 Proof.
   intros t m Hm; induction Hm; intros E O pf;
     repeat split; intros Henabled;
@@ -229,16 +229,16 @@ Lemma fall_enabled_num_events : forall t m,
     forall l, is_enabled rise_decoupled (Fall l) m ->
     forall l', neighbor c l' l ->
     num_events (Fall l') t = match l with
-                             | Odd _ => 1+num_events (Fall l) t
-                             | Even _ => num_events (Fall l) t
+                             | Odd _ => num_events (Fall l) t
+                             | Even _ => 1+num_events (Fall l) t
                              end.
 Proof.
   intros t m Hm l Henabled l' Hneighbor.
   get_enabled_constraints.
   inversion Hneighbor; subst.
   + edestruct fall_enabled_even_odd_strong as [EO1 [EO2 EO3]]; eauto.
-  + edestruct fall_enabled_odd_even_strong as [EO1 [EO2 EO3]]; eauto.
     rewrite EO1; eauto.
+  + edestruct fall_enabled_odd_even_strong as [EO1 [EO2 EO3]]; eauto.
 Qed.
   
 
