@@ -46,17 +46,17 @@ Section FallDecoupled.
            : marked_graph (event even odd) :=
     {| place := fd_place
      ; init_marking := fun t1 t2 p => match p with
-                                      | neighbor_rise_rise (Even _) (Odd _) _ => 1
-                                      | latch_fall (Even _) => 1
-                                      | latch_rise (Odd _) => 1
+                                      | neighbor_rise_rise (Odd _) (Even _) _ => 1
+                                      | latch_rise (Even _) => 1
+                                      | latch_fall (Odd _) => 1
                                       | _ => 0
                                       end
    |}.
 
   Definition P_FD : tstate even odd :=
     fun l => match l with
-             | Even _ => Transparent
-             | Odd _  => Opaque
+             | Even _ => Opaque
+             | Odd _  => Transparent
              end.
 
 
@@ -127,7 +127,7 @@ Section loop_lemmas.
 
   Lemma fd_loop_neighbor : forall l l' (pf : neighbor c l l'),
       m _ _ (latch_fall l') + m _ _ (neighbor_rise_rise _ _ pf)
-                           + m _ _ (neighbor_fall_rise _ _ pf) = 1.
+                            + m _ _ (neighbor_fall_rise _ _ pf) = 1.
   Proof.
     induction fd_t_m; intros [O | E] [O' | E'] pf;
       try reflexivity;
@@ -185,10 +185,10 @@ Section fd_lemmas.
 
   Lemma odd_num_events : forall O,
     ( m _ _ (latch_rise (Odd O)) > 0 ->
-      num_events (Rise (Odd O)) t = num_events (Fall (Odd O)) t)
+      num_events (Fall (Odd O)) t = 1+num_events (Rise (Odd O)) t)
     /\
     ( m _ _ (latch_fall (Odd O)) > 0 ->
-      num_events (Rise (Odd O)) t = 1 + num_events (Fall (Odd O)) t).
+      num_events (Fall (Odd O)) t = num_events (Rise (Odd O)) t).
   Proof.
     induction fd_t_m; intros O; split; intros Hrise; auto.
     { contradict Hrise. simpl. inversion 1. }
@@ -197,8 +197,8 @@ Section fd_lemmas.
       specialize (IHm0 m0 O).
       destruct IHm0 as [IH1 IH2].
       repeat compare_next; try unfold fire in Hrise; reduce_eqb.
+      { rewrite IH2; auto. }
       { contradict Hrise. omega. }
-      { apply IH2; auto. }
       { apply IH1; auto. }
     }
     { simpl in *.
@@ -206,18 +206,18 @@ Section fd_lemmas.
       specialize (IHm0 m0 O).
       destruct IHm0 as [IH1 IH2].
       repeat compare_next; try unfold fire in Hrise; reduce_eqb.
-      { rewrite IH1; auto. }
       { contradict Hrise. omega. }
+      { rewrite IH1; auto. }
       { apply IH2; auto. }
     }
   Qed.
 
   Lemma even_num_events : forall E,
     ( m _ _ (latch_rise (Even E)) > 0 ->
-      num_events (Fall (Even E)) t = 1 + num_events (Rise (Even E)) t)
+      num_events (Rise (Even E)) t = num_events (Fall (Even E)) t)
     /\
     ( m _ _ (latch_fall (Even E)) > 0 ->
-      num_events (Fall (Even E)) t = num_events (Rise (Even E)) t).
+      num_events (Rise (Even E)) t = 1+num_events (Fall (Even E)) t).
   Proof.
     induction fd_t_m; intros E; split; intros Hrise; auto.
     { contradict Hrise. simpl. inversion 1. }
@@ -226,8 +226,8 @@ Section fd_lemmas.
       specialize (IHm0 m0 E).
       destruct IHm0 as [IH1 IH2].
       repeat compare_next; try unfold fire in Hrise; reduce_eqb.
-      { rewrite IH2; auto. }
       { contradict Hrise. omega. }
+      { rewrite IH2; auto. }
       { rewrite IH1; auto. }
     }
     { simpl in *.
@@ -235,8 +235,8 @@ Section fd_lemmas.
       specialize (IHm0 m0 E).
       destruct IHm0 as [IH1 IH2].
       repeat compare_next; try unfold fire in Hrise; reduce_eqb.
-      { contradict Hrise. omega. }
       { rewrite IH1; auto. }
+      { contradict Hrise. omega. }
       { apply IH2; auto. }
     }
   Qed.
@@ -244,8 +244,8 @@ Section fd_lemmas.
   Lemma opaque_num_events : forall l,
     transparent t P_FD l = Opaque ->
     num_events (Fall l) t = match l with
-                            | Odd _ => num_events (Rise l) t
-                            | Even _ => 1+num_events (Rise l) t
+                            | Odd _ => 1+num_events (Rise l) t
+                            | Even _ => num_events (Rise l) t
                             end.
   Proof.
     intros [O | E] Hopaque.
@@ -264,8 +264,8 @@ Section fd_lemmas.
   Lemma transparent_num_events : forall l,
     transparent t P_FD l = Transparent ->
     num_events (Rise l) t = match l with
-                            | Odd _ => 1 + num_events (Fall l) t
-                            | Even _ => num_events (Fall l) t
+                            | Odd _ => num_events (Fall l) t
+                            | Even _ => 1+num_events (Fall l) t
                             end.
   Proof.
     intros [O | E] Htransparent.
@@ -289,11 +289,11 @@ Section fd_lemmas.
     
     Lemma even_odd_num_events : 
        (m _ _ (latch_fall (Odd O)) > 0 ->
-        num_events (Rise (Odd O)) t = 1 + num_events (Rise (Even E)) t)
+        num_events (Rise (Even E)) t = num_events (Rise (Odd O)) t)
     /\ (m _ _ (neighbor_fall_rise _ _ Hin) > 0 ->
-        num_events (Rise (Odd O)) t = 1 + num_events (Rise (Even E)) t)
+        num_events (Rise (Even E)) t = num_events (Rise (Odd O)) t)
     /\ (m _ _ (neighbor_rise_rise _ _ Hin) > 0 ->
-        num_events (Rise (Odd O)) t = num_events (Rise (Even E)) t).
+        num_events (Rise (Even E)) t = 1+num_events (Rise (Odd O)) t).
     Proof.
       induction fd_t_m;
         try set (Hloop := fd_loop_neighbor t' m m0 _ _ Hin);
@@ -313,11 +313,11 @@ Section fd_lemmas.
     
     Lemma odd_even_num_events : 
        (m _ _ (latch_fall (Even E)) > 0 ->
-        num_events (Rise (Odd O)) t = num_events (Rise (Even E)) t)
+        num_events (Rise (Even E)) t = 1+num_events (Rise (Odd O)) t)
     /\ (m _ _ (neighbor_fall_rise _ _ Hin) > 0 ->
-        num_events (Rise (Odd O)) t = num_events (Rise (Even E)) t)
+        num_events (Rise (Even E)) t = 1+ num_events (Rise (Odd O)) t)
     /\ (m _ _ (neighbor_rise_rise _ _ Hin) > 0 ->
-        num_events (Rise (Odd O)) t = 1 + num_events (Rise (Even E)) t).
+        num_events (Rise (Even E)) t = num_events (Rise (Odd O)) t).
     Proof.
       induction fd_t_m;
         try set (Hloop := fd_loop_neighbor t' m m0 _ _ Hin);
@@ -335,8 +335,8 @@ Section fd_lemmas.
     transparent t P_FD l = Transparent ->
     forall l' (pf : neighbor c l' l),
       num_events (Rise l) t = match l with
-                              | Odd _ => 1+num_events (Rise l') t
-                              | Even _ => num_events (Rise l') t
+                              | Even _ => 1+num_events (Rise l') t
+                              | Odd _ => num_events (Rise l') t
                               end.
   Proof.
     intros [O | E] Htransparent l' pf; inversion pf; subst.
@@ -361,22 +361,21 @@ End fd_lemmas.
       forall m, {fall_decoupled}⊢ t ↓ m ->
       forall n,
       n = match l with
-          | Odd o' => num_events (Rise (Odd o')) t
-          | Even e' => 1 + num_events (Rise (Even e')) t
+          | Odd _  => 1+num_events (Rise l) t
+          | Even _ => num_events (Rise l) t
           end ->
       v = sync_eval c init_st n l.
   Proof.
     intros l t O v Hrel.
     induction Hrel; intros m Hm n Hn.
-    * (* Because l is opaque in the initial marking, l must be odd. *)
+    * (* Because l is opaque in the initial marking, l must be even. *)
       inversion Hm; subst.
-      destruct l as [O | E].
-      2:{ inversion H. }
-      simpl. reflexivity.
+      destruct l as [O | E]; auto.
+      { inversion H. }
     * (* l is transparent *)
       rewrite H2.
 
-      erewrite sync_eval_gt; eauto.
+      assert (n > 0).
       { (* n > 0 *)
         subst.
         destruct l as [O | E]; try omega.
@@ -384,22 +383,28 @@ End fd_lemmas.
         omega.
       }
 
+      erewrite sync_eval_gt; eauto.
+
+
     intros l' Hl'. 
     erewrite H1; eauto.
-    inversion Hl'; subst; f_equal.
-    { erewrite (transparent_neighbor_num_events _ _ _ (Odd O)); eauto. }
-    { erewrite (transparent_neighbor_num_events _ _ _ (Even E)); eauto. 
-      omega. }
+
+    transitivity (sync_eval c init_st (num_events (Rise l) t) l').
+    2:{ inversion Hl'; f_equal; subst; omega. }
+
+    f_equal.
+    erewrite transparent_neighbor_num_events with (l := l); eauto.
+    inversion Hl'; auto.
 
   * inversion Hm; subst.
-    simpl in H. compare (Rise l) e.
+    simpl in *.
+    compare_next.
     erewrite IHHrel; eauto.
-    { destruct l; simpl; reduce_eqb; reflexivity. }
 
   * inversion Hm.
     assert (n > 0).
-    { subst. destruct l; try omega.
-      set (Hopaque := opaque_num_events _ _ Hm (Odd o)).
+    { subst. destruct l as [O | E]; try omega.
+      set (Hopaque := opaque_num_events _ _ Hm (Even E)).
       simpl in Hopaque. reduce_eqb.
       specialize (Hopaque eq_refl).
       simpl.
@@ -412,30 +417,19 @@ End fd_lemmas.
     inversion Hm; subst.
 
     erewrite H1; eauto.
-    
-    (* since Fall l is enabled *)
-     inversion Hl'; subst; f_equal.
-     { get_enabled_constraints.
-       assert (transparent t' P_FD (Odd O) = Transparent).
-       { erewrite marking_fall in H3; eauto.
-         destruct (transparent t' P_FD (Odd O)); auto;
-         find_contradiction.
-       }
-       simpl.
-       erewrite (transparent_neighbor_num_events _ _ _ (Odd O)); eauto.
-    }
+
+    assert (transparent t' P_FD l = Transparent).
     { get_enabled_constraints.
-       assert (transparent t' P_FD (Even E) = Transparent).
-       { erewrite marking_fall in H3; eauto.
-         destruct (transparent t' P_FD (Even E)); auto;
-         find_contradiction.
-       }
-       simpl.
-       erewrite (transparent_neighbor_num_events _ _ _ (Even E)); eauto.
-       omega.
+      rewrite marking_fall with (t := t') in *; auto.
+      destruct (transparent t' P_FD l); auto; find_contradiction. 
     }
-      
-    Unshelve. all:auto.
+    simpl.
+    transitivity (sync_eval c init_st (num_events (Rise l) t') l').
+    2:{ destruct l; f_equal; omega. }
+
+    f_equal.
+    erewrite transparent_neighbor_num_events with (l := l) (l' := l'); eauto.
+    inversion Hl'; auto.
 Qed.
 
 
@@ -445,7 +439,6 @@ Qed.
     intros l t v [m Hm] Heval.
     erewrite (fall_decoupled_strong l t Opaque v Heval m Hm); eauto.
     erewrite opaque_num_events; eauto.
-    { destruct l; reflexivity. }
     { eapply async_b; eauto. }
   Qed.
 
