@@ -169,8 +169,8 @@ Section Circuits.
     ⟨c,st0,P0⟩⊢ t ↓ l ↦{Transparent} v
 
   | async_opaque : forall l e t' v,
-    transparent (t' ▷ e) P0 l = Opaque ->
     e <> Fall l ->
+    transparent (t' ▷ e) P0 l = Opaque ->
     ⟨c,st0,P0⟩⊢ t' ↓ l ↦{Opaque} v ->
     ⟨c,st0,P0⟩⊢ t' ▷ e ↓ l ↦{Opaque} v
 
@@ -225,27 +225,24 @@ Qed.
 
  
   (** Synchronous execution *)
-
-  Fixpoint sync_even (c : circuit) (st : state latch) (n : nat) 
-                            {struct n} : state even := fun E =>
-    match n with
-    | 0 => st (Even E)
-    | S n' => next_state_e c E (fun O => next_state_o c (projT1 O) (fun E => sync_even c st n' (projT1 E)))
-    end.
-
-  Fixpoint sync_odd (c : circuit) (st : state latch) (n : nat)
-                    {struct n} : state odd := fun O =>
-    match n with
-    | 0 => X
-    | S n' => next_state_o c O (fun E => sync_even c st n' (projT1 E))
-    end.
-
-
-  Definition sync_eval (c : circuit) (st : state latch) (n : nat) 
-                   : state latch := fun l =>
+  Definition sync_update_odd (c : circuit) (st : state latch) : state latch :=
+    fun l =>
     match l with
-    | Even E => sync_even c st n E
-    | Odd o  => sync_odd c st n o
+    | Odd o => next_state_o c o (even_state st)
+    | Even e => st (Even e)
+    end.
+
+  Definition sync_update_even (c : circuit) (st : state latch) : state latch :=
+    fun l =>
+    match l with
+    | Odd o => st (Odd o)
+    | Even e => next_state_e c e (odd_state st)
+    end.
+
+  Fixpoint sync_eval (c : circuit) (st : state latch) (n : nat) : state latch :=
+    match n with
+    | 0 => st
+    | S n' => sync_update_even c (sync_update_odd c (sync_eval c st n'))
     end.
 
   Lemma sync_eval_odd_0 : forall c st E,
@@ -619,4 +616,32 @@ Ltac specialize_enabled_constraints :=
 
   | [ H : ?P, H' : ?P -> _ |- _ ] => specialize (H' H)
   end.
+
+Print In.
+Ltac inversion_neighbors :=
+  match goal with
+  | [ H : neighbor _ _ _ |- _ ] =>
+    inversion H; subst
+  end;
+  repeat match goal with
+  | [ H : In (_, _) (odd_even_neighbors _) |- _ ] => simpl in H
+  | [ H : In (_, _) (even_odd_neighbors _) |- _ ] => simpl in H
+  | [ H : (_,_) = (_,_) \/ _ |- _ ] => destruct H as [H | H]; [inversion H; subst | ]
+  | [ H : False |- _ ] => contradiction 
+  end.
+
+
+  Ltac async_constructor :=
+    match goal with
+    | [ |- ⟨_,_,_⟩⊢ _ ↓ _ ↦{ Transparent } _] =>
+      eapply async_transparent;
+        [reflexivity | intros l' Hl'; inversion_neighbors; clear Hl'; simpl | ]
+    | [ |- ⟨_,_,_⟩⊢ _ ▷ Fall ?l ↓ ?l ↦{ Opaque } _ ] =>
+      eapply async_opaque_fall; 
+        [reflexivity | intros l' Hl'; inversion_neighbors; clear Hl'; simpl | ]
+    | [ |- ⟨_,_,_⟩⊢ _ ▷ _ ↓ _ ↦{ Opaque } _ ] =>
+      eapply async_opaque; [try discriminate | reflexivity | ]
+    | [ |- ⟨_,_,_⟩⊢ t_empty ↓ _ ↦{ Opaque } _ ] =>
+      apply async_nil; reflexivity
+    end.
 End FE_Tactics.
