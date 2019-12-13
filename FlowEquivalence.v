@@ -121,8 +121,7 @@ Section Circuits.
 
   (* Latches need not hold single bits; in practice, they will hold arbitrary values *)
   Inductive value := 
-  | Bit : bool -> value
-  | Int : Z -> value
+  | Num : nat -> value
   | X  : value.
 
   Definition state (tp : Set) := tp -> value.
@@ -617,7 +616,6 @@ Ltac specialize_enabled_constraints :=
   | [ H : ?P, H' : ?P -> _ |- _ ] => specialize (H' H)
   end.
 
-Print In.
 Ltac inversion_neighbors :=
   match goal with
   | [ H : neighbor _ _ _ |- _ ] =>
