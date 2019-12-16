@@ -48,16 +48,8 @@ Section RiseDecoupled.
                                       | _ => 0
                                       end
     |}.
-                                    
-  Definition P_RD : tstate even odd :=
-    fun l => match l with
-             | Even _ => Opaque
-             | Odd _  => Transparent
-             end.
 
 Open Scope nat_scope.
-
-(*Definition get_rd_marking m {t1 t2} (p : place rise_decoupled t1 t2) := get_marking rise_decoupled m p.*)
 
 Inductive is_enabled_RD : event even odd -> marking rise_decoupled -> Prop :=
 | fall_enabled_RD l (m : marking rise_decoupled) :
@@ -148,7 +140,7 @@ Lemma fall_enabled_opaque : forall t m,
     {rise_decoupled}⊢ t ↓ m ->
     forall l l' (pf : neighbor c l l'),
     0 < m _ _ (neighbor_fall_fall l l' pf) ->
-    transparent t P_RD l = Opaque.
+    transparent t l = Opaque.
 Proof.
   intros t m Hm; induction Hm; intros l l' Hneighbor Henabled.
     * simpl in *.
@@ -242,12 +234,12 @@ Proof.
 Qed.
   
 
-Theorem rise_decoupled_flow_equivalence : flow_equivalence rise_decoupled c init_st P_RD.
+Theorem rise_decoupled_flow_equivalence : flow_equivalence rise_decoupled c init_st.
 Proof.
   intros l t v [m Hm] Hrel.
   revert m Hm.
   dependent induction Hrel; intros m Hm.
-  * destruct l as [O | E]; auto.
+  * auto.
   * inversion Hm as [ | e0 m0 ? t0' Henabled Hfire Hm']; subst; rename m0 into m.
     simpl in *.
     repeat compare_next.

@@ -53,12 +53,6 @@ Section FallDecoupled.
                                       end
    |}.
 
-  Definition P_FD : tstate even odd :=
-    fun l => match l with
-             | Even _ => Opaque
-             | Odd _  => Transparent
-             end.
-
 
 Inductive is_enabled_FD : event even odd -> marking fall_decoupled -> Prop :=
 
@@ -150,7 +144,7 @@ Section fd_lemmas.
   Hypothesis fd_t_m : {fall_decoupled}⊢ t ↓ m.
 
   Lemma marking_fall : forall l,
-    m _ _ (latch_fall l) = match transparent t P_FD l with
+    m _ _ (latch_fall l) = match transparent t l with
                          | Opaque => 0
                          | Transparent => 1
                          end.
@@ -167,7 +161,7 @@ Section fd_lemmas.
   Qed.
 
   Lemma marking_rise : forall l,
-    m _ _ (latch_rise l) = match transparent t P_FD l with
+    m _ _ (latch_rise l) = match transparent t l with
                          | Opaque => 1
                          | Transparent => 0
                          end.
@@ -242,7 +236,7 @@ Section fd_lemmas.
   Qed.
 
   Lemma opaque_num_events : forall l,
-    transparent t P_FD l = Opaque ->
+    transparent t l = Opaque ->
     num_events (Fall l) t = match l with
                             | Odd _ => 1+num_events (Rise l) t
                             | Even _ => num_events (Rise l) t
@@ -262,7 +256,7 @@ Section fd_lemmas.
   Qed.
 
   Lemma transparent_num_events : forall l,
-    transparent t P_FD l = Transparent ->
+    transparent t l = Transparent ->
     num_events (Rise l) t = match l with
                             | Odd _ => num_events (Fall l) t
                             | Even _ => 1+num_events (Fall l) t
@@ -332,7 +326,7 @@ Section fd_lemmas.
   
 
   Lemma transparent_neighbor_num_events : forall l,
-    transparent t P_FD l = Transparent ->
+    transparent t l = Transparent ->
     forall l' (pf : neighbor c l' l),
       num_events (Rise l) t = match l with
                               | Even _ => 1+num_events (Rise l') t
@@ -357,7 +351,7 @@ End fd_lemmas.
 
 
   Lemma fall_decoupled_strong : forall l t o v,
-    ⟨ c , init_st , P_FD ⟩⊢ t ↓ l ↦{ o } v ->
+    ⟨ c , init_st ⟩⊢ t ↓ l ↦{ o } v ->
       forall m, {fall_decoupled}⊢ t ↓ m ->
       forall n,
       n = match l with
@@ -369,9 +363,7 @@ End fd_lemmas.
     intros l t O v Hrel.
     induction Hrel; intros m Hm n Hn.
     * (* Because l is opaque in the initial marking, l must be even. *)
-      inversion Hm; subst.
-      destruct l as [O | E]; auto.
-      { inversion H. }
+      inversion Hm; subst. auto.
     * (* l is transparent *)
       rewrite H2.
 
@@ -418,10 +410,10 @@ End fd_lemmas.
 
     erewrite H1; eauto.
 
-    assert (transparent t' P_FD l = Transparent).
+    assert (transparent t' l = Transparent).
     { get_enabled_constraints.
       rewrite marking_fall with (t := t') in *; auto.
-      destruct (transparent t' P_FD l); auto; find_contradiction. 
+      destruct (transparent t' l); auto; find_contradiction. 
     }
     simpl.
     transitivity (sync_eval c init_st (num_events (Rise l) t') l').
@@ -434,7 +426,7 @@ Qed.
 
 
   Theorem fall_decoupled_flow_equivalence :
-    flow_equivalence fall_decoupled c init_st P_FD.
+    flow_equivalence fall_decoupled c init_st.
   Proof.
     intros l t v [m Hm] Heval.
     erewrite (fall_decoupled_strong l t Opaque v Heval m Hm); eauto.

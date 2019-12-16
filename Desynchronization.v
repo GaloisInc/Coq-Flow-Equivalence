@@ -41,12 +41,6 @@ Section Desynchronization.
                                       end
     |}.
 
-  Definition P_D : tstate even odd :=
-    fun l => match l with
-             | Even _ => Opaque
-             | Odd _  => Transparent
-             end.
-
 Inductive is_enabled_desync : event even odd -> marking desynchronization -> Prop :=
 | latch_fall_enbled l (m : marking desynchronization) :
     0 < m _ _ (latch_fall l) ->
@@ -84,7 +78,6 @@ Qed.
 
 End Desynchronization.
 
-Arguments P_D {even odd}.
 Arguments desynchronization {even odd}.
 
   Lemma exists_not_forall : forall A (P : A -> Prop),
@@ -178,7 +171,7 @@ Section OpenPipeline. (* Pipeline A -> B -> C *)
 
 
  Lemma counter_eval :
-    ⟨c1,init1,P_D⟩⊢ counter_trace1 ↓ C ↦{Opaque}
+    ⟨c1,init1⟩⊢ counter_trace1 ↓ C ↦{Opaque}
         sync_eval c1 init1 1 C.
   Proof.
     unfold counter_trace1.
@@ -186,7 +179,7 @@ Section OpenPipeline. (* Pipeline A -> B -> C *)
   Qed.
 
   Theorem desynchronization_not_flow_equivalent :
-    ~ flow_equivalence (desynchronization c1) c1 init1 P_D.
+    ~ flow_equivalence (desynchronization c1) c1 init1.
   Proof.
     unfold flow_equivalence.
     apply exists_not_forall.
@@ -374,7 +367,7 @@ Section EnvPipeline. (* Pipeline ENV <-> A -> B -> C *)
 
 
  Lemma counter_eval :
-    ⟨c,st0,P_D⟩⊢ counter_trace ↓ C ↦{Opaque}
+    ⟨c,st0⟩⊢ counter_trace ↓ C ↦{Opaque}
         sync_eval c st0 1 C.
   Proof.
     unfold counter_trace.
@@ -382,7 +375,7 @@ Section EnvPipeline. (* Pipeline ENV <-> A -> B -> C *)
   Qed.
 
   Theorem desynchronization_not_flow_equivalent2 :
-    ~ flow_equivalence (desynchronization c) c st0 P_D.
+    ~ flow_equivalence (desynchronization c) c st0.
   Proof.
     unfold flow_equivalence.
     apply exists_not_forall.
@@ -550,7 +543,7 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
 
 
  Lemma counter_eval :
-    ⟨c,st0,P_D⟩⊢ counter_trace ↓ C ↦{Opaque}
+    ⟨c,st0⟩⊢ counter_trace ↓ C ↦{Opaque}
         sync_eval c st0 1 C.
   Proof.
     unfold counter_trace. unfold eEven. unfold eOdd.
@@ -558,7 +551,7 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
   Qed.
 
   Theorem desynchronization_not_flow_equivalent2 :
-    ~ flow_equivalence (desynchronization c) c st0 P_D.
+    ~ flow_equivalence (desynchronization c) c st0.
   Proof.
     unfold flow_equivalence.
     apply exists_not_forall.

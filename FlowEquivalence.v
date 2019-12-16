@@ -87,12 +87,15 @@ Section LatchSequence.
   Definition trace := tail_list event.
 
   (* Calculate the set of transparent latches after executing the trace t *)
-  Fixpoint transparent (t : trace) (P : tstate) : tstate :=
+  Fixpoint transparent (t : trace) : tstate :=
     match t with
-    | t_empty => P
+    | t_empty => fun l => match l with
+                          | Even _ => Opaque
+                          | Odd _ => Transparent
+                          end
     | t' ▷ e => fun l => if Rise l =? e then Transparent
                               else if Fall l =? e then Opaque
-                              else transparent t' P l
+                              else transparent t' l
     end.
 
   Fixpoint num_events (e : event) (t : trace) : nat :=
@@ -154,39 +157,38 @@ Section Circuits.
   (** Async execution *)
 
 
-  Reserved Notation "⟨ c , st , P ⟩⊢ t ↓ l ↦{ O } v" (no associativity, at level 90).
-  Inductive async (c : circuit) (st0 : state latch) (P0 : tstate)
+  Reserved Notation "⟨ c , st ⟩⊢ t ↓ l ↦{ O } v" (no associativity, at level 90).
+  Inductive async (c : circuit) (st0 : state latch)
                     : trace -> latch -> opacity -> value -> Prop :=
-  | async_nil : forall l, 
-    P0 l = Opaque ->
-    ⟨c,st0,P0⟩⊢ t_empty ↓ l ↦{Opaque} st0 l
+  | async_nil : forall E, 
+    ⟨c,st0⟩⊢ t_empty ↓ Even E ↦{Opaque} st0 (Even E)
 
   | async_transparent : forall l t st v,
-    transparent t P0 l = Transparent ->
-    (forall l', neighbor c l' l -> ⟨c,st0,P0⟩⊢ t ↓ l' ↦{transparent t P0 l'} st l') ->
+    transparent t l = Transparent ->
+    (forall l', neighbor c l' l -> ⟨c,st0⟩⊢ t ↓ l' ↦{transparent t l'} st l') ->
     v = next_state c st l ->
-    ⟨c,st0,P0⟩⊢ t ↓ l ↦{Transparent} v
+    ⟨c,st0⟩⊢ t ↓ l ↦{Transparent} v
 
   | async_opaque : forall l e t' v,
     e <> Fall l ->
-    transparent (t' ▷ e) P0 l = Opaque ->
-    ⟨c,st0,P0⟩⊢ t' ↓ l ↦{Opaque} v ->
-    ⟨c,st0,P0⟩⊢ t' ▷ e ↓ l ↦{Opaque} v
+    transparent (t' ▷ e) l = Opaque ->
+    ⟨c,st0⟩⊢ t' ↓ l ↦{Opaque} v ->
+    ⟨c,st0⟩⊢ t' ▷ e ↓ l ↦{Opaque} v
 
   | async_opaque_fall : forall l e t' v st,
     e = Fall l ->
-    (forall l', neighbor c l' l -> ⟨c,st0,P0⟩⊢ t' ↓ l' ↦{transparent t' P0 l'} st l') ->
+    (forall l', neighbor c l' l -> ⟨c,st0⟩⊢ t' ↓ l' ↦{transparent t' l'} st l') ->
     v = next_state c st l ->
-    ⟨c,st0,P0⟩⊢ t' ▷ e ↓ l ↦{Opaque} v
+    ⟨c,st0⟩⊢ t' ▷ e ↓ l ↦{Opaque} v
 
-  where "⟨ c , st , P ⟩⊢ t ↓ l ↦{ O } v" := (async c st P t l O v).
+  where "⟨ c , st ⟩⊢ t ↓ l ↦{ O } v" := (async c st t l O v).
 
-Lemma async_b : forall c st0 P0 l b t v,
-    ⟨c,st0,P0⟩⊢ t ↓ l ↦{b} v ->
-    transparent t P0 l = b.
+Lemma async_b : forall c st0 l b t v,
+    ⟨c,st0⟩⊢ t ↓ l ↦{b} v ->
+    transparent t l = b.
 Proof.
-  intros c st0 P0 l b t v H.
-  induction H; auto.
+  intros c st0 l b t v H.
+  induction H; auto. simpl.
   subst. simpl. reduce_eqb. auto.
 Qed.
 
@@ -201,12 +203,12 @@ Proof.
 Qed.
 
 
-Lemma async_injective : forall c st0 P0 l b1 t v1,
-    ⟨c,st0,P0⟩⊢ t ↓ l ↦{b1} v1 ->
-    forall b2 v2, ⟨c,st0,P0⟩⊢ t ↓ l ↦{b2} v2 ->
+Lemma async_injective : forall c st0 l b1 t v1,
+    ⟨c,st0⟩⊢ t ↓ l ↦{b1} v1 ->
+    forall b2 v2, ⟨c,st0⟩⊢ t ↓ l ↦{b2} v2 ->
     v1 = v2.
 Proof.
-  intros c st0 P0 l b1 t v1 H1.
+  intros c st0 l b1 t v1 H1.
   induction H1; intros b2 v2 H2';
     inversion H2'; subst; simpl in *; find_contradiction; auto.
 
@@ -292,7 +294,7 @@ Qed.
 
 End Circuits.
 
-Notation "⟨ c , st , P ⟩⊢ t ↓ l ↦{ O } v" := (async c st P t l O v) (no associativity, at level 90).
+Notation "⟨ c , st  ⟩⊢ t ↓ l ↦{ O } v" := (async c st t l O v) (no associativity, at level 90).
 
 
 (******************)
@@ -469,11 +471,10 @@ Section FlowEquivalence.
 
   Definition flow_equivalence (M : marked_graph event)
                               (c : circuit) 
-                              (st0 : state latch)
-                              (P0 : tstate) :=
+                              (st0 : state latch) :=
     forall l t v,
       (exists m, {M}⊢ t ↓ m) ->
-      ⟨c,st0,P0⟩⊢ t ↓ l ↦{Opaque} v ->
+      ⟨c,st0⟩⊢ t ↓ l ↦{Opaque} v ->
        v = sync_eval c st0 (num_events (Fall l) t) l.
 
 
@@ -531,7 +532,7 @@ Arguments fire_tstate {even odd Heven Hodd}.
 Existing Instance event_eq_dec.
  
 Arguments async {even odd Heven Hodd}.
-Notation "⟨ c , st , P ⟩⊢ t ↓ l ↦{ O } v" := (async c st P t l O v) 
+Notation "⟨ c , st ⟩⊢ t ↓ l ↦{ O } v" := (async c st t l O v) 
           (no associativity, at level 90).
 
 
@@ -631,15 +632,15 @@ Ltac inversion_neighbors :=
 
   Ltac async_constructor :=
     match goal with
-    | [ |- ⟨_,_,_⟩⊢ _ ↓ _ ↦{ Transparent } _] =>
+    | [ |- ⟨_,_⟩⊢ _ ↓ _ ↦{ Transparent } _] =>
       eapply async_transparent;
         [reflexivity | intros l' Hl'; inversion_neighbors; clear Hl'; simpl | ]
-    | [ |- ⟨_,_,_⟩⊢ _ ▷ Fall ?l ↓ ?l ↦{ Opaque } _ ] =>
+    | [ |- ⟨_,_⟩⊢ _ ▷ Fall ?l ↓ ?l ↦{ Opaque } _ ] =>
       eapply async_opaque_fall; 
         [reflexivity | intros l' Hl'; inversion_neighbors; clear Hl'; simpl | ]
-    | [ |- ⟨_,_,_⟩⊢ _ ▷ _ ↓ _ ↦{ Opaque } _ ] =>
+    | [ |- ⟨_,_⟩⊢ _ ▷ _ ↓ _ ↦{ Opaque } _ ] =>
       eapply async_opaque; [try discriminate | reflexivity | ]
-    | [ |- ⟨_,_,_⟩⊢ t_empty ↓ _ ↦{ Opaque } _ ] =>
+    | [ |- ⟨_,_⟩⊢ t_empty ↓ _ ↦{ Opaque } _ ] =>
       apply async_nil; reflexivity
     end.
 End FE_Tactics.
