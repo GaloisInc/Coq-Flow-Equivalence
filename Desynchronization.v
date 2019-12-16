@@ -34,9 +34,9 @@ Section Desynchronization.
   Definition desynchronization : marked_graph (event even odd) :=
     {| place := desync_place
      ; init_marking := fun t1 t2 p => match p with
-                                      | latch_rise _ => 1
-                                      | neighbor_fall (Even _) (Odd _) _ => 1
-                                      | neighbor_rise (Odd _) (Even _) _ => 1
+                                      | latch_rise (Even _) => 1
+                                      | latch_fall (Odd _) => 1
+                                      | neighbor_fall _ _ _ => 1
                                       | _ => 0
                                       end
     |}.
@@ -44,7 +44,7 @@ Section Desynchronization.
   Definition P_D : tstate even odd :=
     fun l => match l with
              | Even _ => Opaque
-             | Odd _  => Opaque
+             | Odd _  => Transparent
              end.
 
 Inductive is_enabled_desync : event even odd -> marking desynchronization -> Prop :=
@@ -140,8 +140,7 @@ Section OpenPipeline. (* Pipeline A -> B -> C *)
 
 
   Definition counter_trace1 : trace o_even o_odd :=
-    t_empty ▷ Rise B
-            ▷ Rise C
+    t_empty ▷ Rise C
             ▷ Fall B
             ▷ Fall C
             ▷ Rise C
@@ -175,7 +174,6 @@ Section OpenPipeline. (* Pipeline A -> B -> C *)
     apply desync_is_enabled_equiv; constructor; auto; intros;
     inversion_neighbors;
        try (repeat (unfold fire at 1; simpl; auto); fail).
-    simpl. auto. 
   Qed.
 
 
@@ -338,8 +336,7 @@ Section EnvPipeline. (* Pipeline ENV <-> A -> B -> C *)
 
 
   Definition counter_trace : trace e_even e_odd :=
-    t_empty ▷ Rise B
-            ▷ Rise C
+    t_empty ▷ Rise C
             ▷ Fall B
             ▷ Fall C
             ▷ Rise C
@@ -373,7 +370,6 @@ Section EnvPipeline. (* Pipeline ENV <-> A -> B -> C *)
     apply desync_is_enabled_equiv; constructor; auto; intros;
     inversion_neighbors;
        try (repeat (unfold fire at 1; simpl; auto); fail).
-    simpl. auto. 
   Qed.
 
 
@@ -518,8 +514,7 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
 
 
   Definition counter_trace : trace even odd :=
-    t_empty ▷ Rise B
-            ▷ Rise SNK ▷ Fall SNK ▷ Rise C
+    t_empty ▷ Fall SNK ▷ Rise C
             ▷ Fall B
             ▷ Fall C
             ▷ Rise SNK ▷ Fall SNK ▷ Rise C
@@ -551,7 +546,6 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
     apply desync_is_enabled_equiv; constructor; auto; intros;
     inversion_neighbors;
        try (repeat (unfold fire at 1; simpl; auto); fail).
-    simpl. auto. 
   Qed.
 
 
