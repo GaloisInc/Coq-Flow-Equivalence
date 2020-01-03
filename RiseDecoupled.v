@@ -108,6 +108,10 @@ Lemma rd_loop : forall t m,
     forall l,
     m _ _ (latch_fall l) + m _ _ (latch_rise l) = 1.
 Proof.
+  intros t m Ht l.
+  solve_loop. destruct l; auto.
+
+(*    
   intros t m Hm.
   induction Hm; intros [O | E]; try reflexivity.
   + specialize (IHHm (Odd O)).
@@ -116,6 +120,7 @@ Proof.
   + specialize (IHHm (Even E)).
     subst; unfold fire;
     repeat compare_next; get_enabled_constraints; try omega.
+*)
 Qed.
 
 
@@ -125,6 +130,11 @@ Lemma rd_loop_neighbor : forall t m,
       m _ _ (latch_fall l) + m _ _ (neighbor_fall_fall _ _ pf)
                            + m _ _ (neighbor_fall_rise _ _ pf) = 1.
 Proof.
+  intros.
+  solve_loop.
+  inversion pf; auto.
+
+(*
   intros t m Hm.
   induction Hm; intros [O | E] [O' | E'] pf;
     try reflexivity;
@@ -134,6 +144,7 @@ Proof.
       get_enabled_constraints;
       simpl in *;
       try omega.
+*)
 Qed.
 
 Lemma fall_enabled_opaque : forall t m,
@@ -151,8 +162,9 @@ Proof.
       assert (Rise l <> e).
       { inversion 1; subst.
         repeat get_enabled_constraints.
-        repeat compare_next.
-        omega.
+        compare_next; try omega.
+        { inversion e; subst. reduce_eqb. omega. }
+        { simpl in *. omega. }
       }
       reduce_eqb.
 

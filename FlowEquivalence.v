@@ -361,6 +361,30 @@ Section MarkedGraphs.
     | mg_step_path p p' => m _ _ p + path_cost m p'
     end.
 
+
+  Lemma path_cost_single : forall {M : marked_graph} {t1 t2}
+        (p : place M t1 t2) (m : marking M),
+      m _ _ p = path_cost m (mg_single_path p).
+  Proof. intros. reflexivity. Qed.
+
+  Fixpoint path_append {M} {t1 t2} (p1 : mg_path M t1 t2)
+    : forall {t3}, mg_path M t2 t3 -> mg_path M t1 t3 :=
+    match p1 with
+    | mg_single_path p1 => fun _ p2 => mg_step_path p1 p2
+    | mg_step_path p1 p2 => fun _ p3 => mg_step_path p1 (path_append p2 p3)
+    end.
+  
+
+  Lemma path_cost_step : forall {M : marked_graph} {t1 t2 t3}
+        (p1 : mg_path M t1 t2) (p2 : mg_path M t2 t3) (m : marking M),
+    path_cost m p1 + path_cost m p2 = path_cost m (path_append p1 p2).
+  Proof.
+    induction p1; intros p2 m.
+    + simpl. auto.
+    + simpl. rewrite <- IHp1. omega.
+  Qed.
+    
+
   Definition addZ (n : nat) (z : Z) : nat := Z.to_nat (Z.of_nat n + z).
 (*
     match z with
@@ -768,4 +792,13 @@ Ltac inversion_neighbors :=
     | [ |- ⟨_,_⟩⊢ t_empty ↓ _ ↦{ Opaque } _ ] =>
       apply async_nil; reflexivity
     end.
+
+
+Ltac solve_loop :=
+  repeat rewrite path_cost_single;
+  repeat rewrite path_cost_step;
+  match goal with
+  [ H : { ?M }⊢ _ ↓ _ |- _ ] => rewrite (@mg_preserves_loops _ _ M _ _ H) 
+  end;
+  simpl.
 End FE_Tactics.

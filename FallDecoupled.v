@@ -110,6 +110,8 @@ Section loop_lemmas.
   Lemma fd_loop : forall l,
     m _ _ (latch_fall l) + m _ _ (latch_rise l) = 1.
   Proof.
+    intros. solve_loop. destruct l; auto.
+    (*
     induction fd_t_m; intros [O | E]; try reflexivity.
     + specialize (IHm0 m0 (Odd O)).
       subst; unfold fire;
@@ -117,12 +119,17 @@ Section loop_lemmas.
     + specialize (IHm0 m0 (Even E)).
       subst; unfold fire;
       repeat compare_next; get_enabled_constraints; try omega.
+    *)
   Qed.
 
   Lemma fd_loop_neighbor : forall l l' (pf : neighbor c l l'),
-      m _ _ (latch_fall l') + m _ _ (neighbor_rise_rise _ _ pf)
-                            + m _ _ (neighbor_fall_rise _ _ pf) = 1.
+      m _ _ (latch_fall l') + m _ _ (neighbor_fall_rise _ _ pf)
+                            + m _ _ (neighbor_rise_rise _ _ pf) = 1.
   Proof.
+    intros.
+    solve_loop.
+    destruct pf; auto.
+(*
     induction fd_t_m; intros [O | E] [O' | E'] pf;
       try reflexivity;
       find_event_contradiction;
@@ -131,6 +138,7 @@ Section loop_lemmas.
         get_enabled_constraints;
         simpl in *;
         try omega.
+*)
   Qed.
 
 
