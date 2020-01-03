@@ -133,25 +133,25 @@ Section OpenPipeline. (* Pipeline A -> B -> C *)
 
 
   Definition counter_trace1 : trace o_even o_odd :=
-    t_empty ▷ Rise C
-            ▷ Fall B
-            ▷ Fall C
-            ▷ Rise C
-            ▷ Rise B
-            ▷ Fall C
+    t_empty ▶ Rise C
+            ▶ Fall B
+            ▶ Fall C
+            ▶ Rise C
+            ▶ Rise B
+            ▶ Fall C
 (* should be an error here *)
 (*
-            ▷ Rise A
-            ▷ Fall B
-            ▷ Fall A
-            ▷ Rise A
-            ▷ Rise B
-            ▷ Fall A
-            ▷ Fall B
-            ▷ Rise C
-            ▷ Rise A
-            ▷ Fall C
-            ▷ Fall A
+            ▶ Rise A
+            ▶ Fall B
+            ▶ Fall A
+            ▶ Rise A
+            ▶ Rise B
+            ▶ Fall A
+            ▶ Fall B
+            ▶ Rise C
+            ▶ Rise A
+            ▶ Fall C
+            ▶ Fall A
 *).
 
     
@@ -222,12 +222,6 @@ Section EnvPipeline. (* Pipeline ENV <-> A -> B -> C *)
       try (left; reflexivity); try (right; discriminate).
   Defined.
 
-(*
-  Let ENV : latch e_even e_odd := Odd ENV.
-  Let A : latch e_even e_odd := Even A.
-  Let B : latch e_even e_odd := Odd B.
-  Let C : latch e_even e_odd := Even C.
-*)
 
   (* The environment is a source, and increments the value passed down the
   pipeline every time. *)
@@ -329,24 +323,24 @@ Section EnvPipeline. (* Pipeline ENV <-> A -> B -> C *)
 
 
   Definition counter_trace : trace e_even e_odd :=
-    t_empty ▷ Rise C
-            ▷ Fall B
-            ▷ Fall C
-            ▷ Rise C
-            ▷ Rise B
-            ▷ Fall C
+    t_empty ▶ Rise C
+            ▶ Fall B
+            ▶ Fall C
+            ▶ Rise C
+            ▶ Rise B
+            ▶ Fall C
 (*
-            ▷ Rise A
-            ▷ Fall B
-            ▷ Fall A
-            ▷ Rise A
-            ▷ Rise B
-            ▷ Fall A
-            ▷ Fall B
-            ▷ Rise C
-            ▷ Rise A
-            ▷ Fall C
-            ▷ Fall A.
+            ▶ Rise A
+            ▶ Fall B
+            ▶ Fall A
+            ▶ Rise A
+            ▶ Rise B
+            ▶ Fall A
+            ▶ Fall B
+            ▶ Rise C
+            ▶ Rise A
+            ▶ Fall C
+            ▶ Fall A.
 *).
 
 
@@ -507,25 +501,25 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
 
 
   Definition counter_trace : trace even odd :=
-    t_empty ▷ Fall SNK ▷ Rise C
-            ▷ Fall B
-            ▷ Fall C
-            ▷ Rise SNK ▷ Fall SNK ▷ Rise C
-            ▷ Rise B
-            ▷ Fall C
+    t_empty ▶ Fall SNK ▶ Rise C
+            ▶ Fall B
+            ▶ Fall C
+            ▶ Rise SNK ▶ Fall SNK ▶ Rise C
+            ▶ Rise B
+            ▶ Fall C
 (*
             (* could stop here *)
-            ▷ Rise SRC ▷ Fall SRC ▷ Rise A
-            ▷ Fall B
-            ▷ Fall A
-            ▷ Rise SRC ▷ Fall SRC ▷ Rise A
-            ▷ Rise B
-            ▷ Fall A
-            ▷ Fall B
-            ▷ Rise SNK ▷ Fall SNK ▷ Rise C
-            ▷ Rise SRC ▷ Fall SRC ▷ Rise A
-            ▷ Fall C
-            ▷ Fall A.
+            ▶ Rise SRC ▶ Fall SRC ▶ Rise A
+            ▶ Fall B
+            ▶ Fall A
+            ▶ Rise SRC ▶ Fall SRC ▶ Rise A
+            ▶ Rise B
+            ▶ Fall A
+            ▶ Fall B
+            ▶ Rise SNK ▶ Fall SNK ▶ Rise C
+            ▶ Rise SRC ▶ Fall SRC ▶ Rise A
+            ▶ Fall C
+            ▶ Fall A.
 *).
 
 

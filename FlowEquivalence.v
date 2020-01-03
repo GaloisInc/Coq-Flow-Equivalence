@@ -12,31 +12,37 @@ Open Scope list_scope.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Omega.
 
+Require Import Lia (* Linear integer arithmetic tactics *).
 
 
 Section FE.
 
-  Variable even odd : Set.
-  Context `{Heven : eq_dec even} `{Hodd : eq_dec odd}.  
+(** Even and odd latches *)
+Variable even odd : Set.
 
+(** Decidable equality *)
+Context `{Heven : eq_dec even} `{Hodd : eq_dec odd}.  
 
-
+(** * Latches, events, and traces *)
 Section LatchSequence.
 
+  (** Latches are either even or odd *)
   Inductive latch : Set := 
   | Odd : odd -> latch
   | Even : even -> latch
   .
 
-  Arguments latch : clear implicits.
+  (** Events are either the rise or fall of a latch's clock *)
   Inductive event : Set :=
   | Rise : latch -> event
   | Fall : latch -> event
   . 
 
-  Inductive opacity := Transparent | Opaque.
-  Definition tstate := latch -> opacity.
+  (** A transparency state records whether latches are currently transparent or opaque. *)
+  Inductive transparency := Transparent | Opaque.
+  Definition tstate := latch -> transparency.
 
+  (** Decidability *)
   Instance latch_eq_dec : eq_dec latch.
   Proof.
     split.
@@ -61,47 +67,34 @@ Section LatchSequence.
       right. inversion 1. contradiction.
   Defined.
 
-
-  Definition fire_tstate (e : event) (P : tstate) : tstate :=
-    fun l => if Rise l =? e
-             then Transparent
-             else if Fall l =? e
-             then Opaque
-             else P l.
-
-  Definition is_even (l : latch) : bool :=
-  match l with
-  | Even _ => true
-  | _ => false
-  end.
-  Definition is_odd (l : latch) : bool := negb (is_even l).
-
+  (** Tail/snoc lists *)
   Inductive tail_list (A : Type) :=
   | t_empty : tail_list A
   | t_next : tail_list A -> A -> tail_list A.
   Arguments t_empty {A}.
   Arguments t_next {A}.
-  Infix "▷" := t_next (left associativity, at level 73).
+  Infix "▶" := t_next (left associativity, at level 73).
 
-
+  (** A trace is a list of events *)
   Definition trace := tail_list event.
 
-  (* Calculate the set of transparent latches after executing the trace t *)
+  (** Calculate the set of transparent latches after executing the trace t *)
   Fixpoint transparent (t : trace) : tstate :=
     match t with
     | t_empty => fun l => match l with
                           | Even _ => Opaque
                           | Odd _ => Transparent
                           end
-    | t' ▷ e => fun l => if Rise l =? e then Transparent
+    | t' ▶ e => fun l => if Rise l =? e then Transparent
                               else if Fall l =? e then Opaque
                               else transparent t' l
     end.
 
+  (** Calculate the number of occurrences of an event in a trace *)
   Fixpoint num_events (e : event) (t : trace) : nat :=
     match t with
     | t_empty => 0
-    | t' ▷ e' => if e =? e'
+    | t' ▶ e' => if e =? e'
                  then 1 + num_events e t'
                  else num_events e t'
     end.
@@ -111,24 +104,24 @@ End LatchSequence.
 
 Arguments t_empty {A}.
 Arguments t_next {A}.
-Infix "▷" := t_next (left associativity, at level 73).
+Infix "▶" := t_next (left associativity, at level 73).
 
 Existing Instance event_eq_dec.
 
 
-(*************)
-(** Circuits *)
-(*************)
-
+(** * Circuits *)
 Section Circuits.
 
-  (* Latches need not hold single bits; in practice, they will hold arbitrary values *)
+  (** Latches need not hold single bits; in practice, they will hold numeric
+  values *)
   Inductive value := 
   | Num : nat -> value
   | X  : value.
 
+  (** A state (e.g. of a set of latches) maps each of those latches to values *)
   Definition state (tp : Set) := tp -> value.
 
+  (** Restrict a state to only its even or odd members. *)
   Definition odd_state {P : odd -> Prop}
                        (s : state latch) : state {o : odd & P o} :=
     fun o => s (Odd (projT1 o)).
@@ -136,6 +129,8 @@ Section Circuits.
                         (s : state latch) : state {e : even & P e} :=
     fun o => s (Even (projT1 o)).
 
+  (** A circuit consists of (1) lists of its even-odd and odd-even neighbors;
+  and (2) for each latch, a next_state function. *)
   Record circuit : Set :=
   { even_odd_neighbors : list (even * odd)
   ; odd_even_neighbors : list (odd * even)
@@ -143,23 +138,23 @@ Section Circuits.
   ; next_state_o  (o : odd)  : state {e : even & In (e,o) even_odd_neighbors} -> value
   }.
 
+  (** A generalization of even-odd and odd-even neighbors *)
   Inductive neighbor c : latch -> latch  -> Prop :=
   | EO_neighbor E O : In (E,O) (even_odd_neighbors c) -> neighbor c (Even E) (Odd O)
   | OE_neighbor O E : In (O,E) (odd_even_neighbors c) -> neighbor c (Odd O) (Even E).
 
-
+  (** The next-state function *)
   Definition next_state (c : circuit) (st : state latch) (l : latch) : value :=
     match l with
     | Even e => next_state_e c e (odd_state st)
     | Odd o  => next_state_o c o (even_state st)
     end.
 
-  (** Async execution *)
-
+  (** * Asynchronous execution *)
 
   Reserved Notation "⟨ c , st ⟩⊢ t ↓ l ↦{ O } v" (no associativity, at level 90).
   Inductive async (c : circuit) (st0 : state latch)
-                    : trace -> latch -> opacity -> value -> Prop :=
+                    : trace -> latch -> transparency -> value -> Prop :=
   | async_nil : forall E, 
     ⟨c,st0⟩⊢ t_empty ↓ Even E ↦{Opaque} st0 (Even E)
 
@@ -171,23 +166,24 @@ Section Circuits.
 
   | async_opaque : forall l e t' v,
     e <> Fall l ->
-    transparent (t' ▷ e) l = Opaque ->
+    transparent (t' ▶ e) l = Opaque ->
     ⟨c,st0⟩⊢ t' ↓ l ↦{Opaque} v ->
-    ⟨c,st0⟩⊢ t' ▷ e ↓ l ↦{Opaque} v
+    ⟨c,st0⟩⊢ t' ▶ e ↓ l ↦{Opaque} v
 
   | async_opaque_fall : forall l e t' v st,
     e = Fall l ->
     (forall l', neighbor c l' l -> ⟨c,st0⟩⊢ t' ↓ l' ↦{transparent t' l'} st l') ->
     v = next_state c st l ->
-    ⟨c,st0⟩⊢ t' ▷ e ↓ l ↦{Opaque} v
+    ⟨c,st0⟩⊢ t' ▶ e ↓ l ↦{Opaque} v
 
   where "⟨ c , st ⟩⊢ t ↓ l ↦{ O } v" := (async c st t l O v).
 
-Lemma async_b : forall c st0 l b t v,
-    ⟨c,st0⟩⊢ t ↓ l ↦{b} v ->
-    transparent t l = b.
+  (** ** Helper lemmas *)
+Lemma async_b : forall c st0 l O t v,
+    ⟨c,st0⟩⊢ t ↓ l ↦{O} v ->
+    transparent t l = O.
 Proof.
-  intros c st0 l b t v H.
+  intros c st0 l O t v H.
   induction H; auto. simpl.
   subst. simpl. reduce_eqb. auto.
 Qed.
@@ -225,7 +221,10 @@ Proof.
 Qed.
 
  
-  (** Synchronous execution *)
+  (** * Synchronous execution *)
+
+  (** Single unit of update for odd/even latches *)
+
   Definition sync_update_odd (c : circuit) (st : state latch) : state latch :=
     fun l =>
     match l with
@@ -240,18 +239,20 @@ Qed.
     | Even e => next_state_e c e (odd_state st)
     end.
 
+  (** Main definition of synchronous execution *)
+
   Fixpoint sync_eval (c : circuit) (st : state latch) (n : nat) : state latch :=
     match n with
     | 0 => st
     | S n' => sync_update_even c (sync_update_odd c (sync_eval c st n'))
     end.
 
+  (** ** Helper lemmas *)
   Lemma sync_eval_odd_0 : forall c st E,
         sync_eval c st 0 (Even E) = st (Even E).
   Proof.
     intros. reflexivity.
   Qed.
-
 
   Lemma sync_eval_even : forall (c : circuit) (st : state latch) n E,
         sync_eval c st (S n) (Even E) = next_state_e c E (odd_state (sync_eval c st (S n))).
@@ -297,10 +298,7 @@ End Circuits.
 Notation "⟨ c , st  ⟩⊢ t ↓ l ↦{ O } v" := (async c st t l O v) (no associativity, at level 90).
 
 
-(******************)
-(** Marked graphs *)
-(******************)
-
+(** * Marked graphs *)
 Section MarkedGraphs.
 
   Variable transition : Set.
@@ -312,38 +310,28 @@ Section MarkedGraphs.
   }.
 
   Definition marking (M : marked_graph) := forall t1 t2, place M t1 t2 -> nat.
-(*
-  Definition get_marking {M} {t1 t2} (m : marking M) (p : place M t1 t2) : nat := m _ _ p.
-  Coercion get_marking : marking >-> Funclass.
-*)
 
   Definition is_enabled (M : marked_graph)
                         (t : transition)
                         (m : marking M) :=
     forall (t0 : transition) (p : place M t0 t), 0 < m _ _ p.
 
-  (* A transition should only fire if the caller has independently checked that it
+  (** A transition should only fire if the caller has independently checked that it
   is enabled. *) 
   Definition fire (t : transition) 
                   (M : marked_graph)
                   (m : marking M)
                 : marking M :=
     fun tin tout p =>
-        if t =? tout (* i.e. if p occurs before t *)
+        if tin =? tout
+        then m _ _ p (* corner case *)
+        else if t =? tout (* i.e. if p occurs before t *)
         then m _ _ p - 1
         else if t =? tin (* i.e. if p occurs after t *)
         then m _ _ p + 1
         else m _ _ p.
 
-
-(*
-  (* A marked graph is one such that each place has preset(p) <= 1 and postset(p) <= 1. *)
-  Definition wf_marked_graph (M : marked_graph) :=
-    forall p t1 t2 t1' t2', mg_triples M t1 p t2 ->
-                            mg_triples M t1' p t2' ->
-                            t1 = t1' /\ t2 = t2'.
-*)
-
+  (** Reachability *)
   Reserved Notation "{ MG }⊢ t ↓ m" (no associativity, at level 90). 
   Inductive mg_reachable (M : marked_graph)
                         : tail_list transition -> marking M -> Prop :=
@@ -352,11 +340,12 @@ Section MarkedGraphs.
     is_enabled M e m ->
     fire e M m = m' ->
     {M}⊢ t' ↓ m ->
-    {M}⊢ t' ▷ e ↓ m'
+    {M}⊢ t' ▶ e ↓ m'
   where
     "{ MG }⊢ t ↓ m'" := (mg_reachable MG t m').
 
 
+  (** * Paths and loops in a marked graph *)
   Inductive mg_path (M : marked_graph) : transition -> transition -> Set :=
   | mg_single_path t1 t2 : place M t1 t2 -> mg_path M t1 t2
   | mg_step_path t1 t2 t3 : place M t1 t2 -> mg_path M t2 t3 -> mg_path M t1 t3
@@ -365,72 +354,214 @@ Section MarkedGraphs.
   Arguments mg_step_path {M t1 t2 t3}.
   Definition mg_loop (M : marked_graph) (t : transition) := mg_path M t t.
 
+  (** Add up the markings on each leg of the path *)
   Fixpoint path_cost {M} {t1 t2} (m : marking M) (p : mg_path M t1 t2) : nat :=
     match p with
     | mg_single_path p => m _ _ p
     | mg_step_path p p' => m _ _ p + path_cost m p'
     end.
 
-  Definition fire_effect (t : transition) {M t1 t2} (p : place M t1 t2) (res : nat) : nat :=
-    if t =? t2 then res-1
-    else if t =? t1 then res+1
-    else res.
+  Definition addZ (n : nat) (z : Z) : nat := Z.to_nat (Z.of_nat n + z).
+(*
+    match z with
+    | Z0 => n
+    | Zpos p => n + Pos.to_nat p
+    | Zneg p => n - Pos.to_nat p
+    end.
+*)
 
-  Fixpoint path_effect (t : transition) {M t1 t2} (p : mg_path M t1 t2) (res : nat) : nat :=
+Lemma addZ_N_assoc : forall n1 n2 z,
+    (0 <= Z.of_nat n2 + z)%Z ->
+    addZ (n1 + n2) z = n1 + addZ n2 z.
+Proof.
+  intros.
+  unfold addZ. 
+  rewrite Nat2Z.inj_add.
+
+  rewrite <- Z.add_assoc.
+  rewrite Z2Nat.inj_add.
+  2:{ apply Nat2Z.is_nonneg. }
+  rewrite Nat2Z.id; auto.
+  auto.
+Qed.
+
+Lemma addZ_0 : forall n, addZ n 0%Z = n.
+Proof.
+  intros. unfold addZ. 
+  replace (Z.of_nat n + 0)%Z with (Z.of_nat n) by lia.
+  rewrite Nat2Z.id.
+  reflexivity.
+Qed.
+Hint Resolve addZ_0 : addZ.
+Lemma addZ_neg1 : forall n, n > 0 -> addZ n (-1) = n - 1.
+Proof.
+  intros. unfold addZ.
+  replace (Z.of_nat n + (-1))%Z with (Z.of_nat (n-1)) by lia.
+  rewrite Nat2Z.id. reflexivity.
+Qed.
+Hint Resolve addZ_neg1 : addZ.
+
+Lemma addZ_minus : forall n z, addZ n (z - 1) = addZ n z - 1.
+Proof.
+  intros. unfold addZ.
+  rewrite Z.add_sub_assoc.
+  rewrite Z2Nat.inj_sub; auto.
+  lia.
+Qed.
+
+Lemma addZ_pos1 : forall n, addZ n 1 = n + 1.
+Proof.
+  intros. unfold addZ.
+  replace (Z.of_nat n + 1)%Z with (Z.of_nat (n+1)) by lia.
+  rewrite Nat2Z.id. reflexivity.
+Qed.
+Hint Resolve addZ_pos1 : addZ.
+
+Lemma addZ_plus : forall n z, (0 <= Z.of_nat n + z)%Z -> addZ n (1+z) = 1+addZ n z.
+Proof.
+  intros. unfold addZ.
+  transitivity (Z.to_nat (1 + (Z.of_nat n + z))%Z).
+  { f_equal. lia. }
+
+  rewrite Z2Nat.inj_add; auto.
+  { lia. }
+Qed.
+
+
+  (** After firing the transition t, update the accumulator by the effect on the place p. *)
+  Definition fire_effect (t : transition) {M t1 t2} (p : place M t1 t2) : Z :=
+    if andb (t =? t2) (t =? t1) then 0
+    else if t =? t1 then 1
+    else if t =? t2 then -1
+    else 0.
+
+  (** After firing the transition t, update the accumulator by the effect on the path p. *)
+  Fixpoint path_effect (t : transition) {M t1 t2} (p : mg_path M t1 t2) : Z :=
     match p with
-    | mg_single_path p => fire_effect t p res
-    | mg_step_path p p' => path_effect t p' (fire_effect t p res)
+    | mg_single_path p => fire_effect t p
+    | mg_step_path p p' => fire_effect t p + path_effect t p'
     end.
 
-  Lemma fire_effect_plus : forall (t : transition) {M t1 t2} (p : place M t1 t2) (res1 res2 : nat),
-    res2 > 0 ->
-    fire_effect t p (res1 + res2) = res1 + fire_effect t p res2.
-  Proof.
-    induction res1; intros; auto.
-    simpl.
-    unfold fire_effect. 
-    repeat compare_next; omega.
-  Qed.
 
-  Lemma path_effect_plus : forall (t : transition) {M t1 t2} (p : mg_path M t1 t2) (res1 res2 : nat),
-    res2 > 0 ->
-    path_effect t p (res1 + res2) = res1 + path_effect t p res2.
+
+
+Lemma path_effect_result : forall M t1 t2 (p : mg_path M t1 t2) t,
+     (t <> t1 -> t <> t2 -> path_effect t p = 0%Z)
+  /\ (t = t1 -> t <> t2 -> path_effect t p = 1%Z)
+  /\ (t = t2 -> t <> t1 -> path_effect t p = (-1)%Z )
+  /\ (t = t1 -> t = t2 -> path_effect t p = 0%Z).
+Proof.
+  induction p; intros; 
+    try (specialize (IHp t); destruct IHp as [IH1 [IH2 [IH3 IH4]]]);
+    repeat split; intros;
+    simpl; unfold fire_effect; subst; reduce_eqb;
+    try reflexivity.
+  * compare_next.
+    { rewrite IH2; auto. }
+    { rewrite IH1; auto. }
+  * compare_next.
+    { rewrite IH2; auto. }
+    { rewrite IH1; auto. }
+  * compare_next.
+    { rewrite IH4; auto. }
+    { rewrite IH3; auto. }
+  * compare_next.
+    { rewrite IH4; auto. }
+    { rewrite IH3; auto. }
+Qed.
+
+Lemma path_effect_neq : forall M t1 t2 (p : mg_path M t1 t2) t,
+     t <> t1 -> t <> t2 -> path_effect t p = 0%Z.
+Proof.
+  intros. destruct (path_effect_result M t1 t2 p t) as [IH1 [IH2 [IH3 IH4]]].
+  rewrite IH1; auto.
+Qed.
+    
+Lemma path_effect_eq : forall M t1 t2 (p : mg_path M t1 t2) t,
+      t = t1 -> t = t2 -> path_effect t p = 0%Z.
+Proof.
+  intros. destruct (path_effect_result M t1 t2 p t) as [IH1 [IH2 [IH3 IH4]]].
+  rewrite IH4; auto.
+Qed.
+Lemma path_effect_input : forall M t1 t2 (p : mg_path M t1 t2) t,
+     t = t1 -> t <> t2 -> path_effect t p = 1%Z.
+Proof.
+  intros. destruct (path_effect_result M t1 t2 p t) as [IH1 [IH2 [IH3 IH4]]].
+  rewrite IH2; auto.
+Qed.
+Lemma path_effect_output : forall M t1 t2 (p : mg_path M t1 t2) t,
+     t = t2 -> t <> t1 -> path_effect t p = (-1)%Z.
+Proof.
+  intros. destruct (path_effect_result M t1 t2 p t) as [IH1 [IH2 [IH3 IH4]]].
+  rewrite IH3; auto.
+Qed.
+
+
+  Lemma enabled_fact : forall M t1 t2 (p : mg_path M t1 t2) e m,
+    is_enabled M e m ->
+    (0 <= Z.of_nat (path_cost m p) + path_effect e p)%Z.
   Proof.
     induction p; intros.
-    * simpl. apply fire_effect_plus; auto.
-    * simpl.
-      rewrite fire_effect_plus; auto.
-      rewrite IHp; auto.
-  Abort.
+    +  simpl. unfold fire_effect.
+      repeat compare_next; simpl; try lia.
+      assert (m t1 t2 p > 0). { apply H. }
+      omega.
+    + simpl. specialize (IHp e m H).
+      rewrite Nat2Z.inj_add.
+      repeat rewrite Z.add_assoc.
+      unfold fire_effect.
+      repeat compare_next; simpl; try lia.
+      assert (m _ _ p > 0) by apply H.
+      omega.
+  Qed.
 
   Lemma fire_preserves_paths : forall M t1 t2 (p : mg_path M t1 t2) e m,
     is_enabled M e m ->
-    path_cost (fire e M m) p = path_effect e p (path_cost m p).
+    path_cost (fire e M m) p = addZ (path_cost m p) (path_effect e p).
   Proof.
     intros M t1 t2 p.
     induction p; intros e m Henabled.
-    + simpl. reflexivity. 
-    + simpl.
+    + simpl. unfold fire_effect. unfold fire.
+      repeat compare_next; simpl; auto with addZ.
+      assert (m _ _ p > 0).
+      { apply Henabled. }
+      rewrite addZ_neg1; auto.
+    + assert (Hfact : (0 <= Z.of_nat (path_cost m p0) + path_effect e p0)%Z)
+        by (apply enabled_fact; auto).
+      simpl.
       rewrite IHp; auto.
-      unfold fire.
-      compare_next.
-      ++ unfold is_enabled in Henabled.
-         specialize (Henabled t1 p).
-         unfold fire_effect.
-         reduce_eqb.
-         transitivity (path_effect t2 p0 ((m t1 t2 p - 1) + path_cost m p0)).
-         2:{ f_equal. omega. }
-
-         admit (*??*).
-      ++ compare_next.
-         2:{ 
-   Abort.
-   
+      unfold fire, fire_effect.
+      repeat compare_next; try (simpl; auto with addZ; fail).
+      { rewrite addZ_N_assoc; auto. }
+      { rewrite addZ_N_assoc; auto. }
+      { unfold andb.
+        replace (-1 + path_effect t2 p0)%Z with (path_effect t2 p0 - 1)%Z by lia.
+        rewrite addZ_minus.
+        rewrite addZ_N_assoc; auto.
+        assert (m _ _ p > 0) by apply Henabled.
+        omega.
+      }
+      { unfold andb.
+        rewrite addZ_N_assoc by lia.
+        rewrite addZ_plus; try omega.
+      }
+      { unfold andb.
+        rewrite addZ_N_assoc; auto.
+      }
+  Qed.
+        
 
   Lemma fire_preserves_loops : forall M t (p : mg_loop M t) e m,
     is_enabled M e m ->
     path_cost (fire e M m) p = path_cost m p.
-  Abort.
+  Proof.
+    intros.
+    rewrite fire_preserves_paths; auto.
+    compare e t.
+    { rewrite path_effect_eq; auto with addZ. }
+    { rewrite path_effect_neq; auto with addZ. }
+  Qed.
+
 
   Lemma mg_preserves_loops : forall M ts m,
     {M}⊢ ts ↓ m ->
@@ -442,8 +573,8 @@ Section MarkedGraphs.
       intros t p.
     * reflexivity.
     * subst.
-(*      rewrite fire_preserves_loops; auto.*)
-  Abort.
+      rewrite fire_preserves_loops; auto.
+  Qed.
 
 
 End MarkedGraphs.
@@ -526,7 +657,7 @@ Arguments odd_state {even odd P}.
 Arguments sync_eval {even odd}.
 Arguments is_enabled {transition}.
 
-Arguments fire_tstate {even odd Heven Hodd}.
+(*Arguments fire_tstate {even odd Heven Hodd}.*)
 
 
 Existing Instance event_eq_dec.
@@ -537,18 +668,12 @@ Notation "⟨ c , st ⟩⊢ t ↓ l ↦{ O } v" := (async c st t l O v)
 
 
 Arguments marking {transition}.
-(*Arguments get_marking {transition} M {t1 t2}.*)
 
 
 Arguments t_empty {A}.
 Arguments t_next {A}.
-Infix "▷" := t_next (left associativity, at level 73).
+Infix "▶" := t_next (left associativity, at level 73).
 
-
-(*
-Arguments mg_input_dec {transition place}.
-Arguments mg_output_dec {transition place}.
-*)
 
 Module FE_Tactics.
 
@@ -635,10 +760,10 @@ Ltac inversion_neighbors :=
     | [ |- ⟨_,_⟩⊢ _ ↓ _ ↦{ Transparent } _] =>
       eapply async_transparent;
         [reflexivity | intros l' Hl'; inversion_neighbors; clear Hl'; simpl | ]
-    | [ |- ⟨_,_⟩⊢ _ ▷ Fall ?l ↓ ?l ↦{ Opaque } _ ] =>
+    | [ |- ⟨_,_⟩⊢ _ ▶ Fall ?l ↓ ?l ↦{ Opaque } _ ] =>
       eapply async_opaque_fall; 
         [reflexivity | intros l' Hl'; inversion_neighbors; clear Hl'; simpl | ]
-    | [ |- ⟨_,_⟩⊢ _ ▷ _ ↓ _ ↦{ Opaque } _ ] =>
+    | [ |- ⟨_,_⟩⊢ _ ▶ _ ↓ _ ↦{ Opaque } _ ] =>
       eapply async_opaque; [try discriminate | reflexivity | ]
     | [ |- ⟨_,_⟩⊢ t_empty ↓ _ ↦{ Opaque } _ ] =>
       apply async_nil; reflexivity

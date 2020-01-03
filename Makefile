@@ -1,19 +1,38 @@
-all: RiseDecoupled.vo FallDecoupled.vo Desynchronization.vo
+EXTRA_DIR:=extra
+COQDOCFLAGS:= \
+  --external 'http://ssr2.msr-inria.inria.fr/doc/ssreflect-1.5/' Ssreflect \
+  --external 'http://ssr2.msr-inria.inria.fr/doc/mathcomp-1.5/' MathComp \
+  --toc --toc-depth 2 --html --interpolate \
+  --index indexpage --no-lib-name --parse-comments \
+  --with-header $(EXTRA_DIR)/header.html --with-footer $(EXTRA_DIR)/footer.html
+export COQDOCFLAGS
+COQMAKEFILE:=Makefile.coq
+COQ_PROJ:=_CoqProject
+VS:=$(wildcard *.v)
+VS_IN_PROJ:=$(shell grep .v $(COQ_PROJ))
 
-Monad.vo: Monad.v
-	coqc Monad.v
+ifeq (,$(VS_IN_PROJ))
+VS_OTHER := $(VS)
+else
+VS := $(VS_IN_PROJ)
+endif
 
-Base.vo: Base.v Monad.vo
-	coqc Base.v
+all: html
 
-FlowEquivalence.vo: FlowEquivalence.v Monad.vo Base.vo
-	coqc FlowEquivalence.v
+clean: $(COQMAKEFILE)
+	@$(MAKE) -f $(COQMAKEFILE) $@
+	rm -f $(COQMAKEFILE)
 
-RiseDecoupled.vo: RiseDecoupled.v FlowEquivalence.vo Monad.vo Base.vo
-	coqc RiseDecoupled.v
+html: $(COQMAKEFILE) $(VS)
+	rm -fr html
+	@$(MAKE) -f $(COQMAKEFILE) $@
+	cp $(EXTRA_DIR)/resources/* html
 
-FallDecoupled.vo: FallDecoupled.v FlowEquivalence.vo Monad.vo Base.vo
-	coqc FallDecoupled.v
+$(COQMAKEFILE): $(COQ_PROJ) $(VS)
+		coq_makefile -f $(COQ_PROJ) $(VS_OTHER) -o $@
 
-Desynchronization.vo: Desynchronization.v FlowEquivalence.vo Monad.vo Base.vo
-	coqc Desynchronization.v
+%: $(COQMAKEFILE) force
+	@$(MAKE) -f $(COQMAKEFILE) $@
+force $(COQ_PROJ) $(VS): ;
+
+.PHONY: clean all force

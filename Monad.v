@@ -1,7 +1,7 @@
 Require Import List.
 Require Import Program.
 
-(** ** Type Classes for functors, applicatives, and monads *)
+(** * Type classes for functors, applicatives, and monads *)
 
 Local Notation "f ∘ g" := (fun x => f (g x)) (at level 40, left associativity).
 
@@ -15,6 +15,10 @@ Class Monad (m: Type -> Type) `{M : Applicative m} : Type :=
   { bind: forall {A}, m A -> forall {B}, (A -> m B) -> m B
   }.
 Definition return_ {m : Type -> Type} `{M : Monad m} {A : Type} : A -> m A := pure.
+
+Class MonadTrans (t : (Type -> Type) -> (Type -> Type)) :=
+  { liftT : forall {m} `{Monad m} {A}, m A -> t m A }.
+
 
 (** ** Notations *)
 
@@ -134,7 +138,7 @@ Module Tactics.
     end; simplify_monad).
 End Tactics.
 
-(** * Some classic Monads *)
+(** * Some classic monads *)
 
 Module Instances.
 
@@ -232,12 +236,8 @@ Proof. split.
   - destruct ma; intros; auto.
 Defined.
 
-(** ** Monad Transformers *)
-Class MonadTrans (t : (Type -> Type) -> (Type -> Type)) :=
-  { liftT : forall {m} `{Monad m} {A}, m A -> t m A }.
 
-
-(** Option monad transformer *)
+(** ** Option monad transformer *)
 Definition optionT m (A : Type) : Type := m (option A).
 
 Definition optionT_liftT {m} `{Monad m} {A} (x : m A) : optionT m A.
@@ -280,7 +280,7 @@ Instance optionT_A {f} `{Applicative f} : Applicative (optionT f) :=
 Instance optionT_M {m} `{Monad m} : Monad (optionT m) :=
   { bind := @optionT_bind m _ _ _ }.
 
-(** The Reader monad *)
+(** ** The reader monad *)
 Axiom Eta: forall A (B: A -> Type) (f: forall a, B a), f = fun  a=>f a.
 
 Definition Reader (E : Type) := fun  X => E -> X.
@@ -298,20 +298,11 @@ Instance readerA E : Applicative (Reader E) :=
    liftA := @reader_liftA E }.
 Instance readerM (E : Type): Monad (Reader E) :=
  { bind := @reader_bind E }.
-(*
-(* Checking the 3 laws *)
- - (* unit_left *)
-   intros; apply Eta.
- - (* unit_right *)
-   intros; apply Eta.
- - (* associativity *)
-   reflexivity.
-Defined.
-*)
-(** ** The State monad *)
+
+
+(** ** The state monad *)
 
 Section State.
-(*Axiom Ext: forall A (B: A->Type) (f g: forall a, B a), (forall a, f a = g a) -> f = g.*)
 
   Variable S : Type.
 
