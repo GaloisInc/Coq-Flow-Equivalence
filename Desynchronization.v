@@ -15,6 +15,7 @@ Existing Instance latch_eq_dec.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Program.Equality.
 
+(** * Definition of desynchronization marked graph *)
 Section Desynchronization.
 
 
@@ -41,6 +42,7 @@ Section Desynchronization.
                                       end
     |}.
 
+(** * Specialized is_enabled constraint *)
 Inductive is_enabled_desync : event even odd -> marking desynchronization -> Prop :=
 | latch_fall_enbled l (m : marking desynchronization) :
     0 < m _ _ (latch_fall l) ->
@@ -89,309 +91,11 @@ Arguments desynchronization {even odd}.
     contradiction.
   Qed.
 
-Section OpenPipeline. (* Pipeline A -> B -> C *)
 
-  Inductive o_even := oA | oC.
-  Inductive o_odd := oB.
-  Instance o_even_eq_dec : eq_dec o_even.
-  Proof. 
-    split. intros [ | ] [ | ];
-      try (left; reflexivity); try (right; discriminate).
-  Defined.
-  Instance d_odd_eq_dec : eq_dec o_odd.
-  Proof. 
-    split. intros [ ] [ ];
-      try (left; reflexivity).
-  Defined.
-  Let A : latch o_even o_odd := Even oA.
-  Let B : latch o_even o_odd := Odd oB.
-  Let C : latch o_even o_odd := Even oC.
+(** * Definition of circuit that demonstrates counterexample *)
 
-  Variable next_state_A : value.
-  Variable next_state_B : value -> value.
-  Variable next_state_C : value -> value.
-  Variable init1 : state (latch o_even o_odd).
-
-
-  Program Definition c1 : circuit o_even o_odd :=
-    {| even_odd_neighbors := [ (oA,oB) ]
-     ; odd_even_neighbors := [ (oB,oC) ]
-     ; next_state_e := fun e =>
-        match e with
-        | oA => fun _ => next_state_A
-        | oC => fun st => next_state_C (st (existT _ oB _))
-        end
-     ; next_state_o := fun o =>
-        match o with
-        | oB => fun st => next_state_B (st (existT _ oA _))
-        end
-     |}.
-
-
-  Hypothesis sync_1_2_neq :
-    sync_eval c1 init1 1 C <> sync_eval c1 init1 2 C.
-
-
-  Definition counter_trace1 : trace o_even o_odd :=
-    t_empty ▶ Rise C
-            ▶ Fall B
-            ▶ Fall C
-            ▶ Rise C
-            ▶ Rise B
-            ▶ Fall C
-(* should be an error here *)
-(*
-            ▶ Rise A
-            ▶ Fall B
-            ▶ Fall A
-            ▶ Rise A
-            ▶ Rise B
-            ▶ Fall A
-            ▶ Fall B
-            ▶ Rise C
-            ▶ Rise A
-            ▶ Fall C
-            ▶ Fall A
-*).
-
-    
-    
-
-  Lemma counter_trace_well_formed : exists m, 
-    { desynchronization c1 }⊢ counter_trace1 ↓ m.
-  Proof.
-    eexists.
-    unfold counter_trace1.
-  
-    repeat (try (econstructor; [ | reflexivity | ])); try (econstructor; fail);
-    apply desync_is_enabled_equiv; constructor; auto; intros;
-    inversion_neighbors;
-       try (repeat (unfold fire at 1; simpl; auto); fail).
-  Qed.
-
-
- Lemma counter_eval :
-    ⟨c1,init1⟩⊢ counter_trace1 ↓ C ↦{Opaque}
-        sync_eval c1 init1 1 C.
-  Proof.
-    unfold counter_trace1.
-    repeat async_constructor; reflexivity.
-  Qed.
-
-  Theorem desynchronization_not_flow_equivalent :
-    ~ flow_equivalence (desynchronization c1) c1 init1.
-  Proof.
-    unfold flow_equivalence.
-    apply exists_not_forall.
-    exists C.
-    apply exists_not_forall.
-    exists counter_trace1.
-    apply exists_not_forall.
-    exists (sync_eval c1 init1 1 C).
-    apply exists_not_forall.
-    exists (counter_trace_well_formed).
-    apply exists_not_forall.
-    exists counter_eval.
-
-    replace (num_events (Fall C) counter_trace1) with 2 by reflexivity.
-    apply sync_1_2_neq.
-  Qed.
-End OpenPipeline.
-Reset OpenPipeline.
-
-
-Section EnvPipeline. (* Pipeline ENV <-> A -> B -> C *)
-
-  Inductive e_even := A | C.
-  Inductive e_odd := ENV | B.
-
-
-  Definition eEven : e_even -> latch e_even e_odd := Even.
-  Coercion eEven : e_even >-> latch.
-  Definition eOdd : e_odd -> latch e_even e_odd := Odd.
-  Coercion eOdd : e_odd >-> latch.
-
-  Instance e_even_eq_dec : eq_dec e_even.
-  Proof. 
-    split. intros [ | ] [ | ];
-      try (left; reflexivity); try (right; discriminate).
-  Defined.
-  Instance e_odd_eq_dec : eq_dec e_odd.
-  Proof. 
-    split. intros [ ] [ ];
-      try (left; reflexivity); try (right; discriminate).
-  Defined.
-
-
-  (* The environment is a source, and increments the value passed down the
-  pipeline every time. *)
-  Definition next_state_ENV (vA : value) : value :=
-    match vA with
-    | X => Num 0
-    | Num n => Num (n+1)
-    end.
-
-  (* Each pipeline stage simply forwards its value down the pipeline. *)
-  Let next_state_A (vENV : value) : value := vENV.
-  Let next_state_B (vA : value) : value := vA.
-  Let next_state_C (vB : value) : value := vB.
-
-  Program Definition c : circuit e_even e_odd :=
-    {| even_odd_neighbors := [ (A,ENV); (A,B) ]
-     ; odd_even_neighbors := [ (ENV,A); (B,C) ]
-     ; next_state_e := fun e =>
-        match e with
-        | A => fun st => next_state_A (st (existT _ ENV _))
-        | C => fun st => next_state_C (st (existT _ B _))
-        end
-     ; next_state_o := fun o =>
-        match o with
-        | ENV => fun st => next_state_ENV (st (existT _ A _))
-        | B => fun st => next_state_B (st (existT _ A _))
-        end
-     |}.
-  Definition st0 : state (latch e_even e_odd) := fun l =>
-    match l with
-    | ENV => X
-    | A => Num 0
-    | B => X
-    | C => X
-    end.
-
-
-  Lemma sync_A : forall n,
-    sync_eval c st0 n A = Num n.
-  Proof.
-    induction n; auto.
-    * simpl; unfold odd_state; simpl; unfold even_state; simpl.
-      unfold eEven in IHn.
-      rewrite IHn.
-      simpl.
-      unfold next_state_A. 
-      f_equal. omega.
-  Qed.
-
-  Lemma sync_B : forall n,
-    sync_eval c st0 (S n) B = sync_eval c st0 n A.
-  Proof.
-    induction n; auto. 
-  Qed.
-
-  Lemma sync_C : forall n,  
-    sync_eval c st0 n C = sync_eval c st0 n B.
-  Proof.
-    induction n; auto.
-  Qed.
-
-(*
-  (* facts about Z *)
-  Lemma Pos_n_neq_S : forall (p : positive), p <> (p+1)%positive.
-  Proof.
-    induction p; simpl; try discriminate.
-  Qed.
-  Lemma Pos_n_neq_minus : forall (p : positive), Zneg p <> (Z.pos_sub 1 p)%Z.
-  Proof.
-    intros.
-    induction p; simpl; try discriminate.
-    destruct p; simpl; try discriminate.
-  Qed.
-
-  Lemma Z_n_neq_S : forall (z : Z), z <> (z+1)%Z.
-  Proof.
-    destruct z; auto.
-    discriminate.
-    { simpl. inversion 1. apply (Pos_n_neq_S p). auto. }
-    { simpl. inversion 1. apply (Pos_n_neq_minus p). auto. }
-  Qed.
-*)
-
-  Lemma sync_neq : forall n, sync_eval c st0 n C <> sync_eval c st0 (S n) C.
-  Proof.
-    induction n; auto.
-    * simpl.
-      unfold odd_state; simpl; unfold even_state; simpl;
-      unfold next_state_C, next_state_B.
-      discriminate.
-    * simpl.
-      unfold odd_state; simpl; unfold even_state; simpl;
-      unfold odd_state; simpl; unfold even_state; simpl;
-      unfold next_state_C, next_state_B, next_state_A, next_state_ENV.
-      rewrite sync_A.
-
-      inversion 1. omega.
-  Qed.
-
-
-  Definition counter_trace : trace e_even e_odd :=
-    t_empty ▶ Rise C
-            ▶ Fall B
-            ▶ Fall C
-            ▶ Rise C
-            ▶ Rise B
-            ▶ Fall C
-(*
-            ▶ Rise A
-            ▶ Fall B
-            ▶ Fall A
-            ▶ Rise A
-            ▶ Rise B
-            ▶ Fall A
-            ▶ Fall B
-            ▶ Rise C
-            ▶ Rise A
-            ▶ Fall C
-            ▶ Fall A.
-*).
-
-
-    
-    
-
-  Lemma counter_trace_well_formed : exists m, 
-    { desynchronization c }⊢ counter_trace ↓ m.
-  Proof.
-    eexists.
-    unfold counter_trace.
-  
-    repeat (try (econstructor; [ | reflexivity | ])); try (econstructor; fail);
-    apply desync_is_enabled_equiv; constructor; auto; intros;
-    inversion_neighbors;
-       try (repeat (unfold fire at 1; simpl; auto); fail).
-  Qed.
-
-
- Lemma counter_eval :
-    ⟨c,st0⟩⊢ counter_trace ↓ C ↦{Opaque}
-        sync_eval c st0 1 C.
-  Proof.
-    unfold counter_trace.
-    repeat async_constructor; reflexivity.
-  Qed.
-
-  Theorem desynchronization_not_flow_equivalent2 :
-    ~ flow_equivalence (desynchronization c) c st0.
-  Proof.
-    unfold flow_equivalence.
-    apply exists_not_forall.
-    exists C.
-    apply exists_not_forall.
-    exists counter_trace.
-    apply exists_not_forall.
-    exists (sync_eval c st0 1 C).
-    apply exists_not_forall.
-    exists (counter_trace_well_formed).
-    apply exists_not_forall.
-    exists counter_eval.
-
-    replace (num_events (Fall C) counter_trace) with 2 by reflexivity.
-    apply sync_neq.
-  Qed.
-
-
-End EnvPipeline.
-Reset EnvPipeline.
-
-Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
+(** Pipeline SRC <-> A -> B -> C <-> SNK *)
+Section EnvPipeline. 
 
   Inductive even := A | C.
   Inductive odd := SRC | B | SNK.
@@ -413,14 +117,7 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
       try (left; reflexivity); try (right; discriminate).
   Defined.
 
-  (* The environment is a source, and increments the value passed down the
-  pipeline every time. *)
-  Definition next_state_SRC (vA : value) : value :=
-    match vA with
-    | X => Num 0
-    | Num n => Num (1+n)
-    end.
-  Definition next_state_SNK : value := Num 0.
+  (** The pipeline increments the value received at every stage *)
   Definition inc_value (v : value) : value :=
     match v with
     | Num n => Num (1+n)
@@ -433,9 +130,6 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
     intros [x | ] [y | ] Heq; auto; simpl in *;
       inversion Heq; auto.
   Qed.
-    
-
-  
 
   Program Definition c : circuit even odd :=
     {| even_odd_neighbors := [ (A,SRC); (A,B); (C,SNK) ]
@@ -448,15 +142,14 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
      ; next_state_o := fun o =>
         match o with
         | SRC => fun st => inc_value (st (existT _ A _))
-        | B => fun st => inc_value (st (existT _ A _))
+        | B => fun st   => inc_value (st (existT _ A _))
         | SNK => fun st => Num 0
         end
      |}.
   Definition st0 : state (latch even odd) := fun l => X.
-(*    match l with
-    | SRC => Num 0
-    | _ => X
-    end.*)
+
+
+  (** ** Lemmas about the behavior of each latch *)
 
   Lemma sync_A : forall n,
     sync_eval c st0 n A = match n with
@@ -500,6 +193,7 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
   Qed.
 
 
+  (** ** Counterexample trace *)
   Definition counter_trace : trace even odd :=
     t_empty ▶ Fall SNK ▶ Rise C
             ▶ Fall B
@@ -507,8 +201,8 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
             ▶ Rise SNK ▶ Fall SNK ▶ Rise C
             ▶ Rise B
             ▶ Fall C
+(** The trace illustrated in the figure continues as follows *)
 (*
-            (* could stop here *)
             ▶ Rise SRC ▶ Fall SRC ▶ Rise A
             ▶ Fall B
             ▶ Fall A
@@ -523,6 +217,7 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
 *).
 
 
+  (** The counterexample is consistent with the desynchronization protocol. *)
   Lemma counter_trace_well_formed : exists m, 
     { desynchronization c }⊢ counter_trace ↓ m.
   Proof.
@@ -536,6 +231,7 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
   Qed.
 
 
+  (** The counterexample results in C having the value C_1 instead of C_2. *)
  Lemma counter_eval :
     ⟨c,st0⟩⊢ counter_trace ↓ C ↦{Opaque}
         sync_eval c st0 1 C.
@@ -544,6 +240,7 @@ Section EnvPipeline. (* Pipeline SRC <-> A -> B -> C <-> SNK *)
     repeat async_constructor; reflexivity.
   Qed.
 
+  (** ** Proof that desynchronization is violated *)
   Theorem desynchronization_not_flow_equivalent2 :
     ~ flow_equivalence (desynchronization c) c st0.
   Proof.

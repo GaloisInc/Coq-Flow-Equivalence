@@ -16,7 +16,7 @@ Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Program.Equality.
 
 
-
+(** * Definition of rise-decoupled marked graph *)
 Section RiseDecoupled.
 
   Context (even odd : Set).
@@ -51,6 +51,7 @@ Section RiseDecoupled.
 
 Open Scope nat_scope.
 
+(** * Specialized is_enabled predicate *)
 Inductive is_enabled_RD : event even odd -> marking rise_decoupled -> Prop :=
 | fall_enabled_RD l (m : marking rise_decoupled) :
     0 < m _ _ (latch_fall l) ->
@@ -103,6 +104,8 @@ Ltac get_enabled_constraints :=
 *)
   specialize_enabled_constraints.
 
+
+(** * Helper lemmas *)
 Lemma rd_loop : forall t m,
     {rise_decoupled}⊢ t ↓ m ->
     forall l,
@@ -110,17 +113,6 @@ Lemma rd_loop : forall t m,
 Proof.
   intros t m Ht l.
   solve_loop. destruct l; auto.
-
-(*    
-  intros t m Hm.
-  induction Hm; intros [O | E]; try reflexivity.
-  + specialize (IHHm (Odd O)).
-    subst; unfold fire;
-    repeat compare_next; get_enabled_constraints; try omega.
-  + specialize (IHHm (Even E)).
-    subst; unfold fire;
-    repeat compare_next; get_enabled_constraints; try omega.
-*)
 Qed.
 
 
@@ -133,18 +125,6 @@ Proof.
   intros.
   solve_loop.
   inversion pf; auto.
-
-(*
-  intros t m Hm.
-  induction Hm; intros [O | E] [O' | E'] pf;
-    try reflexivity;
-    find_event_contradiction;
-    subst; unfold fire;
-    repeat (compare_next; find_event_contradiction);
-      get_enabled_constraints;
-      simpl in *;
-      try omega.
-*)
 Qed.
 
 Lemma fall_enabled_opaque : forall t m,
@@ -246,6 +226,7 @@ Proof.
 Qed.
   
 
+(** * Flow equivalence proof *)
 Theorem rise_decoupled_flow_equivalence : flow_equivalence rise_decoupled c init_st.
 Proof.
   intros l t v [m Hm] Hrel.

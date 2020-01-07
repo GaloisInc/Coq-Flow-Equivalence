@@ -17,9 +17,11 @@ by (anonymous), in submission to ASYNC 2020.
 * `FallDecoupled.v`: Proof that the fall decoupled protocol satisfies flow equivalence.
 * `Desynchronization.v`: Counterexample to Cortadella et al's proof tha the desynchronization protocol satisfies flow equivalence.
 
-## Installing Coq
+## Building the project and documentation
 
-The best way to install Coq is via [opam](https://coq.inria.fr/opam-using.html). You can then compile the sources, checking that the proofs in the files go through, by calling `make`. This will also generate html files in the `html` subdirectory, which you can explore starting from the table of contents page `html/toc.html`.
+The best way to install Coq is via [opam](https://coq.inria.fr/opam-using.html). You can then compile the sources, checking that the proofs in the files go through, by calling `make`. If the files compile with no errors, all the proofs have been verified.
+
+`make` will also generate documentation in the `html` subdirectory, which you can explore starting from the table of contents page `html/toc.html`.
 
 The development currently compiles with Coq 8.8.1.
 

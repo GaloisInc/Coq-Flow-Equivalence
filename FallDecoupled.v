@@ -18,7 +18,7 @@ Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Program.Equality.
 Require Import Omega. 
 
-
+(** * Definition of fall-decoupled marked graph *)
 Section FallDecoupled.
 
   Context (even odd : Set).
@@ -54,6 +54,7 @@ Section FallDecoupled.
    |}.
 
 
+(** * Specialized is_enabled predicate *)
 Inductive is_enabled_FD : event even odd -> marking fall_decoupled -> Prop :=
 
 | fall_enabled_FD l (m : marking fall_decoupled) :
@@ -99,7 +100,7 @@ Ltac get_enabled_constraints :=
   | [ H : is_enabled fall_decoupled _ _ |- _ ] => apply is_enabled_FD_equiv in H; inversion H; subst
   end; specialize_enabled_constraints.
 
-
+(** * Helper lemmas *)
 Section loop_lemmas.
 
   Variable t : trace even odd.
@@ -357,7 +358,9 @@ Section fd_lemmas.
   
 End fd_lemmas.
 
+  (** * Flow equivalence proof *)
 
+  (** Induction invariant *)
   Lemma fall_decoupled_strong : forall l t o v,
     ⟨ c , init_st ⟩⊢ t ↓ l ↦{ o } v ->
       forall m, {fall_decoupled}⊢ t ↓ m ->
@@ -433,6 +436,7 @@ End fd_lemmas.
 Qed.
 
 
+  (** Main theorem statement *)
   Theorem fall_decoupled_flow_equivalence :
     flow_equivalence fall_decoupled c init_st.
   Proof.
