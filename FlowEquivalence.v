@@ -383,202 +383,55 @@ Section MarkedGraphs.
     + simpl. auto.
     + simpl. rewrite <- IHp1. omega.
   Qed.
-    
-
-  Definition addZ (n : nat) (z : Z) : nat := Z.to_nat (Z.of_nat n + z).
-
-Lemma addZ_N_assoc : forall n1 n2 z,
-    (0 <= Z.of_nat n2 + z)%Z ->
-    addZ (n1 + n2) z = n1 + addZ n2 z.
-Proof.
-  intros.
-  unfold addZ. 
-  rewrite Nat2Z.inj_add.
-
-  rewrite <- Z.add_assoc.
-  rewrite Z2Nat.inj_add.
-  2:{ apply Nat2Z.is_nonneg. }
-  rewrite Nat2Z.id; auto.
-  auto.
-Qed.
-
-Lemma addZ_0 : forall n, addZ n 0%Z = n.
-Proof.
-  intros. unfold addZ. 
-  replace (Z.of_nat n + 0)%Z with (Z.of_nat n) by lia.
-  rewrite Nat2Z.id.
-  reflexivity.
-Qed.
-Hint Resolve addZ_0 : addZ.
-Lemma addZ_neg1 : forall n, n > 0 -> addZ n (-1) = n - 1.
-Proof.
-  intros. unfold addZ.
-  replace (Z.of_nat n + (-1))%Z with (Z.of_nat (n-1)) by lia.
-  rewrite Nat2Z.id. reflexivity.
-Qed.
-Hint Resolve addZ_neg1 : addZ.
-
-Lemma addZ_minus : forall n z, addZ n (z - 1) = addZ n z - 1.
-Proof.
-  intros. unfold addZ.
-  rewrite Z.add_sub_assoc.
-  rewrite Z2Nat.inj_sub; auto.
-  lia.
-Qed.
-
-Lemma addZ_pos1 : forall n, addZ n 1 = n + 1.
-Proof.
-  intros. unfold addZ.
-  replace (Z.of_nat n + 1)%Z with (Z.of_nat (n+1)) by lia.
-  rewrite Nat2Z.id. reflexivity.
-Qed.
-Hint Resolve addZ_pos1 : addZ.
-
-Lemma addZ_plus : forall n z, (0 <= Z.of_nat n + z)%Z -> addZ n (1+z) = 1+addZ n z.
-Proof.
-  intros. unfold addZ.
-  transitivity (Z.to_nat (1 + (Z.of_nat n + z))%Z).
-  { f_equal. lia. }
-
-  rewrite Z2Nat.inj_add; auto.
-  { lia. }
-Qed.
 
 
-  (** After firing the transition t, update the accumulator by the effect on the place p. *)
-  Definition fire_effect (t : transition) {M t1 t2} (p : place M t1 t2) : Z :=
-    if andb (t =? t2) (t =? t1) then 0
-    else if t =? t1 then 1
-    else if t =? t2 then -1
-    else 0.
+  Lemma path_cost_enabled : forall M t m,
+    is_enabled M t m ->
+    forall t0 (p : mg_path M t0 t),
+    path_cost m p > 0.
+  Proof.
+    intros M t m Henabled t0 p.
+    induction p; auto.
+    * simpl. apply Henabled.
+    * simpl.
+      specialize (IHp Henabled).
+      omega.
+  Qed.
 
-  (** After firing the transition t, update the accumulator by the effect on the path p. *)
-  Fixpoint path_effect (t : transition) {M t1 t2} (p : mg_path M t1 t2) : Z :=
-    match p with
-    | mg_single_path p => fire_effect t p
-    | mg_step_path p p' => fire_effect t p + path_effect t p'
+  Ltac specialize_and_rewrite_IH :=
+    repeat match goal with
+    | [ H : ?x, IH : ?x -> ?z |- _ ] => specialize (IH H)
+    | [ IH : ?x = ?x -> ?z |- _ ] => specialize (IH eq_refl)
+    | [ IH : ?x = ?y |- context[?x] ] => rewrite IH
     end.
 
-
-
-
-Lemma path_effect_result : forall M t1 t2 (p : mg_path M t1 t2) t,
-     (t <> t1 -> t <> t2 -> path_effect t p = 0%Z)
-  /\ (t = t1 -> t <> t2 -> path_effect t p = 1%Z)
-  /\ (t = t2 -> t <> t1 -> path_effect t p = (-1)%Z )
-  /\ (t = t1 -> t = t2 -> path_effect t p = 0%Z).
-Proof.
-  induction p; intros; 
-    try (specialize (IHp t); destruct IHp as [IH1 [IH2 [IH3 IH4]]]);
-    repeat split; intros;
-    simpl; unfold fire_effect; subst; reduce_eqb;
-    try reflexivity.
-  * compare_next.
-    { rewrite IH2; auto. }
-    { rewrite IH1; auto. }
-  * compare_next.
-    { rewrite IH2; auto. }
-    { rewrite IH1; auto. }
-  * compare_next.
-    { rewrite IH4; auto. }
-    { rewrite IH3; auto. }
-  * compare_next.
-    { rewrite IH4; auto. }
-    { rewrite IH3; auto. }
-Qed.
-
-Lemma path_effect_neq : forall M t1 t2 (p : mg_path M t1 t2) t,
-     t <> t1 -> t <> t2 -> path_effect t p = 0%Z.
-Proof.
-  intros. destruct (path_effect_result M t1 t2 p t) as [IH1 [IH2 [IH3 IH4]]].
-  rewrite IH1; auto.
-Qed.
-    
-Lemma path_effect_eq : forall M t1 t2 (p : mg_path M t1 t2) t,
-      t = t1 -> t = t2 -> path_effect t p = 0%Z.
-Proof.
-  intros. destruct (path_effect_result M t1 t2 p t) as [IH1 [IH2 [IH3 IH4]]].
-  rewrite IH4; auto.
-Qed.
-Lemma path_effect_input : forall M t1 t2 (p : mg_path M t1 t2) t,
-     t = t1 -> t <> t2 -> path_effect t p = 1%Z.
-Proof.
-  intros. destruct (path_effect_result M t1 t2 p t) as [IH1 [IH2 [IH3 IH4]]].
-  rewrite IH2; auto.
-Qed.
-Lemma path_effect_output : forall M t1 t2 (p : mg_path M t1 t2) t,
-     t = t2 -> t <> t1 -> path_effect t p = (-1)%Z.
-Proof.
-  intros. destruct (path_effect_result M t1 t2 p t) as [IH1 [IH2 [IH3 IH4]]].
-  rewrite IH3; auto.
-Qed.
-
-
-  Lemma enabled_fact : forall M t1 t2 (p : mg_path M t1 t2) e m,
-    is_enabled M e m ->
-    (0 <= Z.of_nat (path_cost m p) + path_effect e p)%Z.
+  Lemma fire_preserves_paths : forall M t m, is_enabled M t m ->
+     forall t1 t2 (p : mg_path M t1 t2),
+     (t <> t1 -> t <> t2 -> path_cost (fire t M m) p = path_cost m p)
+  /\ (t = t1  -> t <> t2 -> path_cost (fire t M m) p = path_cost m p + 1)
+  /\ (t = t2  -> t <> t1 -> path_cost (fire t M m) p = path_cost m p - 1)
+  /\ (t = t1  -> t = t2  -> path_cost (fire t M m) p = path_cost m p).
   Proof.
-    induction p; intros.
-    +  simpl. unfold fire_effect.
-      repeat compare_next; simpl; try lia.
-      assert (m t1 t2 p > 0). { apply H. }
+    intros M t m Henabled t1 t2 p;
+    induction p;
+      repeat split; intros;
+      try (destruct IHp as [IH1 [IH2 [IH3 IH4]]]);
+      simpl; unfold fire at 1; subst; reduce_eqb;
+        try reflexivity;
+        specialize_and_rewrite_IH.
+    * compare_next; auto.
+    * repeat compare_next; specialize_and_rewrite_IH; auto.
+      specialize (Henabled _ p).
       omega.
-    + simpl. specialize (IHp e m H).
-      rewrite Nat2Z.inj_add.
-      repeat rewrite Z.add_assoc.
-      unfold fire_effect.
-      repeat compare_next; simpl; try lia.
-      assert (m _ _ p > 0) by apply H.
+    * compare_next; specialize_and_rewrite_IH; auto; try omega.
+    * assert (path_cost m p0 > 0). { apply path_cost_enabled; auto. }
+      repeat compare_next; specialize_and_rewrite_IH; auto; try omega.
+      assert (m t1 t2 p > 0). { apply Henabled. }
+      omega.
+    * repeat compare_next; specialize_and_rewrite_IH; auto; try omega.
+      assert (path_cost m p0 > 0). { apply path_cost_enabled; auto. }
       omega.
   Qed.
-
-  Lemma fire_preserves_paths : forall M t1 t2 (p : mg_path M t1 t2) e m,
-    is_enabled M e m ->
-    path_cost (fire e M m) p = addZ (path_cost m p) (path_effect e p).
-  Proof.
-    intros M t1 t2 p.
-    induction p; intros e m Henabled.
-    + simpl. unfold fire_effect. unfold fire.
-      repeat compare_next; simpl; auto with addZ.
-      assert (m _ _ p > 0).
-      { apply Henabled. }
-      rewrite addZ_neg1; auto.
-    + assert (Hfact : (0 <= Z.of_nat (path_cost m p0) + path_effect e p0)%Z)
-        by (apply enabled_fact; auto).
-      simpl.
-      rewrite IHp; auto.
-      unfold fire, fire_effect.
-      repeat compare_next; try (simpl; auto with addZ; fail).
-      { rewrite addZ_N_assoc; auto. }
-      { rewrite addZ_N_assoc; auto. }
-      { unfold andb.
-        replace (-1 + path_effect t2 p0)%Z with (path_effect t2 p0 - 1)%Z by lia.
-        rewrite addZ_minus.
-        rewrite addZ_N_assoc; auto.
-        assert (m _ _ p > 0) by apply Henabled.
-        omega.
-      }
-      { unfold andb.
-        rewrite addZ_N_assoc by lia.
-        rewrite addZ_plus; try omega.
-      }
-      { unfold andb.
-        rewrite addZ_N_assoc; auto.
-      }
-  Qed.
-        
-
-  Lemma fire_preserves_loops : forall M t (p : mg_loop M t) e m,
-    is_enabled M e m ->
-    path_cost (fire e M m) p = path_cost m p.
-  Proof.
-    intros.
-    rewrite fire_preserves_paths; auto.
-    compare e t.
-    { rewrite path_effect_eq; auto with addZ. }
-    { rewrite path_effect_neq; auto with addZ. }
-  Qed.
-
 
   (** Main loop lemma *)
   Lemma mg_preserves_loops : forall M ts m,
@@ -591,7 +444,13 @@ Qed.
       intros t p.
     * reflexivity.
     * subst.
-      rewrite fire_preserves_loops; auto.
+
+      set (H := fire_preserves_paths M e m Henabled _ _ p).
+      destruct H as [Hneq [_ [_ Heq]]].
+
+      compare e t.
+      { rewrite Heq; auto. }
+      { rewrite Hneq; auto. }
   Qed.
 
 
