@@ -26,3 +26,7 @@ The best way to install Coq is via [opam](https://coq.inria.fr/opam-using.html).
 The development currently compiles with Coq 8.8.1.
 
 To explore the development interactively, you will need to install an IDE, either [ProofGeneral](https://proofgeneral.github.io/#quick-installation-instructions) (an emacs plugin) or CoqIDE (which can also be installed using opam via the link above).
+
+Acknwoledgement:
+
+This material is based upon work supported by the Defense Advanced Research Projects Agency (DARPA) under Contract No. HR0011-19-C-0070. The views, opinions, and/or findings expressed are those of the author(s) and should not be interpreted as representing the official views or policies of the Department of Defense or the U.S. Government.
