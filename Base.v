@@ -44,6 +44,16 @@ Proof.
     right; inversion 1; contradiction.
 Defined.
 
+(** * Snoc/tail lists *)
+
+Inductive tail_list (A : Type) :=
+| t_empty : tail_list A
+| t_next : tail_list A -> A -> tail_list A.
+Arguments t_empty {A}.
+Arguments t_next {A}.
+Infix "▶" := t_next (left associativity, at level 73).
+
+
 
 (** * Tactics *)
 

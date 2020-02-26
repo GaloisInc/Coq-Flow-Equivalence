@@ -1,7 +1,9 @@
 -R ./ FE
 Monad.v
 Base.v
+MarkedGraph.v
 FlowEquivalence.v
+FlowEquivalenceFlop.v
 RiseDecoupled.v
 FallDecoupled.v
 Desynchronization.v
