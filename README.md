@@ -6,7 +6,8 @@ The formalization is presented in the paper
 
 > "Formal Verification of Flow Equivalence in Desynchronized Designs"
 
-by (anonymous), in submission to ASYNC 2020.
+by Jennifer Paykin, Brian Huffman, Daniel M. Zimmerman, and Peter Beerel, 
+to appear at ASYNC 2020, Snowbird, Utah, USA.
 
 ## Files in this directory
 
