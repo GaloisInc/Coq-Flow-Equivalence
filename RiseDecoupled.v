@@ -254,3 +254,10 @@ Proof.
   Qed.
 
 End RiseDecoupled.
+
+Arguments rise_decoupled {even odd}.
+Ltac RD_get_enabled_constraints :=
+  try match goal with
+  | [ H : is_enabled rise_decoupled _ _ |- _ ] => apply is_enabled_RD_equiv in H; inversion H; subst
+  end;
+  specialize_enabled_constraints.

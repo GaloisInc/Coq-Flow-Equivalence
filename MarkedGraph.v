@@ -167,7 +167,7 @@ Notation "{ MG }⊢ s ↓ m" := (mg_reachable MG s m) (no associativity, at leve
 Arguments place {transition}.
 Arguments init_marking {transition}.
 Arguments is_enabled {transition}.
-Arguments fire {transition place} t M {Hinput Houtput} : rename.
+Arguments fire {transition Htransition} t M : rename.
 Arguments marking {transition}.
 
 Ltac solve_loop :=
