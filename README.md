@@ -1,4 +1,4 @@
-Contains a Coq formalization of flow equivalence, adapted from 
+This repository contains a Coq formalization of flow equivalence, adapted from 
 
 > Cortadella, Jordi, Alex Kondratyev, Luciano Lavagno, and Christos P. Sotiriou. "Desynchronization: Synthesis of asynchronous circuits from synchronous specifications." IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 25, no. 10 (2006). DOI 10.1109/TCAD.2005.860958.
 
@@ -28,6 +28,6 @@ The development currently compiles with Coq 8.8.1.
 
 To explore the development interactively, you will need to install an IDE, either [ProofGeneral](https://proofgeneral.github.io/#quick-installation-instructions) (an emacs plugin) or CoqIDE (which can also be installed using opam via the link above).
 
-Acknwoledgement:
+## Acknowledgment
 
 This material is based upon work supported by the Defense Advanced Research Projects Agency (DARPA) under Contract No. HR0011-19-C-0070. The views, opinions, and/or findings expressed are those of the author(s) and should not be interpreted as representing the official views or policies of the Department of Defense or the U.S. Government. Distribution Statement "A" (Approved for Public Release, Distribution Unlimited).
