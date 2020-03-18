@@ -107,7 +107,7 @@ Ltac get_enabled_constraints :=
 
 (** * Helper lemmas *)
 Lemma rd_loop : forall t m,
-    {rise_decoupled}⊢ t ↓ m ->
+    [rise_decoupled]⊢ t ↓ m ->
     forall l,
     m _ _ (latch_fall l) + m _ _ (latch_rise l) = 1.
 Proof.
@@ -117,7 +117,7 @@ Qed.
 
 
 Lemma rd_loop_neighbor : forall t m,
-    {rise_decoupled}⊢ t ↓ m ->
+    [rise_decoupled]⊢ t ↓ m ->
     forall l l' (pf : neighbor c l l'),
       m _ _ (latch_fall l) + m _ _ (neighbor_fall_fall _ _ pf)
                            + m _ _ (neighbor_fall_rise _ _ pf) = 1.
@@ -128,7 +128,7 @@ Proof.
 Qed.
 
 Lemma fall_enabled_opaque : forall t m,
-    {rise_decoupled}⊢ t ↓ m ->
+    [rise_decoupled]⊢ t ↓ m ->
     forall l l' (pf : neighbor c l l'),
     0 < m _ _ (neighbor_fall_fall l l' pf) ->
     transparent t l = Opaque.
@@ -154,7 +154,7 @@ Proof.
 Qed.
 
 Lemma fall_enabled_even_odd_strong : forall t m,
-    {rise_decoupled}⊢ t ↓ m ->
+    [rise_decoupled]⊢ t ↓ m ->
     forall E O (pf : neighbor c (Even E) (Odd O)),
     (0 < m _ _ (neighbor_fall_fall _ _ pf) ->
         num_events (Fall (Odd O)) t = num_events (Fall (Even E)) t) /\
@@ -181,7 +181,7 @@ Qed.
 
 
 Lemma fall_enabled_odd_even_strong : forall t m,
-    {rise_decoupled}⊢ t ↓ m ->
+    [rise_decoupled]⊢ t ↓ m ->
     forall O E (pf : neighbor c (Odd O) (Even E)),
     (0 < m _ _ (neighbor_fall_fall _ _ pf) ->
         num_events (Fall (Odd O)) t = 1+num_events (Fall (Even E)) t) /\
@@ -209,7 +209,7 @@ Qed.
 
 
 Lemma fall_enabled_num_events : forall t m,
-    {rise_decoupled}⊢ t ↓ m ->
+    [rise_decoupled]⊢ t ↓ m ->
     forall l, is_enabled rise_decoupled (Fall l) m ->
     forall l', neighbor c l' l ->
     num_events (Fall l') t = match l with

@@ -132,8 +132,8 @@ Section EnvPipeline.
   Qed.
 
   Program Definition c : circuit even odd :=
-    {| even_odd_neighbors := [ (A,SRC); (A,B); (C,SNK) ]
-     ; odd_even_neighbors := [ (SRC,A); (B,C); (SNK,C) ]
+    {| even_odd_neighbors := (A,SRC) :: (A,B) :: (C,SNK) :: nil
+     ; odd_even_neighbors := (SRC,A) :: (B,C) :: (SNK,C) :: nil
      ; next_state_e := fun e =>
         match e with
         | A => fun st => st (existT _ SRC _)
@@ -219,7 +219,7 @@ Section EnvPipeline.
 
   (** The counterexample is consistent with the desynchronization protocol. *)
   Lemma counter_trace_well_formed : exists m, 
-    { desynchronization c }⊢ counter_trace ↓ m.
+    [ desynchronization c ]⊢ counter_trace ↓ m.
   Proof.
     eexists.
     unfold counter_trace.

@@ -106,7 +106,7 @@ Section loop_lemmas.
   Variable t : trace even odd.
   Variable m : marking fall_decoupled.
 
-  Hypothesis fd_t_m : {fall_decoupled}⊢ t ↓ m.
+  Hypothesis fd_t_m : [fall_decoupled]⊢ t ↓ m.
 
   Lemma fd_loop : forall l,
     m _ _ (latch_fall l) + m _ _ (latch_rise l) = 1.
@@ -150,7 +150,7 @@ Section fd_lemmas.
   Variable t : trace even odd.
   Variable m : marking fall_decoupled.
 
-  Hypothesis fd_t_m : {fall_decoupled}⊢ t ↓ m.
+  Hypothesis fd_t_m : [fall_decoupled]⊢ t ↓ m.
 
   Lemma marking_fall : forall l,
     m _ _ (latch_fall l) = match transparent t l with
@@ -363,7 +363,7 @@ End fd_lemmas.
   (** Induction invariant *)
   Lemma fall_decoupled_strong : forall l t o v,
     ⟨ c , init_st ⟩⊢ t ↓ l ↦{ o } v ->
-      forall m, {fall_decoupled}⊢ t ↓ m ->
+      forall m, [fall_decoupled]⊢ t ↓ m ->
       forall n,
       n = match l with
           | Odd _  => 1+num_events (Rise l) t

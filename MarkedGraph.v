@@ -36,17 +36,17 @@ Section MarkedGraphs.
         else m _ _ p.
 
   (** Reachability *)
-  Reserved Notation "{ MG }⊢ t ↓ m" (no associativity, at level 90). 
+  Reserved Notation "[ MG ]⊢ t ↓ m" (no associativity, at level 90). 
   Inductive mg_reachable (M : marked_graph)
                         : tail_list transition -> marking M -> Prop :=
-  | mg_empty : {M}⊢ t_empty ↓ init_marking M
+  | mg_empty : [M]⊢ t_empty ↓ init_marking M
   | mg_cons : forall e m m' t',
     is_enabled M e m ->
     fire e M m = m' ->
-    {M}⊢ t' ↓ m ->
-    {M}⊢ t' ▶ e ↓ m'
+    [M]⊢ t' ↓ m ->
+    [M]⊢ t' ▶ e ↓ m'
   where
-    "{ MG }⊢ t ↓ m'" := (mg_reachable MG t m').
+    "[ MG ]⊢ t ↓ m'" := (mg_reachable MG t m').
 
 
   (** * Loop lemmas *)
@@ -139,7 +139,7 @@ Section MarkedGraphs.
 
   (** Main loop lemma *)
   Lemma mg_preserves_loops : forall M ts m,
-    {M}⊢ ts ↓ m ->
+    [M]⊢ ts ↓ m ->
     forall t (p : mg_loop M t),
       path_cost m p = path_cost (init_marking M) p.
   Proof.
@@ -161,7 +161,7 @@ Section MarkedGraphs.
 End MarkedGraphs.
 
 Arguments mg_reachable {transition Htransition} M.
-Notation "{ MG }⊢ s ↓ m" := (mg_reachable MG s m) (no associativity, at level 90).
+Notation "[ MG ]⊢ s ↓ m" := (mg_reachable MG s m) (no associativity, at level 90).
 
 
 Arguments place {transition}.
@@ -174,7 +174,7 @@ Ltac solve_loop :=
   repeat rewrite path_cost_single;
   repeat rewrite path_cost_step;
   match goal with
-  [ H : { ?M }⊢ _ ↓ _ |- _ ] => rewrite (@mg_preserves_loops _ _ M _ _ H) 
+  [ H : [ ?M ]⊢ _ ↓ _ |- _ ] => rewrite (@mg_preserves_loops _ _ M _ _ H) 
   end;
   simpl.
 

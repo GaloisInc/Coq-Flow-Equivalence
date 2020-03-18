@@ -299,7 +299,7 @@ Section FlowEquivalence.
                               (c : circuit) 
                               (st0 : state latch) :=
     forall l t v,
-      (exists m, {M}⊢ t ↓ m) ->
+      (exists m, [M]⊢ t ↓ m) ->
       ⟨c,st0⟩⊢ t ↓ l ↦{Opaque} v ->
        v = sync_eval c st0 (num_events (Fall l) t) l.
 
