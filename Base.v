@@ -10,6 +10,8 @@ Require Import List.
 Import ListNotations.
 Open Scope list_scope.
 
+Require Import Coq.Sets.Ensembles.
+
 
 (** * Decidable equality *)
 Class eq_dec A := { Dec : forall (a b : A), {a = b} + {a <> b} }.
@@ -54,6 +56,18 @@ Arguments t_next {A}.
 Infix "▶" := t_next (left associativity, at level 73).
 
 
+
+(** ** Ensemble notation *)
+Module EnsembleNotation.
+Notation "x ∈ X" := (In _ X x) : ensemble_scope.
+Notation "X ∪ Y" := (Union _ X Y) (at level 50) : ensemble_scope.
+Notation "X ∩ Y" := (Intersection _ X Y) (at level 50) : ensemble_scope.
+Notation "X ⊥ Y" := (Disjoint _ X Y) (at level 90) : ensemble_scope.
+Notation "X ∖ Y" := (Setminus _ X Y) (at level 40) : ensemble_scope.
+Notation "X ⊆ Y" := (Included _ X Y) (at level 80) : ensemble_scope.
+Notation "X == Y" := (Same_set _ X Y) (at level 90) : ensemble_scope.
+Notation "∅" := (Empty_set _) : ensemble_scope.
+End EnsembleNotation.
 
 (** * Tactics *)
 

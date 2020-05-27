@@ -383,5 +383,73 @@ Instance stateM_correct {A} : Monad_Correct (State A).
       reflexivity.
   Qed.
 
+(** ** The Ensemble monad *)
+Require Import Coq.Sets.Ensembles.
+
+Instance ensemble_F : Functor Ensemble.
+Proof.
+  split; intros A B f X.
+  intros b.
+  exact (exists (a : A), In _ X a /\ f a = b).
+Defined.
+Instance ensemble_A : Applicative Ensemble.
+Proof.
+  split.
+  * intros A a. exact (Singleton _ a).
+  * intros A B F X b.
+    exact (exists f, F f /\ exists a, X a /\ f a = b).
+Defined.
+Instance ensemble_M : Monad Ensemble.
+Proof.
+  split.
+  intros A X B f.
+  intros b.
+  exact (exists a, X a /\ f a b).
+Defined.
+
+Ltac solve_ensemble_law :=
+    repeat match goal with
+    | [ |- forall x, _] => intros
+    | [ |- ?A -> ?B ] => intros
+    | [ |- ?A <-> ?B ] => split; simpl
+    | [ H : In _ _ _ |- _ ] => unfold In in H
+    | [ H : exists x, _ |- _] => destruct H; subst
+    | [ H : _ /\ _ |- _] => destruct H; subst
+    | [ H : Singleton _ _ _ |- _ ] => inversion H; subst; clear H
+    | [ |- _ = _] => apply functional_extensionality
+
+    (* irreversible *)
+    (* this admit here is because the monad laws assert the results should be equal, but we only know that the propositions are equivalent *)
+    | [ |- ?P = ?Q ] => assert (P <-> Q); [ | admit]
+    end; 
+      repeat (try eexists; try split); eauto.
+
+
+Instance ensemble_F_correct : Functor_Correct Ensemble.
+Proof.
+  split.
+  * solve_ensemble_law.
+  * solve_ensemble_law.
+Admitted.
+
+Instance ensemble_A_correct : Applicative_Correct Ensemble.
+Proof.
+  split.
+  * solve_ensemble_law.
+  * solve_ensemble_law.
+  * solve_ensemble_law. 
+  * solve_ensemble_law.
+Admitted.
+
+Instance ensemble_M_correct : Monad_Correct Ensemble.
+Proof.
+  split.
+  * solve_ensemble_law.
+  * solve_ensemble_law.
+  * solve_ensemble_law. 
+Admitted.
+
+
 
 End Instances.
+
