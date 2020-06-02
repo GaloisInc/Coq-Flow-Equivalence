@@ -22,15 +22,15 @@ Class MonadTrans (t : (Type -> Type) -> (Type -> Type)) :=
 
 (** ** Notations *)
 
-Module Notations.
+Module MonadNotations.
   Notation "f <*> a" := (liftA f a) (left associativity, at level 64) : monad_scope.
   Notation "a >>= f" := (bind a f)  (left associativity, at level 66) : monad_scope.
   Notation "a >> b" := (bind a (fun _ => b)) (at level 66, left associativity) : monad_scope.
   Notation "'do' a ← e ; c" := (bind e (fun a => c)) (at level 80, right associativity) : monad_scope.
   Notation "'do' ( a , b ) ← e ; c" := (bind e (fun x => let (a,b) := x in c)) (at level 80, right associativity) : monad_scope.
-End Notations.
+End MonadNotations.
 
-Import Notations.
+Import MonadNotations.
 Open Scope monad_scope.
 
 (** ** Functor, Applicative, and Monad Laws *)

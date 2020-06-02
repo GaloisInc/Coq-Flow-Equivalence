@@ -10,7 +10,7 @@ Require Import List.
 Import ListNotations.
 Open Scope list_scope.
 
-Require Import Coq.Sets.Ensembles.
+Require Export Coq.Sets.Ensembles.
 
 
 (** * Decidable equality *)
@@ -46,6 +46,17 @@ Proof.
     right; inversion 1; contradiction.
 Defined.
 
+Instance option_eq_dec {A} `{eq_dec A} : eq_dec (option A).
+Proof.
+  constructor.
+  intros [a | ] [b | ];
+    try (left; reflexivity);
+    try (right; discriminate).
+  destruct (Dec a b); subst;
+    try (left; reflexivity);
+    try (right; inversion 1; contradiction).
+Defined.
+
 (** * Snoc/tail lists *)
 
 Inductive tail_list (A : Type) :=
@@ -67,6 +78,13 @@ Notation "X ∖ Y" := (Setminus _ X Y) (at level 40) : ensemble_scope.
 Notation "X ⊆ Y" := (Included _ X Y) (at level 80) : ensemble_scope.
 Notation "X == Y" := (Same_set _ X Y) (at level 90) : ensemble_scope.
 Notation "∅" := (Empty_set _) : ensemble_scope.
+Definition singleton {X} (x : X) : Ensemble X := Singleton X x.
+Notation "x ∉ X" := (~(In _ X x)) (at level 70) : ensemble_scope.
+
+Open Scope ensemble_scope.
+Class in_dec {Z} (X : Ensemble Z) := {In_Dec : forall (x:Z), {x ∈ X} + {~(x ∈ X)}}.
+Notation "x ∈? X" := (@In_Dec _ X _ x) : ensemble_scope.
+
 End EnsembleNotation.
 
 (** * Tactics *)
@@ -91,7 +109,7 @@ Ltac case_In :=
   | [ H : In _ (_ ++ _) |- _ ] => apply in_app_or in H; destruct H as [H | H]
   end; inversion_In.
 
-
+Import EnsembleNotation.
 Ltac find_contradiction :=
   try contradiction;
   try discriminate;
@@ -100,8 +118,11 @@ Ltac find_contradiction :=
   | [ H : ?a = _, H' : _ = ?a |- _ ] => rewrite H in H'; discriminate
   | [ H : _ = ?a, H' : ?a = _ |- _ ] => rewrite <- H in H'; discriminate
   | [ H : _ = ?a, H' : _ = ?a |- _ ] => rewrite H in H'; discriminate
+  | [ H : ?a = ?b, H' : ?a <> ?b |- _] => rewrite H in H'; contradiction
+  | [ H : ?a = ?b, H' : ?b <> ?a |- _] => rewrite H in H'; contradiction
   | [ H : ?x < ?x |- _ ] => apply Nat.lt_irrefl in H; contradiction
   | [ H : ?x > ?x |- _ ] => apply Nat.lt_irrefl in H; contradiction
+  | [ H : ~( ?x ∈ singleton ?x ) |- _ ] => contradict H; auto with sets
 
   end.
 

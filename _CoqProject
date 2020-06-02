@@ -6,3 +6,5 @@ FlowEquivalence.v
 RiseDecoupled.v
 FallDecoupled.v
 Desynchronization.v
+StateSpace.v
+Click.v

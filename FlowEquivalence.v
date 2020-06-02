@@ -2,7 +2,7 @@ Require Export Base.
 Require Export MarkedGraph.
 
 Require Import Monad.
-Import Notations.
+Import MonadNotations.
 Open Scope monad_scope.
 
 
@@ -107,6 +107,23 @@ Section Circuits.
   Inductive value := 
   | Num : nat -> value
   | X  : value.
+
+  Instance nat_eq_dec : eq_dec nat.
+  Proof.
+    constructor.
+    intros x;
+    induction x as [ | x]; intros [ | y]; auto.
+    destruct (IHx y) as [IHxy | IHxy]; subst; auto.
+  Defined.
+
+  Instance value_eq_dec : eq_dec value.
+  Proof.
+    constructor. intros [x |] [y | ];
+    try (left; reflexivity);
+    try (right; discriminate).
+    compare x y; auto.
+    right. congruence.
+  Defined.
 
   (** A state (e.g. of a set of latches) maps each of those latches to values *)
   Definition state (tp : Set) := tp -> value.
@@ -338,6 +355,8 @@ Arguments is_enabled {transition}.
 (*Arguments fire_tstate {even odd Heven Hodd}.*)
 
 
+Existing Instance nat_eq_dec.
+Existing Instance value_eq_dec.
 Existing Instance event_eq_dec.
  
 Arguments async {even odd Heven Hodd}.
