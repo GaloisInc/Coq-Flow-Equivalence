@@ -2,6 +2,13 @@ Require Import Base.
 Require Import FlowEquivalence.
 Require Import Monad.
 
+
+Require Import List.
+Import ListNotations.
+Open Scope list_scope.
+
+
+
 Section state_space.
 
 Variable name : Set.
@@ -54,118 +61,92 @@ Inductive event :=
 Inductive event_in (I : Ensemble name) : event -> Prop :=
 | Event_In i (pf : i ∈ I) v : event_in I (Value i v).
 
-Definition css_space := state name.
+(* css_space should be called state *)
 Definition update {X : Set} `{eq_dec X} (σ : state X) (x : X) (v : value) : state X :=
   fun y => if x =? y then v
            else σ y.
 
-
-Record CircuitStateSpace :=
-  { css_input : Ensemble name
-  ; css_output : Ensemble name
-  ; css_internal : Ensemble name
-  ; css_domain := css_input ∪ css_output ∪ css_internal
-  ; css_step  : css_space -> event -> option css_space -> Prop
-(*
-  ; css_stable := fun σ => forall e τ,
-                            css_step σ e τ ->
-                            event_in css_input e
-*)
+Record StateSpace :=
+  { space_input : Ensemble name
+  ; space_output : Ensemble name
+  ; space_internal : Ensemble name
+  ; space_step  : state name -> event -> option (state name) -> Prop
   }.
-Notation "C ⊢ σ →{ e } τ" := (css_step C σ e τ) (no associativity, at level 70).
+Notation "C ⊢ σ →{ e } τ" := (space_step C σ e τ) (no associativity, at level 70).
+Definition space_domain (S : StateSpace) := space_input S ∪ space_output S ∪ space_internal S.
 
-Record css_well_formed (S : CircuitStateSpace) (σ : css_space) :=
-  { (*css_dom : forall x, x ∈ css_domain S <-> in_fin_state σ x*)
-    css_input_output : css_input S ⊥ css_output S
+Record well_formed (S : StateSpace) (σ : state name) :=
+  { (*space_dom : forall x, x ∈ space_domain S <-> in_fin_state σ x*)
+    space_input_output : space_input S ⊥ space_output S
+  ; space_input_internal : space_input S ⊥ space_internal S
+  ; space_output_internal : space_output S ⊥ space_internal S
   }.
-Record css_stable (S : CircuitStateSpace) (σ : css_space) :=
-  { stable_wf : css_well_formed S σ
-  ; stable : forall e τ, S ⊢ σ →{e} τ -> event_in (css_input S) e }.
+Record stable (S : StateSpace) (σ : state name) :=
+  { stable_wf : well_formed S σ
+  ; stable_step : forall e τ, S ⊢ σ →{e} τ -> event_in (space_input S) e }.
 
-(*Definition CircuitStepFunction := css_space -> option e_event -> option css_space.*)
+Class stable_dec (S : StateSpace) :=
+  { space_stable_dec : forall σ, stable S σ + ~ stable S σ }.
 
-Class stable_dec (S : CircuitStateSpace) :=
-  { css_stable_dec : forall σ, css_stable S σ + ~ css_stable S σ }.
-
-Section CombStateSpace.
+Section FuncStateSpace.
 
   (* Define a circuit state space from a combinational logic function *)
 
   Variable I : Ensemble name.
   Variable x : name.
-  Variable f : css_space -> value.
+  Variable f : state name -> value.
   Hypothesis x_notin_I : ~ (x ∈ I).
 
-  Definition comb_domain := I ∪ singleton x ∪ ∅.
-  Lemma x_in_comb_domain : x ∈ comb_domain. unfold comb_domain. auto with sets. Qed.
-  Lemma I_subset_comb_domain : forall i, i ∈ I -> i ∈ comb_domain.
-  Proof. unfold comb_domain. auto with sets. Qed.
+  Let dom := I ∪ singleton x ∪ ∅.
+  Hint Unfold dom.
+  Lemma x_in_dom : x ∈ dom. unfold dom. auto with sets. Qed.
+  Lemma I_subset_dom : forall i, i ∈ I -> i ∈ dom.
+  Proof. unfold dom. auto with sets. Qed.
 
-  Record comb_stable (σ : css_space) : Prop :=
-    { comb_x_stable : σ x = f σ
-(*    ; comb_I_stable : forall i, i ∈ I -> in_fin_state σ i *)
-    }.
+  Let func_stable (σ : state name) := σ x = f σ.
+  Hint Unfold func_stable.
   
-  Inductive comb_step (σ : css_space) :
+  Inductive func_step (σ : state name) :
                       event ->
-                      option css_space ->
+                      option (state name) ->
                       Prop :=
-  | comb_input i (pf_i : i ∈ I) v :
-    comb_stable σ ->
+  | func_input_stable i (pf_i : i ∈ I) v :
+    func_stable σ ->
     σ i <> v ->
-    comb_step σ (Value i v)
+    func_step σ (Value i v)
                 (Some (update σ i v))
 
-  | comb_err i (pf_i : i ∈ I) v :
-    ~ (comb_stable σ) ->
-    comb_step σ (Value i v) None
+  | func_input_unstable i (pf_i : i ∈ I) v :
+    ~ (func_stable σ) ->
+(*    ~ (func_stable (update σ i v)) -> (* in a binary system, this is ok *)*)
+    f σ = f (update σ i v) -> (* ok to update input in an unstable system if the output doesn't change *)
+    func_step σ (Value i v) (Some (update σ i v))
 
-  | comb_output v :
-    ~ (comb_stable σ) ->
+
+  | func_err i (pf_i : i ∈ I) v :
+    ~ (func_stable σ) ->
+    f σ <> f (update σ i v) -> (* if input updates in an unstable system causes output to change, go to error state*)
+    func_step σ (Value i v) None
+
+  | func_output v :
+    ~ (func_stable σ) ->
     σ x = v ->
-    comb_step σ (Value x v)
+    func_step σ (Value x v)
                 (Some (update σ x v))
   .
-
-(*
-  Definition ERR : option css_space := None.
-  Context `{in_dec _ I}.
-  Definition comb_step_function (σ : css_space) (e : event) : option (option css_space) :=
-    if σ x =? f σ (* comb_stable? σ *)
-    then match e with
-         | Some (y,v) => if y ∈? I
-                         (* if the event is an input event, succeed *)
-                         then Some (Some (update σ y v))
-                         (* otherwise, it is an error *)
-                         (* TODO: do we want to distinguish ERR from "such an event would never occur"? *)
-                         else if y =? x
-                         then Some ERR
-                         else None
-        | None => None
-        end
-    else match e with
-         | Some (y,v) => if y ∈? I
-                         (* no inputs accepted while not stable *)
-                         then Some ERR
-                         else if y =? x
-                         then Some (Some (update σ x v))
-                         else None
-         | None => None
-        end.
-*)
     
-  Program Definition comb : CircuitStateSpace :=
-  {| css_input := I
-   ; css_output := singleton x
-   ; css_internal := ∅
-   ; css_step := comb_step
+  Program Definition func_space : StateSpace :=
+  {| space_input := I
+   ; space_output := singleton x
+   ; space_internal := ∅
+   ; space_step := func_step
    |}.
 
   (* This just depends on the enumerability of I *)
-  Hypothesis css_wf_decidable : forall σ, css_well_formed comb σ + ~(css_well_formed comb σ).
+  Hypothesis space_wf_decidable : forall σ, well_formed func_space σ + ~(well_formed func_space σ).
 
-  Lemma comb_stable_equiv : forall σ, css_well_formed comb σ ->
-        comb_stable σ <-> css_stable comb σ.
+  Lemma func_stable_equiv : forall σ, well_formed func_space σ ->
+        func_stable σ <-> stable func_space σ.
   Proof.
     intros σ Hwf. split; intros Hstable.
     * (*destruct Hstable as [H_x_stable H_I_stable].*)
@@ -175,142 +156,88 @@ Section CombStateSpace.
       + constructor. auto.
       + contradiction.
       + contradiction.
-    * (*destruct Hstable as [H_stable H_I_stable].*)
-      (* if the result does not hold, then we can derive a contradiction with Hstable because
-         the transition on x would be enabled. *)
-(*      
-
-
-      destruct (σ x) as [v | ] eqn:Hv.
-      2:{ absurd (in_fin_state σ x).
-          + unfold in_fin_state. rewrite Hv. auto.
-          + apply Hstable.
-            unfold css_domain. simpl.
-            auto with sets.
-        }
-*)
-      set (v := σ x).
-      compare v (f σ); auto.
-      1:{ constructor; auto. }
-      absurd (event_in (css_input comb) (Value x v)).
+      + contradiction.
+    * compare (σ x) (f σ); auto.
+      absurd (event_in (space_input func_space) (Value x (σ x))).
       { inversion 1; subst. simpl in *.
         contradiction. }
       { eapply Hstable.
-        apply comb_output; auto.
-        inversion 1.
-        contradiction.
+        apply func_output; auto.
       }
   Qed.
 
 
-  Instance comb_stable_dec : stable_dec comb.
+  Instance func_stable_dec : stable_dec func_space.
   Proof.
     split.
     intros σ.
-    (*
-    destruct (σ x) as [v | ] eqn:Hv.
-    2:{ right.
-        intros [[Hwf] Hstable].
-        absurd (in_fin_state σ x).
-        + unfold in_fin_state.
-          rewrite Hv.
-          auto.
-        + apply Hwf.
-          unfold css_domain. simpl. auto with sets.
-    }
-    *)
-    destruct (css_wf_decidable σ) as [Hwf | Hwf].
+    destruct (space_wf_decidable σ) as [Hwf | Hwf].
     2:{ right. inversion 1. contradiction. }
     {
     compare (f σ) (σ x).
-    * left. apply comb_stable_equiv; auto.
-      constructor; auto.
+    * left. apply func_stable_equiv; auto.
 
     * right. intros Hstable. 
-      apply comb_stable_equiv in Hstable; auto.
-      { destruct Hstable; auto.
-      }
+      apply func_stable_equiv in Hstable; auto.
     }
   Defined.
 
-End CombStateSpace.
+End FuncStateSpace.
 
 Section UnionStateSpace.
 
-  Variable S1 S2 : CircuitStateSpace.
-  Hypothesis output_dec1 : in_dec (css_output S1).
-  Hypothesis output_dec2 : in_dec (css_output S2).
+  Variable S1 S2 : StateSpace.
+  Hypothesis output_dec1 : in_dec (space_output S1).
+  Hypothesis output_dec2 : in_dec (space_output S2).
 
-  Hypothesis output_disjoint : css_output S1 ⊥ css_output S2.
-  Hypothesis wires1_disjoint : css_internal S1 ⊥ css_domain S2.
-  Hypothesis wires2_disjoint : css_domain S1 ⊥ css_internal S2.
+  Hypothesis output_disjoint : space_output S1 ⊥ space_output S2.
+  Hypothesis wires1_disjoint : space_internal S1 ⊥ space_domain S2.
+  Hypothesis wires2_disjoint : space_domain S1 ⊥ space_internal S2.
 
-  Let union_input := (css_input S1 ∖ css_output S2) ∪ (css_input S2 ∖ css_output S1).
-  Let union_output := css_output S1 ∪ css_output S2.
-  Let union_internal := css_internal S1 ∪ css_internal S2.
+  Let union_input := (space_input S1 ∖ space_output S2) ∪ (space_input S2 ∖ space_output S1).
+  Let union_output := space_output S1 ∪ space_output S2.
+  Let union_internal := space_internal S1 ∪ space_internal S2.
+  Hint Unfold union_input union_output union_internal.
 
-(*
-  Program Definition e_event_coerce1
-    (e : event) : 
-    (e : option (e_event (css_input S1) (css_output S1))) :
-    option (e_event union_input union_output) :=
-    match e with
-    | None => None
-    | Some (Input_Event i pf v) => 
-      if (i ∈? css_output S2)
-      then Some (Output_Event i _ v)
-      else Some (Input_Event i _ v)
-    | Some (Output_Event o pf v) => Some (Output_Event o _ v)
-    end.
-  Next Obligation. unfold union_output. auto with sets. Qed.
-  Next Obligation. unfold union_input. auto with sets. Qed.
-  Next Obligation. unfold union_output. auto with sets. Qed.
-  Program Definition e_event_coerce2
-    (e : option (e_event (css_input S2) (css_output S2))) :
-    option (e_event union_input union_output) :=
-    match e with
-    | None => None
-    | Some (Input_Event i pf v) => 
-      if (i ∈? css_output S1)
-      then Some (Output_Event i _ v)
-      else Some (Input_Event i _ v)
-    | Some (Output_Event o pf v) => Some (Output_Event o _ v)
-    end.
-  Next Obligation. unfold union_output. auto with sets. Qed.
-  Next Obligation. unfold union_input. auto with sets. Qed.
-  Next Obligation. unfold union_output. auto with sets. Qed.
-*)
-  Inductive communication_event S1 S2 e :=
-  | Driven1 : event_in (css_output S1) e ->
-              event_in (css_input S2) e ->
-              communication_event S1 S2 e
-  | Driven2 : event_in (css_input S1) e ->
-              event_in (css_output S2) e ->
-              communication_event S1 S2 e
-  | FromInput : event_in (css_input S1) e ->
-                event_in (css_input S2) e ->
-                communication_event S1 S2 e.
+  Inductive union_input_event e :=
+  | driven_by_1 : event_in (space_output S1) e ->
+              event_in (space_input S2) e ->
+              union_input_event e
+  | driven_by_2 : event_in (space_input S1) e ->
+              event_in (space_output S2) e ->
+              union_input_event e
+  | driven_by_env : event_in (space_input S1) e ->
+                event_in (space_input S2) e ->
+                union_input_event e.
 
-  Context `{in_dec _ (css_domain S1)} `{in_dec _ (css_domain S2)}.
+  Context `{in_dec _ (space_domain S1)} `{in_dec _ (space_domain S2)}.
 
-  Inductive union_step (σ : css_space)
+  Definition state_equiv_on (X : Ensemble name) (τ1 τ2 : option (state name)) :=
+      match τ1, τ2 with
+      | Some σ1, Some σ2 => forall x, x ∈ X -> σ1 x = σ2 x
+      | None, None => True
+      | _, _ => False
+      end.
+
+
+  Inductive union_step (σ : state name)
                      : event ->
-                       option css_space ->
+                       option (state name) ->
                        Prop :=
   | union_step_1 e τ :
-    ~ (event_in (css_domain S2) e) ->
+    ~ (event_in (space_domain S2) e) ->
     S1 ⊢ σ →{e} τ ->
-    (forall x2, x2 ∈ css_domain S2 -> Some (σ x2) = fmap (fun σ' => σ' x2) τ) ->
+    state_equiv_on (space_domain S2) (Some σ) τ ->
     union_step σ e τ
 
   | union_step_2 e τ :
-    ~ (event_in (css_domain S1) e) ->
+    ~ (event_in (space_domain S1) e) ->
     S2 ⊢ σ →{e} τ ->
-    (forall x1, x1 ∈ css_domain S1 -> Some (σ x1) = fmap (fun σ' => σ' x1) τ) ->
+    state_equiv_on (space_domain S1) (Some σ) τ ->
     union_step σ e τ
 
   | union_communicate e τ :
-    communication_event S1 S2 e ->
+    union_input_event e ->
     S1 ⊢ σ →{e} τ ->
     S2 ⊢ σ →{e} τ ->
     (* e must be consistent with both e1 and e2 *)
@@ -318,78 +245,59 @@ Section UnionStateSpace.
     .
 
     
-  Definition ss_union : CircuitStateSpace :=
-    {| css_input := union_input
-     ; css_output := union_output
-     ; css_internal := union_internal
-     ; css_step := union_step
+  Definition union : StateSpace :=
+    {| space_input := union_input
+     ; space_output := union_output
+     ; space_internal := union_internal
+     ; space_step := union_step
     |}.
 
 
-  Print css_stable.
-
-(*
-  Definition stable_except (S : CircuitStateSpace) σ (X : Ensemble name) :=
-    forall (e : event) τ,
-      ~(event_in X e) ->
-      S ⊢ σ →{e} τ ->
-      event_in (css_input S) e.
-  Lemma stable_implies_stable_except : forall S σ X,
-    css_stable S σ -> stable_except S σ X.
-  Proof.
-    intros S σ X Hstable. intros e τ _ step.
-    eapply Hstable; eauto.
-  Qed.
-*)
-
-  Instance union_stable_dec `{stable_dec S1} `{stable_dec S2} : stable_dec ss_union.
+  Instance union_stable_dec `{stable_dec S1} `{stable_dec S2} : stable_dec union.
   Proof. split.
     intros σ.
-    destruct (@css_stable_dec S1 _ σ) as [stable1 | stable1];
-    destruct (@css_stable_dec S2 _ σ) as [stable2 | stable2].
+    destruct (@space_stable_dec S1 _ σ) as [stable1 | stable1];
+    destruct (@space_stable_dec S2 _ σ) as [stable2 | stable2].
     
   Abort.
 
 
 
-  Definition union_stable (σ : css_space) := 
-    css_stable S1 σ /\ css_stable S2 σ.
+  Definition union_stable (σ : state name) := 
+    stable S1 σ /\ stable S2 σ.
 
 
   Lemma wf_union : forall σ,
-    css_well_formed S1 σ ->
-    css_well_formed S2 σ ->
-    css_well_formed ss_union σ.
+    well_formed S1 σ ->
+    well_formed S2 σ ->
+    well_formed union σ.
   Proof.
-    intros σ [disjoint1] [disjoint2].
-    constructor.
-    simpl.
-    unfold union_input, union_output.
-    constructor.
-    intros x Hintersect.
-    inversion Hintersect as [? Hinput Houtput]; subst.
-    inversion Hinput as [? Hinput1 | ? Hinput2]; subst.
-    * (* x ∈ css_input S1 ∖ css_output S2 *)
-      inversion Hinput1 as [Hinput1' Houtput2']; subst.
-      inversion Houtput as [? Houtput1 | ? Houtput2]; subst.
-      + (* contradiction, since x ∈ css_input S1 /\ x ∈ css_output S2 *)
-        inversion disjoint1 as [disjoint1'].
-        apply (disjoint1' x). auto with sets.
-      + contradiction.
-    * (* x ∈ css_input S2 ∖ css_output S1 *)
-      inversion Hinput2 as [Hinput2' Houtput1']; subst.
-      inversion Houtput as [? Houtput1 | ? Houtput2]; subst.
-      + contradiction.
-      + (* contradiction, since x ∈ css_input S1 /\ x ∈ css_output S2 *)
-        inversion disjoint2 as [disjoint2'].
-        apply (disjoint2' x). auto with sets.
+  intros σ [disjoint_in_out1 disjoint_in_int1 disjoint_out_int1]
+           [disjoint_in_out2 disjoint_in_int2 disjoint_out_int2].
+  constructor;
+    simpl in *;
+      unfold union_input, union_output, union_internal in *;
+    constructor; intros x Hintersect;
+    decompose_set_structure.
+  - assert (x ∈ space_domain S2).
+    { unfold space_domain. auto with sets. }
+    find_contradiction.
+  - assert (x ∈ space_domain S1).
+    { unfold space_domain. auto with sets. }
+    find_contradiction.
+  - assert (x ∈ space_domain S2).
+    { unfold space_domain. auto with sets. }
+    find_contradiction.
+  - assert (x ∈ space_domain S1).
+    { unfold space_domain. auto with sets. }
+    find_contradiction.
   Qed.
 
   (** Note: I'm not sure the other direction actually is true, as written *)
   Lemma union_stable_implies : forall σ, 
-        css_stable S1 σ ->
-        css_stable S2 σ ->
-        css_stable ss_union σ.
+        stable S1 σ ->
+        stable S2 σ ->
+        stable union σ.
   Proof.
     intros σ Hstable1 Hstable2.
     * split; auto.
@@ -399,25 +307,25 @@ Section UnionStateSpace.
            destruct Hstable1 as [Hwf1 Hstable1];
            destruct Hstable2 as [Hwf2 Hstable2].
         destruct Hstep.
-        ++ assert (He : event_in (css_input S1) e).
+        ++ assert (He : event_in (space_input S1) e).
            { eapply Hstable1; eauto. }
            inversion He; subst.
            constructor. simpl. unfold union_input.
-           assert (Hi' : ~(i ∈ css_output S2)).
+           assert (Hi' : ~(i ∈ space_output S2)).
            { intros He'. apply H1.
-             constructor. simpl. unfold css_domain. auto with sets. }
+             constructor. simpl. unfold space_domain. auto with sets. }
            auto with sets.
-        ++ assert (He : event_in (css_input S2) e).
+        ++ assert (He : event_in (space_input S2) e).
            { eapply Hstable2; eauto. }
            inversion He; subst.
            constructor. simpl. unfold union_input.
-           assert (Hi' : ~(i ∈ css_output S1)).
+           assert (Hi' : ~(i ∈ space_output S1)).
            { intros He'. apply H1.
-             constructor. simpl. unfold css_domain. auto with sets. }
+             constructor. simpl. unfold space_domain. auto with sets. }
            auto with sets.
-        ++ assert (He1 : event_in (css_input S1) e).
+        ++ assert (He1 : event_in (space_input S1) e).
            { eapply Hstable1; eauto. }
-           assert (He2 : event_in (css_input S2) e).
+           assert (He2 : event_in (space_input S2) e).
            { eapply Hstable2; eauto. }
            inversion He1; subst.
            inversion He2; subst.
@@ -435,17 +343,17 @@ End UnionStateSpace.
 Section HideStateSpace.
 
   Variable x : name.
-  Variable S : CircuitStateSpace.
+  Variable S : StateSpace.
 
-  Hypothesis x_output : x ∈ css_output S.
+  Hypothesis x_output : x ∈ space_output S.
 
-  Let hide_input := css_input S.
-  Let hide_output := css_output S ∖ singleton x.
-  Let hide_internal := css_internal S ∪ singleton x.
+  Let hide_input := space_input S.
+  Let hide_output := space_output S ∖ singleton x.
+  Let hide_internal := space_internal S ∪ singleton x.
 
-  Inductive hide_step (σ : css_space) :
+  Inductive hide_step (σ : state name) :
                       event ->
-                      option css_space ->
+                      option (state name) ->
                       Prop :=
   | Hide_Eq v τ:
     S ⊢ σ →{Value x v} τ ->
@@ -456,27 +364,229 @@ Section HideStateSpace.
     hide_step σ e τ
   .
 
-  Definition ss_hide : CircuitStateSpace :=
-    {| css_input := hide_input
-     ; css_output := hide_output
-     ; css_internal := hide_internal
-     ; css_step := hide_step
+  Definition ss_hide : StateSpace :=
+    {| space_input := hide_input
+     ; space_output := hide_output
+     ; space_internal := hide_internal
+     ; space_step := hide_step
     |}.
 
 
 End HideStateSpace.
 
+Section Flop.
+
+  Variable dp_reset : name.
+  Variable clk old_clk : name.
+  Variable state0 : name.
+  Variable reset_value : value (* the value to set state0 when dp_reset=0 *).
+
+  Context (disjoint : all_disjoint [dp_reset;clk;old_clk; state0]).
+  Let flop_input := Couple _ dp_reset clk.
+  Let flop_output := singleton state0.
+  Let flop_internal := singleton old_clk.
+
+  Let flop_stable σ := (σ dp_reset = Num 0 -> σ state0 = Num 0)
+                    /\ (σ dp_reset = Num 1 -> σ clk = σ old_clk).
+
+
+  Definition neg_value (v : value) : value :=
+    match v with 
+    | Num 0 => Num 1
+    | Num 1 => Num 0
+    | _ => v
+    end.
+
+  Inductive flop_step (σ : state name) :
+                      event ->
+                      option (state name) ->
+                      Prop :=
+  | Flop_Input_Stable i v :
+    flop_stable σ ->
+    i ∈ flop_input ->
+    σ i <> v ->
+    flop_step σ (Value i v) (Some (update σ i v))
+
+  | Flop_Input_Unstable i v :
+    ~ flop_stable σ ->
+    i ∈ flop_input ->
+    flop_step σ (Value i v) None
+
+  | Flop_Reset :
+    ~ flop_stable σ ->
+    σ dp_reset = Num 0 ->
+    flop_step σ (Value state0 reset_value) (Some (update σ state0 reset_value))
+
+  | Flop_clk1 new_state0 :
+    ~ flop_stable σ ->
+    σ dp_reset = Num 1 ->
+    σ clk = Num 1 ->
+    new_state0 = neg_value (σ state0) ->
+    flop_step σ (Value state0 new_state0) (Some (update (update σ state0 new_state0) old_clk (Num 1)))
+
+  | Flop_clk0 :
+    ~ flop_stable σ ->
+    σ dp_reset = Num 1 ->
+    σ clk <> Num 1 ->
+    flop_step σ Eps (Some (update σ old_clk (σ clk)))
+  .
+
+
+  Definition flop : StateSpace :=
+    {| space_input := flop_input
+     ; space_output := flop_output
+     ; space_internal := flop_internal
+     ; space_step := flop_step
+    |}.
+
+  Lemma flop_stable_implies_stable : forall σ, 
+    flop_stable σ -> stable flop σ.
+  Proof.
+    intros σ Hstable.
+    constructor.
+    * (* well-formed *)
+      constructor; simpl in *; unfold flop_input, flop_output, flop_internal in *.
+      + constructor.
+        intros x Hx.
+        decompose_set_structure.
+      + constructor.
+        intros x Hx.
+        decompose_set_structure.
+      + constructor.
+        intros x Hx.
+        decompose_set_structure.
+    * intros e τ Hstep.
+      destruct Hstep;
+        try contradiction;
+        try (constructor; auto; fail).
+  Qed.
+
+  Lemma stable_implies_flop_stable : forall σ,
+    stable flop σ ->
+    flop_stable σ.
+  Proof.
+    intros σ Hstable. constructor; intros Hdp_reset.
+    + (* dp_reset = 0 *)
+      compare (σ state0) (Num 0); auto.
+      (* derive a contradiction, since we can have σ -> σ[state0 ↦ 0] *)
+      assert (Hstep : flop ⊢ σ →{Value state0 reset_value} Some (update σ state0 reset_value)).
+      { apply Flop_Reset; auto.
+        intros [Hreset0 _].
+        specialize (Hreset0 Hdp_reset).
+        contradiction.
+      }
+      destruct Hstable as [_ Hstable].
+      specialize (Hstable _ _ Hstep).
+      (*contradict Hstable.*)
+      inversion Hstable; subst.
+        simpl in pf. unfold flop_input in pf. 
+      decompose_set_structure.
+      inversion pf; find_contradiction.
+
+    + (* dp_reset = 1 *)
+      compare (σ clk) (σ old_clk); auto.
+      (* derive a contradiction, since σ is no longer flop_stable *)
+      assert (Hstable' : ~ flop_stable σ).
+      { intros [Hreset0 Hreset1].
+        specialize (Hreset1 Hdp_reset).
+        contradiction.
+      }
+      compare (σ clk) (Num 1).
+      { assert (Hstep : flop ⊢ σ →{Value state0 (neg_value (σ state0))}
+                                  Some (update (update σ state0 (neg_value (σ state0))) old_clk (Num 1))).
+        { eapply Flop_clk1; auto. }
+        destruct Hstable as [_ Hstable].
+        specialize (Hstable _ _ Hstep).
+        contradict Hstable.
+        inversion 1; subst.
+          decompose_set_structure. 
+          simpl in pf. inversion pf; find_contradiction.
+      }
+      { assert (Hstep : flop ⊢ σ →{Eps} (Some (update σ old_clk (σ clk)))).
+        { eapply Flop_clk0; auto. }
+        
+        destruct Hstable as [_ Hstable].
+        specialize (Hstable _ _ Hstep).
+        contradict Hstable.
+        inversion 1; subst.
+      }
+  Qed.
+
+End Flop.
+
+
+
+
+
+Section Celem.
+
+  Variable x1 x2 y : name.
+  Let C_input := Couple _ x1 x2.
+  Let C_output := singleton y.
+  
+  Let C_stable σ := (σ x1 = Num 0 /\ σ x2 = Num 0 -> σ y = Num 0)
+                 /\ (σ x1 = Num 1 /\ σ x2 = Num 1 -> σ y = Num 1).
+
+  Inductive C_step (σ : state name) :
+                      event ->
+                      option (state name) ->
+                      Prop :=
+  | C_input1_stable v :
+    C_stable σ ->
+    σ x1 <> v ->
+    C_step σ (Value x1 v) (Some (update σ x1 v))
+  | C_input2_stable v :
+    C_stable σ ->
+    σ x2 <> v ->
+    C_step σ (Value x2 v) (Some (update σ x2 v))
+
+
+  | C_input1_unstable v :
+    ~ C_stable σ ->
+    σ x1 <> v ->
+    C_step σ (Value x1 v) None
+  | C_input2_unstable v :
+    ~ C_stable σ ->
+    σ x2 <> v ->
+    C_step σ (Value x2 v) None
+
+  | C_output0 :
+    σ x1 = Num 0 ->
+    σ x2 = Num 0 ->
+    σ y <> Num 0 ->
+    C_step σ (Value y (Num 0)) (Some (update σ y (Num 0)))
+  | C_output1 :
+    σ x1 = Num 1 ->
+    σ x2 = Num 1 ->
+    σ y <> Num 1 ->
+    C_step σ (Value y (Num 1)) (Some (update σ y (Num 1)))
+  .
+
+  Definition C_elem : StateSpace :=
+    {| space_input := C_input
+     ; space_output := C_output
+     ; space_internal := ∅
+     ; space_step := C_step
+    |}.
+
+  Lemma C_stable_implies_stable : forall σ, C_stable σ -> stable C_elem σ.
+  Abort.
+  Lemma stable_implies_C_stable : forall σ, stable C_elem σ -> C_stable σ.
+  Abort.
+
+End Celem.
+
 End state_space.
 
-Print CircuitStateSpace.
-Arguments css_input {name}.
-Arguments css_output {name}.
-Arguments css_internal {name}.
-Arguments css_domain {name}.
-Arguments css_stable {name}.
+Arguments space_input {name}.
+Arguments space_output {name}.
+Arguments space_internal {name}.
+Arguments space_domain {name}.
+Arguments stable {name}.
 Arguments Value {name}.
 Arguments Eps {name}.
-Arguments comb {name}.
-Notation "C ⊢ σ →{ e } τ" := (css_step _ C σ e τ) (no associativity, at level 70).
-About ss_union.
-Notation "S1 ∥ S2" := (ss_union _ S1 S2) (left associativity, at level 91).
+Arguments func_space {name name_eq_dec}.
+Arguments C_elem {name name_eq_dec}.
+Arguments flop {name name_eq_dec}.
+Notation "C ⊢ σ →{ e } τ" := (space_step _ C σ e τ) (no associativity, at level 70).
+Notation "S1 ∥ S2" := (union _ S1 S2) (left associativity, at level 91).

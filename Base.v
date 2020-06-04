@@ -85,6 +85,59 @@ Open Scope ensemble_scope.
 Class in_dec {Z} (X : Ensemble Z) := {In_Dec : forall (x:Z), {x ∈ X} + {~(x ∈ X)}}.
 Notation "x ∈? X" := (@In_Dec _ X _ x) : ensemble_scope.
 
+Lemma Setminus_in : forall {A} x (X Y : Ensemble A),
+    x ∈ X ∖ Y ->
+    (x ∈ X).
+Admitted.
+Lemma Setminus_not_in : forall {A} x (X Y : Ensemble A),
+    x ∈ X ∖ Y ->
+    ~(x ∈ Y).
+Admitted.
+Hint Resolve Setminus_in Setminus_not_in : sets.
+
+Lemma not_union_1 : forall {A} (x : A) X Y,
+    ~(x ∈ X ∪ Y) ->
+    ~(x ∈ X).
+Admitted.
+Lemma not_union_2 : forall {A} (x : A) X Y,
+    ~(x ∈ X ∪ Y) ->
+    ~(x ∈ X).
+Admitted.
+Hint Resolve not_union_1 not_union_2 : sets.
+  Fixpoint from_list {A} (l : list A) : Ensemble A :=
+    match l with
+    | nil => ∅
+    | x :: l' => singleton x ∪ from_list l'
+    end.
+
+Lemma not_in_singleton_neq : forall {A} (x y : A),
+    ~(x ∈ singleton y) <->
+    x <> y.
+Proof.
+  intros x y. split. 
+  * intros H_x_y x_y.
+    apply H_x_y.
+    subst.
+    auto with sets.
+  * intros x_neq_y.
+    inversion 1.
+    subst.
+    contradiction.
+Qed.
+Hint Resolve not_in_singleton_neq : sets.
+
+
+
+
+Inductive all_disjoint {A} : list A -> Prop :=
+| nil_disjoint : all_disjoint []
+| cons_disjoint x ls : 
+    x ∉ from_list ls ->
+    all_disjoint ls ->
+    all_disjoint (x::ls).
+
+
+
 End EnsembleNotation.
 
 (** * Tactics *)
@@ -123,9 +176,39 @@ Ltac find_contradiction :=
   | [ H : ?x < ?x |- _ ] => apply Nat.lt_irrefl in H; contradiction
   | [ H : ?x > ?x |- _ ] => apply Nat.lt_irrefl in H; contradiction
   | [ H : ~( ?x ∈ singleton ?x ) |- _ ] => contradict H; auto with sets
-
+  | [ H1 : ?x ∈ ?X1, H2 : ?x ∈ ?X2, H : ?X1 ⊥ ?X2 |- _] =>
+      absurd (x ∈ X1 ∩ X2); inversion H; auto with sets; fail
   end.
 
+
+
+Ltac decompose_set_structure :=
+  repeat (match goal with
+  | [ H : ?x ∉ ∅ |- _ ] => clear H
+  | [ H : ?x ∈ ?X ∖ ?Y |- _ ] => destruct H 
+  | [ H : ?x ∈ ?X ∪ ?Y |- _ ] => inversion H; subst; clear H
+  | [ H : ?x ∈ ?X ∩ ?Y |- _ ] => inversion H; subst; clear H
+  | [ H : ~(?x ∈ ?X ∪ ?Y) |- _] => assert (~(x ∈ X)) by auto with sets;
+                                   assert (~(x ∈ Y)) by auto with sets;
+                                   clear H
+  | [ H : ?x ∉ singleton ?y |- _ ] => apply not_in_singleton_neq in H
+  | [ H : ?x ∈ Couple _ ?y ?z |- _] => inversion H; subst; clear H
+  | [ H : ?x ∈ singleton ?y |- _ ] => inversion H; subst; clear H
+  | [ H : all_disjoint [] |- _ ] => clear H
+  | [ H : all_disjoint (_ :: _) |- _] => let H' := fresh "H" in
+                                         inversion H as [ | ? ? H']; subst; 
+                                         simpl in H'; clear H
+  end; try find_contradiction; auto with sets).
+
+Ltac solve_set :=
+  repeat (auto with sets;
+  match goal with
+  | [ |- ?x ∉ singleton ?y ] => apply not_in_singleton_neq
+  | [ |- ?x ∈ ?X ∖ ?Y ] => constructor
+  | [ |- ?x ∈ ?X ∪ ?Y ] => left; solve_set; fail
+  | [ |- ?x ∈ ?X ∪ ?Y ] => right; solve_set; fail
+  | [ |- ?x ∈ ?X ∩ ?Y ] => constructor
+  end).
 (** ** Decidable equality *)
 Ltac reduce_eqb :=
   repeat match goal with
