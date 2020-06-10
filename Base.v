@@ -126,7 +126,15 @@ Proof.
 Qed.
 Hint Resolve not_in_singleton_neq : sets.
 
+Lemma not_in_setminus : forall {A} (x : A) (X Y : Ensemble A),
+  x ∉ (X ∖ Y) <->
+  (x ∈ Y) \/ x ∉ X.
+Admitted.
 
+Lemma not_in_union : forall {A} (x : A) X Y,
+    x ∉ X ∪ Y <->
+    x ∉ X /\ x ∉ Y.
+Admitted.
 
 
 Inductive all_disjoint {A} : list A -> Prop :=
@@ -182,8 +190,8 @@ Ltac find_contradiction :=
 
 
 
-Ltac decompose_set_structure :=
-  repeat (match goal with
+Ltac decompose_set_structure_1 :=
+  match goal with
   | [ H : ?x ∉ ∅ |- _ ] => clear H
   | [ H : ?x ∈ ?X ∖ ?Y |- _ ] => destruct H 
   | [ H : ?x ∈ ?X ∪ ?Y |- _ ] => inversion H; subst; clear H
@@ -191,14 +199,19 @@ Ltac decompose_set_structure :=
   | [ H : ~(?x ∈ ?X ∪ ?Y) |- _] => assert (~(x ∈ X)) by auto with sets;
                                    assert (~(x ∈ Y)) by auto with sets;
                                    clear H
+  | [ H : ?x ∉ ?X ∖ ?Y |- _ ] => apply not_in_setminus in H; destruct H
+  | [ H : ?x ∉ ?X ∪ ?Y |- _ ] => apply not_in_union in H; destruct H
   | [ H : ?x ∉ singleton ?y |- _ ] => apply not_in_singleton_neq in H
-  | [ H : ?x ∈ Couple _ ?y ?z |- _] => inversion H; subst; clear H
-  | [ H : ?x ∈ singleton ?y |- _ ] => inversion H; subst; clear H
+  | [ H : ?x ∈ Couple _ ?y ?z |- _] => inversion H; try subst; clear H
+  | [ H : ?x ∈ singleton ?y |- _ ] => inversion H; try subst; clear H
   | [ H : all_disjoint [] |- _ ] => clear H
   | [ H : all_disjoint (_ :: _) |- _] => let H' := fresh "H" in
                                          inversion H as [ | ? ? H']; subst; 
                                          simpl in H'; clear H
-  end; try find_contradiction; auto with sets).
+  | [ H : ?x ∈ from_list _ |- _ ] => simpl in H
+  end.
+Ltac decompose_set_structure :=
+  repeat (decompose_set_structure_1; try find_contradiction; auto with sets).
 
 Ltac solve_set :=
   repeat (auto with sets;
@@ -208,6 +221,9 @@ Ltac solve_set :=
   | [ |- ?x ∈ ?X ∪ ?Y ] => left; solve_set; fail
   | [ |- ?x ∈ ?X ∪ ?Y ] => right; solve_set; fail
   | [ |- ?x ∈ ?X ∩ ?Y ] => constructor
+  | [ |- ?x ∉ ?X ∖ ?Y ] => apply not_in_setminus; left; solve_set; fail
+  | [ |- ?x ∉ ?X ∖ ?Y ] => apply not_in_setminus; right; solve_set; fail
+  | [ |- ?x ∉ ?X ∪ ?Y ] => apply not_in_union; constructor
   end).
 (** ** Decidable equality *)
 Ltac reduce_eqb :=
@@ -218,10 +234,14 @@ Ltac reduce_eqb :=
   | [ |- context[ ?x =? ?x ] ] => rewrite eqb_eq
   | [ H' : ?x1 <> ?x2 |- context[ ?x1 =? ?x2 ] ] => rewrite (eqb_neq _ x1 x2); [ | auto]
   | [ H' : ?x1 <> ?x2 |- context[ ?x2 =? ?x1 ] ] => rewrite (eqb_neq _ x2 x1); [ | auto]
+  | [ H' : ?x1 = ?x2 |- context[ ?x1 =? ?x2 ] ] => rewrite H'
+  | [ H' : ?x1 = ?x2 |- context[ ?x2 =? ?x1 ] ] => rewrite H'
   end; find_contradiction.
 
 Ltac compare e1 e2 :=
-  destruct (Dec e1 e2) as [? | ?]; subst; reduce_eqb.
+  let Heq := fresh "Heq" in
+  let Hneq := fresh "Hneq" in
+  destruct (Dec e1 e2) as [Heq | Hneq]; [try subst; try (rewrite Heq) | ]; reduce_eqb.
 
 Ltac compare_next :=
     match goal with

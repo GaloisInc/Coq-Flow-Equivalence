@@ -20,12 +20,14 @@ Record handshake :=
   { req : name
   ; ack : name }.
 
+
 Import MonadNotations.
 Variable Fresh : Type -> Type.
 Context `{FreshM : Monad Fresh}.
 Variable fresh_ : Fresh name.
 Variable fail_ : Fresh name.
 
+(** For now, definitions without reset lines *)
 
 Section Split.
 
@@ -88,50 +90,60 @@ Section Split.
 
 End Split.
 
-  (** Sanity checks *)
-
-
-
 Section Stage.
 
   Variable i o : handshake.
-  Variable ctrl_reset_n dp_reset_n : name.
-  Variable clk old_clk state0 : name.
+  Variable ctrl_reset_n dp_reset_n hidden_set hidden_reset: name.
+  Variable clk old_clk state0 not_state0 : name.
 
   Hypothesis domain_disjoint : all_disjoint [req i; ack i; req o; ack o;
                                              ctrl_reset_n; dp_reset_n;
-                                             clk; old_clk; state0].
+                                             hidden_set; hidden_reset;
+                                             clk; old_clk; state0; not_state0].
 
 (*
   Definition clk_defn :=    ((not (req i)) /\ state0 /\ ack o)
                          \/ (req i /\ not (state0) /\ not (ack o)).
 *)
   Definition clk_defn σ :=
-    match σ (req i) , σ state0 , σ (ack o) with
-    | Num 0, Num 1, Num 1 => Num 1
-    | Num 1, Num 0, Num 0 => Num 1
-    | Num _, Num _, Num _ => Num 0
-    | _    , _    , _     => X
+    match σ ctrl_reset_n, σ (req i) , σ state0 , σ (ack o) with
+    | Num 0, _    , _    , _     => Num 0
+    | Num 1, Num 0, Num 1, Num 1 => Num 1
+    | Num 1, Num 1, Num 0, Num 0 => Num 1
+    | Num 1, Num _, Num _, Num _ => Num 0
+    | _    ,_    , _    , _     => X
     end.
   Definition tok_clk_defn σ :=
-    match σ (req i) , σ state0 , σ (ack o) with
-    | Num 1, Num 1, Num 1 => Num 1
-    | Num 0, Num 0, Num 0 => Num 1
-    | Num _, Num _, Num _ => Num 0
-    | _    , _    , _     => X
+    match σ ctrl_reset_n, σ (req i) , σ state0 , σ (ack o) with
+    | Num 0, _    , _    , _     => Num 0
+    | Num 1, Num 1, Num 1, Num 1 => Num 1
+    | Num 1, Num 0, Num 0, Num 0 => Num 1
+    | Num 1, Num _, Num _, Num _ => Num 0
+    | _    , _    , _    , _     => X
     end.
 
   Definition clk_component := func_space (from_list [state0;req i;ack o;ctrl_reset_n]) clk clk_defn.
   Definition tok_clk_component := func_space (from_list [state0;req i;ack o;ctrl_reset_n]) clk tok_clk_defn.
 
-  Definition negate i o := func_space (singleton i) o (fun σ => neg_value (σ i)).
-  
+  Definition NOT x y := func_space (singleton x) y (fun σ => neg_value (σ x)).
+
+  Definition flop_component := hide not_state0
+                             ( hide hidden_set
+                             ( flop hidden_set dp_reset_n clk old_clk not_state0 state0
+                             ∥ NOT state0 not_state0
+                             ∥ output hidden_set (Some (Num 1)))).
+  Definition tok_flop_component := hide not_state0
+                                 ( hide hidden_reset
+                                 ( flop dp_reset_n hidden_reset clk old_clk not_state0 state0
+                                 ∥ NOT state0 not_state0
+                                 ∥ output hidden_reset (Some (Num 1)))).
+
   Definition stage :=
-    clk_component ∥ flop dp_reset_n clk old_clk state0 (Num 0) 
-                  ∥ forward state0 (ack i) ∥ forward state0 (req o).
+    clk_component ∥ flop_component ∥ forward state0 (ack i) ∥ forward state0 (req o).
+
   Definition token_stage :=
-    clk_component ∥ flop dp_reset_n clk old_clk state0 (Num 1)
-                  ∥ negate state0 (ack i) ∥ forward state0 (req o).
+    tok_clk_component ∥ tok_flop_component ∥ NOT state0 (ack i) ∥ forward state0 (req o).
+
 
   Lemma stage_input : space_input stage == from_list [req i;ack o;dp_reset_n;ctrl_reset_n].
   Proof.
@@ -140,12 +152,12 @@ Section Stage.
 
   Lemma stage_output : space_output stage == from_list [ack i;req o;state0;clk].
   Proof.
-    constructor; intros x Hx; simpl in *; decompose_set_structure.
+    constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
   Qed.
 
-  Lemma stage_internal : space_internal stage == singleton old_clk.
+  Lemma stage_internal : space_internal stage == from_list [old_clk;hidden_set; not_state0].
   Proof.
-    constructor; intros x Hx; simpl in *; decompose_set_structure.
+    constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
   Qed.
   Lemma token_stage_input : space_input token_stage == from_list [req i;ack o;dp_reset_n;ctrl_reset_n].
   Proof.
@@ -154,12 +166,12 @@ Section Stage.
 
   Lemma token_stage_output : space_output token_stage == from_list [ack i;req o;state0;clk].
   Proof.
-    constructor; intros x Hx; simpl in *; decompose_set_structure.
+    constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
   Qed.
 
-  Lemma token_stage_internal : space_internal token_stage == singleton old_clk.
+  Lemma token_stage_internal : space_internal token_stage == from_list [old_clk;hidden_reset;not_state0].
   Proof.
-    constructor; intros x Hx; simpl in *; decompose_set_structure.
+    constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
   Qed.
 
 
@@ -180,16 +192,20 @@ Section Desync.
   Variable latch_clk : latch even odd -> name.
   Variable latch_state0 : latch even odd -> name.
   Variable latch_old_clk : latch even odd -> name.
+  Variable latch_not_state0 : latch even odd -> name.
+  Variable latch_hidden : latch even odd -> name.
   Variable ctrl_reset_n dp_reset_n : name.
 
   Definition latch_stage (l : latch even odd) : StateSpace name :=
     match l with
     | Even _ => token_stage (latch_input l) (latch_output l)
                             ctrl_reset_n dp_reset_n
-                            (latch_clk l) (latch_old_clk l) (latch_state0 l)
+                            (latch_hidden l)
+                            (latch_clk l) (latch_old_clk l) (latch_state0 l) (latch_not_state0 l)
     | Odd _ => stage (latch_input l) (latch_output l)
                      ctrl_reset_n dp_reset_n
-                     (latch_clk l) (latch_old_clk l) (latch_state0 l)
+                     (latch_hidden l)
+                     (latch_clk l) (latch_old_clk l) (latch_state0 l) (latch_not_state0 l)
     end.
 
   Definition right_neighbors_of (l : latch even odd) (c : circuit even odd) : list (latch even odd) :=

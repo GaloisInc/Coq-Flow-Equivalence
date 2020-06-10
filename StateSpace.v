@@ -112,7 +112,7 @@ Section FuncStateSpace.
                       Prop :=
   | func_input_stable i (pf_i : i ∈ I) v :
     func_stable σ ->
-    σ i <> v ->
+(*    σ i <> v -> *)
     func_step σ (Value i v)
                 (Some (update σ i v))
 
@@ -364,7 +364,7 @@ Section HideStateSpace.
     hide_step σ e τ
   .
 
-  Definition ss_hide : StateSpace :=
+  Definition hide : StateSpace :=
     {| space_input := hide_input
      ; space_output := hide_output
      ; space_internal := hide_internal
@@ -376,19 +376,36 @@ End HideStateSpace.
 
 Section Flop.
 
-  Variable dp_reset : name.
+  (* the set and reset lines can be optional*)
+  Variable set reset : name.
   Variable clk old_clk : name.
-  Variable state0 : name.
-  Variable reset_value : value (* the value to set state0 when dp_reset=0 *).
+  Variable D Q : name.
 
-  Context (disjoint : all_disjoint [dp_reset;clk;old_clk; state0]).
-  Let flop_input := Couple _ dp_reset clk.
-  Let flop_output := singleton state0.
+  Context (disjoint : all_disjoint [set; reset;clk;old_clk;D;Q]).
+  Let flop_input := from_list [set;reset;clk;D].
+  Let flop_output := singleton Q.
   Let flop_internal := singleton old_clk.
 
-  Let flop_stable σ := (σ dp_reset = Num 0 -> σ state0 = Num 0)
-                    /\ (σ dp_reset = Num 1 -> σ clk = σ old_clk).
+(*
+  Let Q_output σ :=
+    match σ set with
+    | Num 0 => Num 1
+    | Num 1 => match σ reset with
+               | Num 0 => Num 0
+               | Num 1 => σ D
+               | _     => X
+               end
+    | _     => X
+    end.
+*)
+  Let Q_output σ :=
+    if σ set =? Num 0 then Num 1
+    else if σ reset =? Num 0 then Num 0
+    else σ D.
 
+  Let flop_stable σ :=
+    σ Q = Q_output σ /\ σ clk = σ old_clk.
+    
 
   Definition neg_value (v : value) : value :=
     match v with 
@@ -401,36 +418,58 @@ Section Flop.
                       event ->
                       option (state name) ->
                       Prop :=
-  | Flop_Input_Stable i v :
-    flop_stable σ ->
+    (* an input is allowed when, either (1) the flip-flop is stable aka any
+    possible clock changes have been registered; or (2) when the input would not
+    actually be observable on the outputs of the circuit. *)
+  | Flop_input i v σ' :
+    flop_stable σ \/ Q_output σ = Q_output (update σ i v) ->
     i ∈ flop_input ->
-    σ i <> v ->
-    flop_step σ (Value i v) (Some (update σ i v))
+    σ' = update σ i v ->
+    flop_step σ (Value i v) (Some σ')
 
-  | Flop_Input_Unstable i v :
+    (* other inputs lead to the error state *)
+  | Flop_input_err i v :
     ~ flop_stable σ ->
+    Q_output σ <> Q_output (update σ i v) ->
     i ∈ flop_input ->
     flop_step σ (Value i v) None
 
-  | Flop_Reset :
-    ~ flop_stable σ ->
-    σ dp_reset = Num 0 ->
-    flop_step σ (Value state0 reset_value) (Some (update σ state0 reset_value))
+    (* if the set line is high, raise Q *)
+  | Flop_set σ' :
+    σ set = Num 0 ->
+    σ Q  <> Num 1 ->
+    σ' = update σ Q (Num 1) ->
+    flop_step σ (Value Q (Num 1)) (Some σ')
 
-  | Flop_clk1 new_state0 :
-    ~ flop_stable σ ->
-    σ dp_reset = Num 1 ->
-    σ clk = Num 1 ->
-    new_state0 = neg_value (σ state0) ->
-    flop_step σ (Value state0 new_state0) (Some (update (update σ state0 new_state0) old_clk (Num 1)))
+    (* if the reset line is high, lower Q *)
+  | Flop_reset σ' :
+    σ set   = Num 1 ->
+    σ reset = Num 0 ->
+    σ Q    <> Num 0 ->
+    σ' = update σ Q (Num 0) ->
+    flop_step σ (Value Q (Num 0)) (Some σ')
 
-  | Flop_clk0 :
-    ~ flop_stable σ ->
-    σ dp_reset = Num 1 ->
+    (* if the clock has fallen (i.e. input changed and clk is no longer 1), do
+    nothing to the outputs, but propogate thd change to the old_clk. *)
+  | Flop_clk_fall σ' :
     σ clk <> Num 1 ->
-    flop_step σ Eps (Some (update σ old_clk (σ clk)))
-  .
+    σ clk <> σ old_clk ->
+    σ' = update σ old_clk (σ clk) ->
+    flop_step σ Eps (Some σ')
 
+    (* if the clock has risen (i.e. input changed and clk is now equal to 1),
+    update Q and old_clk to their proper values. The result will now be stable *)
+  | Flop_clk_rise v σ' :
+    σ set      = Num 1 ->
+    σ reset    = Num 1 ->
+    σ clk      = Num 1 ->
+    σ old_clk <> Num 1 ->
+
+    v = σ D ->
+    σ' = update (update σ Q v) old_clk (σ clk) ->
+
+    flop_step σ (Value Q v) (Some σ')
+  .
 
   Definition flop : StateSpace :=
     {| space_input := flop_input
@@ -459,13 +498,82 @@ Section Flop.
       destruct Hstep;
         try contradiction;
         try (constructor; auto; fail).
+      + absurd (σ Q = Num 1); auto.
+        destruct Hstable as [Hstable _].
+        rewrite Hstable; unfold Q_output.
+        rewrite H; auto.
+      + absurd (σ Q = Num 0); auto.
+        destruct Hstable as [Hstable _].
+        rewrite Hstable; unfold Q_output.
+        rewrite H, H0; auto.
+      + absurd (σ clk = σ old_clk); auto.
+        destruct Hstable as [_ Hstable]; auto.
+      + absurd (σ clk = σ old_clk); try congruence.
+        destruct Hstable as [_ Hstable]; auto.
   Qed.
 
+(* Not true as is; flop_stable would need to be more precise as to how we handle when set and reset lines are X *)
+(*
   Lemma stable_implies_flop_stable : forall σ,
     stable flop σ ->
     flop_stable σ.
   Proof.
-    intros σ Hstable. constructor; intros Hdp_reset.
+    intros σ Hstable. constructor.
+    + unfold Q_output.
+      destruct (σ set) as [ [ | [ | ?]] | ] eqn:Hset.
+      { (* σ set = Num 0 *)
+        compare (σ Q) (Num 1); auto.
+        (* if these are not equal, we can take a step *)
+        assert (Hstep : flop ⊢ σ →{Value Q (Num 1)} Some (update σ Q (Num 1))).
+        { apply Flop_set; auto. }
+        destruct Hstable as [_ Hstable].
+        specialize (Hstable _ _ Hstep).
+        (*contradict Hstable.*)
+        inversion Hstable; subst.
+        simpl in pf. unfold flop_input in pf. 
+        decompose_set_structure.
+      }
+      destruct (σ reset) as [ [ | [ | ?]] | ] eqn:Hreset.
+      { compare (σ Q) (Num 0); auto.
+        assert (Hstep : flop ⊢ σ →{Value Q (Num 0)} Some (update σ Q (Num 0))).
+        { apply Flop_reset; auto. }
+        destruct Hstable as [_ Hstable].
+        specialize (Hstable _ _ Hstep).
+        (*contradict Hstable.*)
+        inversion Hstable; subst.
+        simpl in pf. unfold flop_input in pf. 
+        decompose_set_structure.
+      }
+      { compare (σ Q) (σ D); auto.
+        compare (σ clk) (σ old_clk)
+        compare (σ clk) (Num 1).
+        { set (σ' := update (update σ Q (σ D)) old_clk (σ clk)). 
+          assert (Hstep : flop ⊢ σ →{Value Q (σ D)} Some σ').
+          { apply Flop_clk_rise; auto.
+        { apply Flop_reset; auto. }
+        destruct Hstable as [_ Hstable].
+        specialize (Hstable _ _ Hstep).
+        (*contradict Hstable.*)
+        inversion Hstable; subst.
+        simpl in pf. unfold flop_input in pf. 
+        decompose_set_structure.
+
+        destruct (σ 
+          
+
+      ++ compare (σ reset) (Num 0).
+
+         simpl in pf.
+         decompose_set_structure.
+
+         inversion pf; find_contradiction.
+          
+         inversion H14. clear H14. contradiction.
+         inversion H14. clea
+
+         
+
+
     + (* dp_reset = 0 *)
       compare (σ state0) (Num 0); auto.
       (* derive a contradiction, since we can have σ -> σ[state0 ↦ 0] *)
@@ -511,6 +619,7 @@ Section Flop.
         inversion 1; subst.
       }
   Qed.
+*)
 
 End Flop.
 
@@ -524,55 +633,15 @@ Section Celem.
   Let C_input := Couple _ x1 x2.
   Let C_output := singleton y.
   
-  Let C_stable σ := (σ x1 = Num 0 /\ σ x2 = Num 0 -> σ y = Num 0)
-                 /\ (σ x1 = Num 1 /\ σ x2 = Num 1 -> σ y = Num 1).
-
-  Inductive C_step (σ : state name) :
-                      event ->
-                      option (state name) ->
-                      Prop :=
-  | C_input1_stable v :
-    C_stable σ ->
-    σ x1 <> v ->
-    C_step σ (Value x1 v) (Some (update σ x1 v))
-  | C_input2_stable v :
-    C_stable σ ->
-    σ x2 <> v ->
-    C_step σ (Value x2 v) (Some (update σ x2 v))
-
-
-  | C_input1_unstable v :
-    ~ C_stable σ ->
-    σ x1 <> v ->
-    C_step σ (Value x1 v) None
-  | C_input2_unstable v :
-    ~ C_stable σ ->
-    σ x2 <> v ->
-    C_step σ (Value x2 v) None
-
-  | C_output0 :
-    σ x1 = Num 0 ->
-    σ x2 = Num 0 ->
-    σ y <> Num 0 ->
-    C_step σ (Value y (Num 0)) (Some (update σ y (Num 0)))
-  | C_output1 :
-    σ x1 = Num 1 ->
-    σ x2 = Num 1 ->
-    σ y <> Num 1 ->
-    C_step σ (Value y (Num 1)) (Some (update σ y (Num 1)))
-  .
-
-  Definition C_elem : StateSpace :=
-    {| space_input := C_input
-     ; space_output := C_output
-     ; space_internal := ∅
-     ; space_step := C_step
-    |}.
-
-  Lemma C_stable_implies_stable : forall σ, C_stable σ -> stable C_elem σ.
-  Abort.
-  Lemma stable_implies_C_stable : forall σ, stable C_elem σ -> C_stable σ.
-  Abort.
+  Let y_output σ := 
+    match σ x1, σ x2 with
+    | Num 0, Num 0 => Num 0
+    | Num 1, Num 1 => Num 1
+    | Num 0, Num 1 => σ y
+    | Num 1, Num 0 => σ y
+    | _, _ => X
+    end.
+  Definition C_elem : StateSpace := func_space C_input y y_output.
 
 End Celem.
 
@@ -587,6 +656,7 @@ Arguments Value {name}.
 Arguments Eps {name}.
 Arguments func_space {name name_eq_dec}.
 Arguments C_elem {name name_eq_dec}.
+Arguments hide {name}.
 Arguments flop {name name_eq_dec}.
 Notation "C ⊢ σ →{ e } τ" := (space_step _ C σ e τ) (no associativity, at level 70).
 Notation "S1 ∥ S2" := (union _ S1 S2) (left associativity, at level 91).
