@@ -1,5 +1,5 @@
 Require Import Base.
-Require Import FlowEquivalence.
+Require Import Circuit.
 Require Import StateSpace.
 Require Import Monad.
 
@@ -7,6 +7,7 @@ Require Import List.
 Import ListNotations.
 Open Scope list_scope.
 
+Require Import Omega.
 
 Section Click.
 
@@ -26,6 +27,9 @@ Variable Fresh : Type -> Type.
 Context `{FreshM : Monad Fresh}.
 Variable fresh_ : Fresh name.
 Variable fail_ : Fresh name.
+
+
+
 
 (** For now, definitions without reset lines *)
 
@@ -171,6 +175,7 @@ Section Stage.
       else if x =? ctrl_reset_n then Bit1
       else if x =? hidden_set then Bit1
       else Bit0.
+
 
 
   Lemma stage_with_reset_input : space_input stage_with_reset == from_list [req i;ack o;dp_reset_n;ctrl_reset_n].

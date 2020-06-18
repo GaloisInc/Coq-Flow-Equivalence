@@ -1,5 +1,5 @@
 Require Import Base.
-Require Import FlowEquivalence.
+Require Import Circuit.
 Require Import Monad.
 
 
@@ -8,7 +8,8 @@ Import ListNotations.
 Open Scope list_scope.
 
 
-
+(** * Define a state space for modeling asynchronous controllers, based loosely
+on trace theory *)
 Section state_space.
 
 Variable name : Set.
@@ -18,11 +19,10 @@ Import EnsembleNotation.
 Open Scope ensemble_scope.
 
 
-Arguments Value {latch val}.
 Inductive event_in {val} (I : Ensemble name) : option (event name val) -> Prop :=
-| Event_In i (pf : i ∈ I) v : event_in I (Some (Value i v)).
+| Event_In i (pf : i ∈ I) v : event_in I (Some (Event i v)).
 
-(* css_space should be called state *)
+
 Definition update {X : Set} `{eq_dec X} (σ : state X) (x : X) (v : value) : state X :=
   fun y => if x =? y then v
            else σ y.
@@ -33,9 +33,6 @@ Record StateSpace :=
   ; space_internal : Ensemble name
   ; space_step  : state name -> option (event name value) -> option (state name) -> Prop
   }.
-Print option.
-(* C : StateSpace *)
-(* space_step C : state name -> option (event name value) -> option (state name) -> Prop *)
 Notation "C ⊢ σ →{ e } τ" := (space_step C σ e τ) (no associativity, at level 70).
 
 Reserved Notation "C ⊢ σ →*{ t } τ" (no associativity, at level 70).
@@ -92,25 +89,25 @@ Section FuncStateSpace.
   | func_input_stable i (pf_i : i ∈ I) v :
     func_stable σ ->
 (*    σ i <> v -> *)
-    func_step σ (Some (Value i v))
+    func_step σ (Some (Event i v))
                 (Some (update σ i v))
 
   | func_input_unstable i (pf_i : i ∈ I) v :
     ~ (func_stable σ) ->
 (*    ~ (func_stable (update σ i v)) -> (* in a binary system, this is ok *)*)
     f σ = f (update σ i v) -> (* ok to update input in an unstable system if the output doesn't change *)
-    func_step σ (Some (Value i v)) (Some (update σ i v))
+    func_step σ (Some (Event i v)) (Some (update σ i v))
 
 
   | func_err i (pf_i : i ∈ I) v :
     ~ (func_stable σ) ->
     f σ <> f (update σ i v) -> (* if input updates in an unstable system causes output to change, go to error state*)
-    func_step σ (Some (Value i v)) None
+    func_step σ (Some (Event i v)) None
 
   | func_output v :
     ~ (func_stable σ) ->
     σ x = v ->
-    func_step σ (Some (Value x v))
+    func_step σ (Some (Event x v))
                 (Some (update σ x v))
   .
     
@@ -137,7 +134,7 @@ Section FuncStateSpace.
       + contradiction.
       + contradiction.
     * compare (σ x) (f σ); auto.
-      absurd (event_in (space_input func_space) (Some (Value x (σ x)))).
+      absurd (event_in (space_input func_space) (Some (Event x (σ x)))).
       { inversion 1; subst. simpl in *.
         contradiction. }
       { eapply Hstable.
@@ -335,7 +332,7 @@ Section HideStateSpace.
                       option (state name) ->
                       Prop :=
   | Hide_Eq v τ:
-    S ⊢ σ →{Some (Value x v)} τ ->
+    S ⊢ σ →{Some (Event x v)} τ ->
     hide_step σ None τ
   | Hide_Neq e τ :
     S ⊢ σ →{e} τ ->
@@ -404,21 +401,21 @@ Section Flop.
     flop_stable σ \/ Q_output σ = Q_output (update σ i v) ->
     i ∈ flop_input ->
     σ' = update σ i v ->
-    flop_step σ (Some (Value i v)) (Some σ')
+    flop_step σ (Some (Event i v)) (Some σ')
 
     (* other inputs lead to the error state *)
   | Flop_input_err i v :
     ~ flop_stable σ ->
     Q_output σ <> Q_output (update σ i v) ->
     i ∈ flop_input ->
-    flop_step σ (Some (Value i v)) None
+    flop_step σ (Some (Event i v)) None
 
     (* if the set line is high, raise Q *)
   | Flop_set σ' :
     σ set = Num 0 ->
     σ Q  <> Num 1 ->
     σ' = update σ Q (Num 1) ->
-    flop_step σ (Some (Value Q (Num 1))) (Some σ')
+    flop_step σ (Some (Event Q (Num 1))) (Some σ')
 
     (* if the reset line is high, lower Q *)
   | Flop_reset σ' :
@@ -426,7 +423,7 @@ Section Flop.
     σ reset = Num 0 ->
     σ Q    <> Num 0 ->
     σ' = update σ Q (Num 0) ->
-    flop_step σ (Some (Value Q (Num 0))) (Some σ')
+    flop_step σ (Some (Event Q (Num 0))) (Some σ')
 
     (* if the clock has fallen (i.e. input changed and clk is no longer 1), do
     nothing to the outputs, but propogate thd change to the old_clk. *)
@@ -447,7 +444,7 @@ Section Flop.
     v = σ D ->
     σ' = update (update σ Q v) old_clk (σ clk) ->
 
-    flop_step σ (Some (Value Q v)) (Some σ')
+    flop_step σ (Some (Event Q v)) (Some σ')
   .
 
   Definition flop : StateSpace :=
@@ -503,7 +500,7 @@ Section Flop.
       { (* σ set = Num 0 *)
         compare (σ Q) (Num 1); auto.
         (* if these are not equal, we can take a step *)
-        assert (Hstep : flop ⊢ σ →{Value Q (Num 1)} Some (update σ Q (Num 1))).
+        assert (Hstep : flop ⊢ σ →{Event Q (Num 1)} Some (update σ Q (Num 1))).
         { apply Flop_set; auto. }
         destruct Hstable as [_ Hstable].
         specialize (Hstable _ _ Hstep).
@@ -514,7 +511,7 @@ Section Flop.
       }
       destruct (σ reset) as [ [ | [ | ?]] | ] eqn:Hreset.
       { compare (σ Q) (Num 0); auto.
-        assert (Hstep : flop ⊢ σ →{Value Q (Num 0)} Some (update σ Q (Num 0))).
+        assert (Hstep : flop ⊢ σ →{Event Q (Num 0)} Some (update σ Q (Num 0))).
         { apply Flop_reset; auto. }
         destruct Hstable as [_ Hstable].
         specialize (Hstable _ _ Hstep).
@@ -527,7 +524,7 @@ Section Flop.
         compare (σ clk) (σ old_clk)
         compare (σ clk) (Num 1).
         { set (σ' := update (update σ Q (σ D)) old_clk (σ clk)). 
-          assert (Hstep : flop ⊢ σ →{Value Q (σ D)} Some σ').
+          assert (Hstep : flop ⊢ σ →{Event Q (σ D)} Some σ').
           { apply Flop_clk_rise; auto.
         { apply Flop_reset; auto. }
         destruct Hstable as [_ Hstable].
@@ -556,7 +553,7 @@ Section Flop.
     + (* dp_reset = 0 *)
       compare (σ state0) (Num 0); auto.
       (* derive a contradiction, since we can have σ -> σ[state0 ↦ 0] *)
-      assert (Hstep : flop ⊢ σ →{Value state0 reset_value} Some (update σ state0 reset_value)).
+      assert (Hstep : flop ⊢ σ →{Event state0 reset_value} Some (update σ state0 reset_value)).
       { apply Flop_Reset; auto.
         intros [Hreset0 _].
         specialize (Hreset0 Hdp_reset).
@@ -579,7 +576,7 @@ Section Flop.
         contradiction.
       }
       compare (σ clk) (Num 1).
-      { assert (Hstep : flop ⊢ σ →{Value state0 (neg_value (σ state0))}
+      { assert (Hstep : flop ⊢ σ →{Event state0 (neg_value (σ state0))}
                                   Some (update (update σ state0 (neg_value (σ state0))) old_clk (Num 1))).
         { eapply Flop_clk1; auto. }
         destruct Hstable as [_ Hstable].
@@ -631,7 +628,6 @@ Arguments space_output {name}.
 Arguments space_internal {name}.
 Arguments space_domain {name}.
 Arguments stable {name}.
-Arguments Value {latch val}.
 Definition Eps {latch val} : option (event latch val) := None.
 Arguments func_space {name name_eq_dec}.
 Arguments C_elem {name name_eq_dec}.

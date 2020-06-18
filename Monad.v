@@ -1,5 +1,7 @@
 Require Import List.
 Require Import Program.
+Require Import Coq.Sets.Ensembles.
+
 
 (** * Type classes for functors, applicatives, and monads *)
 
@@ -384,7 +386,6 @@ Instance stateM_correct {A} : Monad_Correct (State A).
   Qed.
 
 (** ** The Ensemble monad *)
-Require Import Coq.Sets.Ensembles.
 
 Instance ensemble_F : Functor Ensemble.
 Proof.

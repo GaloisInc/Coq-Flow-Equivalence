@@ -2,7 +2,7 @@
 Monad.v
 Base.v
 MarkedGraph.v
-FlowEquivalence.v
+Circuit.v
 RiseDecoupled.v
 FallDecoupled.v
 Desynchronization.v

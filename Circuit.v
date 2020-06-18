@@ -16,12 +16,12 @@ Require Import Omega.
 Require Import Lia (* Linear integer arithmetic tactics *).
 
 
-Section FE.
+Section Circuit.
 
-(** Even and odd latches *)
+(** Latches are either even or odd *)
 Variable even odd : Set.
 
-(** Decidable equality *)
+(** Equality over latches is decidable *)
 Context `{Heven : eq_dec even} `{Hodd : eq_dec odd}.  
 
 (** * Latches, events, and traces *)
@@ -33,47 +33,52 @@ Section LatchSequence.
   | Even : even -> latch
   .
 
-  (** Latches need not hold single bits; in practice, they will hold numeric
-  values *)
-  Inductive value := 
-  | Num : nat -> value
-(*  | Bool : bool -> value*)
-  | X  : value.
 
-  Instance nat_eq_dec : eq_dec nat.
-  Proof.
-    constructor.
-    intros x;
-    induction x as [ | x]; intros [ | y]; auto.
-    destruct (IHx y) as [IHxy | IHxy]; subst; auto.
-  Defined.
-
-  Instance value_eq_dec : eq_dec value.
-  Proof.
-    constructor. intros [x |] [y | ];
-    try (left; reflexivity);
-    try (right; discriminate).
-    compare x y; auto.
-    right. congruence.
-  Defined.
-
-  Inductive event latch val :=
-(*  | Eps : event *)
-  | Value : latch -> val -> event latch val.
-  (** Events are either the rise or fall of a latch's clock *)
-(*  Inductive event : Set :=
+  (** An event is a pair of a key and a value. *)
+  Inductive event key val :=
+  | Event : key -> val -> event key val.
+  
+  (* OLD DEFINITION:
+   (** Events are either the rise or fall of a latch's clock *)
+   Inductive event : Set :=
   | Rise : latch -> event
   | Fall : latch -> event
   . *)
-  Arguments Value {latch val}.
-  Definition Rise l : event latch bool := Value l true.
-  Definition Fall l : event latch bool := Value l false.
+  Arguments Event {key val}.
+
+  (** A trace is a list of events *)
+  Definition trace latch val := tail_list (event latch val).
+
+
+  (** Latches need not hold single bits; they can also hold numeric values, the
+  symbolic value X (don't care), and the symbolic value Z (floating). *)
+  Inductive value := 
+  | Num : nat -> value
+  | Bit0 : value
+  | Bit1 : value
+  | X  : value.
+
+  Definition Rise l : event latch bool := Event l true.
+  Definition Fall l : event latch bool := Event l false.
+
 
   (** A transparency state records whether latches are currently transparent or opaque. *)
   Inductive transparency := Transparent | Opaque.
   Definition tstate := latch -> transparency.
 
-  (** Decidability *)
+
+
+  (** ** Decidability of values, latches, and events *)
+
+
+  Instance value_eq_dec : eq_dec value.
+  Proof.
+    constructor. intros [x | | |] [y | | |];
+    try (left; reflexivity);
+    try (right; discriminate).
+    compare x y; auto.
+    right. congruence.
+  Defined.
   Instance latch_eq_dec : eq_dec latch.
   Proof.
     split.
@@ -86,7 +91,7 @@ Section LatchSequence.
       destruct (H e1 e2);
         [subst; left; reflexivity | right; inversion 1; contradiction].
   Defined.
-  Instance event_eq_dec {val} `{eq_dec val} : eq_dec (event latch val).
+  Instance event_eq_dec {key val} `{eq_dec key} `{eq_dec val} : eq_dec (event key val).
   Proof.
     constructor.
     intros [l1 v1] [l2 v2];
@@ -95,7 +100,7 @@ Section LatchSequence.
     destruct (Dec l1 l2); destruct (Dec v1 v2); subst;
       try (left; reflexivity);
     try (right; inversion 1; contradiction).
-(*.
+(*. OLD PROOF:
     intros [l1 | l1] [l2 | l2].
     * destruct (Dec l1 l2); [ subst; auto | ].
       right. inversion 1. contradiction.
@@ -107,8 +112,16 @@ Section LatchSequence.
   Defined.
 
 
-  (** A trace is a list of events *)
-  Definition trace latch val := tail_list (event latch val).
+  (** Calculate the number of occurrences of an event in a trace *)
+  Fixpoint num_events {A} `{eq_dec A} (e : event latch A) (t : trace latch A) : nat :=
+    match t with
+    | t_empty => 0
+    | t' ▶ e' => if e =? e'
+                 then 1 + num_events e t'
+                 else num_events e t'
+    end.
+
+
 
   (** Calculate the set of transparent latches after executing the trace t *)
   Fixpoint transparent (t : trace latch bool) : tstate :=
@@ -122,18 +135,12 @@ Section LatchSequence.
                               else transparent t' l
     end.
 
-  (** Calculate the number of occurrences of an event in a trace *)
-  Fixpoint num_events (e : event latch bool) (t : trace latch bool) : nat :=
-    match t with
-    | t_empty => 0
-    | t' ▶ e' => if e =? e'
-                 then 1 + num_events e t'
-                 else num_events e t'
-    end.
 
 
 End LatchSequence.
 
+Existing Instance latch_eq_dec.
+Existing Instance value_eq_dec.
 Existing Instance event_eq_dec.
 
 
@@ -191,7 +198,7 @@ Section Circuits.
     transparent (t' ▶ e) l = Opaque ->
     ⟨c,st0⟩⊢ t' ↓ l ↦{Opaque} v ->
     ⟨c,st0⟩⊢ t' ▶ e ↓ l ↦{Opaque} v
-
+ 
   | async_opaque_fall : forall l e t' v st,
     e = Fall l ->
     (forall l', neighbor c l' l -> ⟨c,st0⟩⊢ t' ↓ l' ↦{transparent t' l'} st l') ->
@@ -207,7 +214,8 @@ Lemma async_b : forall c st0 l O t v,
 Proof.
   intros c st0 l O t v H.
   induction H; auto. simpl.
-  subst. simpl. compare_next; auto.
+  subst. simpl. 
+  compare_next; auto.
 Qed.
 
 Lemma next_state_eq : forall c st1 st2 l,
@@ -321,7 +329,12 @@ Notation "⟨ c , st  ⟩⊢ t ↓ l ↦{ O } v" := (async c st t l O v) (no ass
 
 
 
-(** * Flow equivalence *)
+(** * Flow equivalence 
+
+A marked graph [M] is *flow equivalent* to a circuit [c] at state [st0] if, for all traces [t] accepted by the marked graph [M]: if [l] maps to [v] in the state obtained by asynchronously executing [t] in the circuit [c] from the state [st0], then [v] is the ith *synchronous* value latched by [l], where [i] is the number of occurrences of [Fall l] in [t].
+  
+
+*)
 
 
 
@@ -338,8 +351,9 @@ Section FlowEquivalence.
 
 End FlowEquivalence.
 
-End FE.
+End Circuit.
 
+(* begin hide *)
 Arguments flow_equivalence {even odd Heven Hodd} M.
 
 Arguments Odd {even odd}.
@@ -348,9 +362,10 @@ Arguments transparent {even odd Heven Hodd}.
 
 Arguments neighbor {even odd}.
 
+Arguments Event {key val}.
 Arguments Rise {even odd}.
 Arguments Fall {even odd}.
-Arguments num_events {even odd Heven Hodd}.
+Arguments num_events {even odd Heven Hodd A Adec} : rename.
 
 Arguments odd_even_neighbors {even odd}.
 Arguments even_odd_neighbors {even odd}.
@@ -369,7 +384,6 @@ Arguments is_enabled {transition}.
 
 (*Arguments fire_tstate {even odd Heven Hodd}.*)
 
-
 Existing Instance nat_eq_dec.
 Existing Instance value_eq_dec.
 Existing Instance event_eq_dec.
@@ -377,10 +391,10 @@ Existing Instance event_eq_dec.
 Arguments async {even odd Heven Hodd}.
 Notation "⟨ c , st ⟩⊢ t ↓ l ↦{ O } v" := (async c st t l O v) 
           (no associativity, at level 90).
-
+(* end hide *)
 
 (** * Tactics *)
-Module FE_Tactics.
+Module Circuit_Tactics.
 
 Lemma neighbor_neq : forall {even odd} (c : circuit even odd) l l',
     neighbor c l l' -> l <> l'.
@@ -389,7 +403,8 @@ Proof.
   destruct H; discriminate.
 Qed.
 
-
+(** Use [find_event_contradiction] when there is a hypothesis that contains a
+contradiction regarding events. *)
 Ltac find_event_contradiction :=
   try match goal with
       | [ H : Fall _ = Rise _ |- _ ] => inversion H 
@@ -409,7 +424,7 @@ Ltac find_event_contradiction :=
       end.
 
 (** Specialize hypotheses generated by is_enabled constraints (instantiated by
-the tactic 'get_enabled_constraints' in RiseDecoupled.v and FallDecoupled.v *)
+the tactic [get_enabled_constraints] in [RiseDecoupled.v] and [FallDecoupled.v] *)
 Ltac specialize_enabled_constraints :=
   repeat match goal with
   | [ HEO : In (_,_) (even_odd_neighbors _)
@@ -449,6 +464,9 @@ Ltac specialize_enabled_constraints :=
   | [ H : ?P, H' : ?P -> _ |- _ ] => specialize (H' H)
   end.
 
+(** [inversion_neighbors] can be used when you have a hypothesis of the form
+[neighbor c l1 l2] and you want to do case analysis on whether the neighbors are
+even-odd or odd-even *)
 Ltac inversion_neighbors :=
   match goal with
   | [ H : neighbor _ _ _ |- _ ] =>
@@ -476,4 +494,4 @@ Ltac inversion_neighbors :=
     | [ |- ⟨_,_⟩⊢ t_empty ↓ _ ↦{ Opaque } _ ] =>
       apply async_nil; reflexivity
     end.
-End FE_Tactics.
+End Circuit_Tactics.

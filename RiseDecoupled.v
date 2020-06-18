@@ -1,6 +1,6 @@
 Require Import Base.
-Require Import FlowEquivalence.
-Import FE_Tactics.
+Require Import Circuit.
+Import Circuit_Tactics.
 Require Import List.
 Import ListNotations.
 Open Scope list_scope.
