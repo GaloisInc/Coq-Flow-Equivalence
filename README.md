@@ -2,21 +2,27 @@ This repository contains a Coq formalization of flow equivalence, adapted from
 
 > Cortadella, Jordi, Alex Kondratyev, Luciano Lavagno, and Christos P. Sotiriou. "Desynchronization: Synthesis of asynchronous circuits from synchronous specifications." IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 25, no. 10 (2006). DOI 10.1109/TCAD.2005.860958.
 
-The formalization is presented in the paper 
+Much of this formalization is presented in the paper 
 
 > "Formal Verification of Flow Equivalence in Desynchronized Designs"
 
 by Jennifer Paykin, Brian Huffman, Daniel M. Zimmerman, and Peter Beerel, 
-to appear at ASYNC 2020, Snowbird, Utah, USA.
+in ASYNC 2020.
+
+The repository also contains work in progress building on the ASYNC paper.
 
 ## Files in this directory
 
 * `Monad.v`: Formalization of monads, not specific to flow equivalence.
 * `Base.v`: Some preliminary definitions and tactics, not specific to flow equivalence.
-* `FlowEquivalence.v`: Definitions of synchronous and asynchronous execution of circuits, marked graphs, and flow equivalence.
+* `MarkedGraph.v`: Definition of marked graphs (a kind of Petri net)
+* `Circuit.v`: Definitions of synchronous and asynchronous execution of circuits, and flow equivalence.
 * `RiseDecoupled.v`: Proof that the rise decoupled protocol satisfies flow equivalence.
 * `FallDecoupled.v`: Proof that the fall decoupled protocol satisfies flow equivalence.
 * `Desynchronization.v`: Counterexample to Cortadella et al's proof tha the desynchronization protocol satisfies flow equivalence.
+* `StateSpace.v`: Formalization of state spaces, used to model the behavior of asynchronous controllers.
+* `Click.v`: Implementation of Click controllers as state spaces.
+
 
 ## Building the project and documentation
 
