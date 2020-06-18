@@ -27,7 +27,7 @@ Section FallDecoupled.
   Variable init_st : state (latch even odd).
 
 
-  Inductive fd_place : event even odd -> event even odd -> Set :=
+  Inductive fd_place : event (latch even odd) bool -> event (latch even odd) bool -> Set :=
 
   | latch_fall l : fd_place (Rise l) (Fall l)
   | latch_rise l : fd_place (Fall l) (Rise l)
@@ -43,7 +43,7 @@ Section FallDecoupled.
 
 
   Definition fall_decoupled 
-           : marked_graph (event even odd) :=
+           : marked_graph (event (latch even odd) bool) :=
     {| place := fd_place
      ; init_marking := fun t1 t2 p => match p with
                                       | neighbor_rise_rise (Odd _) (Even _) _ => 1
@@ -55,7 +55,7 @@ Section FallDecoupled.
 
 
 (** * Specialized is_enabled predicate *)
-Inductive is_enabled_FD : event even odd -> marking fall_decoupled -> Prop :=
+Inductive is_enabled_FD : event (latch even odd) bool -> marking fall_decoupled -> Prop :=
 
 | fall_enabled_FD l (m : marking fall_decoupled) :
     0 < m _ _ (latch_fall l) ->
@@ -74,7 +74,7 @@ Inductive is_enabled_FD : event even odd -> marking fall_decoupled -> Prop :=
 Lemma FD_is_enabled_equiv : forall e m,
     is_enabled_FD e m -> is_enabled fall_decoupled e m.
 Proof.
-  destruct e as [[O | E] | [O | E]];
+  destruct e as [[O | E] [ | ]];
     intros m; inversion 1; subst;
     intros e0 p;
     simpl in p;
@@ -89,7 +89,7 @@ Lemma is_enabled_FD_equiv : forall e m,
 Proof.
   intros e m Henabled.
   unfold is_enabled in *.
-  destruct e as [[O | E] | [O | E]];
+  destruct e as [[O | E] [ | ]];
     constructor; intros; apply Henabled; eexists; try (econstructor; eauto; fail).
 Qed.
   
@@ -103,7 +103,7 @@ Ltac get_enabled_constraints :=
 (** * Helper lemmas *)
 Section loop_lemmas.
 
-  Variable t : trace even odd.
+  Variable t : trace (latch even odd) bool.
   Variable m : marking fall_decoupled.
 
   Hypothesis fd_t_m : [fall_decoupled]⊢ t ↓ m.
@@ -147,7 +147,7 @@ End loop_lemmas.
 
 Section fd_lemmas.
 
-  Variable t : trace even odd.
+  Variable t : trace (latch even odd) bool.
   Variable m : marking fall_decoupled.
 
   Hypothesis fd_t_m : [fall_decoupled]⊢ t ↓ m.
@@ -199,7 +199,8 @@ Section fd_lemmas.
       set (loop := fd_loop t' m m0 (Odd O)).
       specialize (IHm0 m0 O).
       destruct IHm0 as [IH1 IH2].
-      repeat compare_next; try unfold fire in Hrise; reduce_eqb.
+      subst; unfold fire in Hrise.
+      repeat compare_next; reduce_eqb.
       { rewrite IH2; auto. }
       { contradict Hrise. omega. }
       { apply IH1; auto. }
@@ -208,7 +209,8 @@ Section fd_lemmas.
       set (loop := fd_loop t' m m0 (Odd O)).
       specialize (IHm0 m0 O).
       destruct IHm0 as [IH1 IH2].
-      repeat compare_next; try unfold fire in Hrise; reduce_eqb.
+      subst; unfold fire in Hrise.
+      repeat compare_next; reduce_eqb.
       { contradict Hrise. omega. }
       { rewrite IH1; auto. }
       { apply IH2; auto. }
@@ -228,7 +230,8 @@ Section fd_lemmas.
       set (loop := fd_loop t' m m0 (Even E)).
       specialize (IHm0 m0 E).
       destruct IHm0 as [IH1 IH2].
-      repeat compare_next; try unfold fire in Hrise; reduce_eqb.
+      subst; unfold fire in Hrise.
+      repeat compare_next; reduce_eqb.
       { contradict Hrise. omega. }
       { rewrite IH2; auto. }
       { rewrite IH1; auto. }
@@ -237,7 +240,8 @@ Section fd_lemmas.
       set (loop := fd_loop t' m m0 (Even E)).
       specialize (IHm0 m0 E).
       destruct IHm0 as [IH1 IH2].
-      repeat compare_next; try unfold fire in Hrise; reduce_eqb.
+      subst; unfold fire in Hrise.
+      repeat compare_next; reduce_eqb.
       { rewrite IH1; auto. }
       { contradict Hrise. omega. }
       { apply IH2; auto. }
@@ -408,9 +412,11 @@ End fd_lemmas.
     assert (n > 0).
     { subst. destruct l as [O | E]; try omega.
       set (Hopaque := opaque_num_events _ _ Hm (Even E)).
-      simpl in Hopaque. reduce_eqb.
+      simpl in Hopaque.
+      compare_next.
       specialize (Hopaque eq_refl).
       simpl.
+      compare_next.
       rewrite <- Hopaque; omega.
     }
 
@@ -428,7 +434,7 @@ End fd_lemmas.
     }
     simpl.
     transitivity (sync_eval c init_st (num_events (Rise l) t') l').
-    2:{ destruct l; f_equal; omega. }
+    2:{ destruct l; compare_next; simpl; f_equal; omega. }
 
     f_equal.
     erewrite transparent_neighbor_num_events with (l := l) (l' := l'); eauto.

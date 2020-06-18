@@ -13,53 +13,14 @@ Section state_space.
 
 Variable name : Set.
 Context `{name_eq_dec : eq_dec name}.
+
 Import EnsembleNotation.
 Open Scope ensemble_scope.
 
-(*Definition e_state {X} (S : Ensemble X) := forall (x : X), x ∈ S -> value.
-Definition update {X} `{eq_dec X}
-                  {S : Ensemble X} (σ : e_state S) (x : X) (v : value) : e_state S :=
-    fun y pf_y =>
-      if x =? y then v
-      else σ y pf_y.
-*)
 
-Definition fin_state (X : Set) := X -> option value.
-Definition fin_update {X : Set} `{eq_dec X} (σ : fin_state X) (x : X) (v : value) : fin_state X :=
-  fun y => if x =? y then Some v
-           else σ y.
-Definition restrict {X : Set} (S : Ensemble X) `{in_dec _ S} (σ : fin_state X) : fin_state X :=
-  fun y => if y ∈? S
-           then σ y
-           else None.
-Definition in_fin_state {X} (σ : fin_state X) (x : X) :=
-  match σ x with
-  | Some _ => True
-  | None => False
-  end.
-
-
-(*
-Inductive e_event {X} (I O : Ensemble X) :=
-| Input_Event x : x ∈ I -> value -> e_event I O
-| Output_Event x : x ∈ O -> value -> e_event I O
-.
-Arguments Input_Event {X I O}.
-Arguments Output_Event {X I O}.
-Inductive is_input_event {X} {I O : Ensemble X} : option (e_event I O) -> Prop :=
-| Is_Input_Event x (pf : x ∈ I) v : is_input_event (Some (Input_Event x pf v)).
-Inductive event_in {X} {I O : Ensemble X} (S : Ensemble X) : option (e_event I O) -> Prop :=
-| Input_Event_In x (pf : x ∈ I) v : x ∈ S -> event_in S (Some (Input_Event x pf v))
-| Output_Event_In x (pf : x ∈ O) v : x ∈ S -> event_in S (Some (Output_Event x pf v))
-.
-*)
-
-Inductive event :=
-| Eps : event
-| Value : name -> value -> event.
-
-Inductive event_in (I : Ensemble name) : event -> Prop :=
-| Event_In i (pf : i ∈ I) v : event_in I (Value i v).
+Arguments Value {latch val}.
+Inductive event_in {val} (I : Ensemble name) : option (event name val) -> Prop :=
+| Event_In i (pf : i ∈ I) v : event_in I (Some (Value i v)).
 
 (* css_space should be called state *)
 Definition update {X : Set} `{eq_dec X} (σ : state X) (x : X) (v : value) : state X :=
@@ -70,9 +31,27 @@ Record StateSpace :=
   { space_input : Ensemble name
   ; space_output : Ensemble name
   ; space_internal : Ensemble name
-  ; space_step  : state name -> event -> option (state name) -> Prop
+  ; space_step  : state name -> option (event name value) -> option (state name) -> Prop
   }.
+Print option.
+(* C : StateSpace *)
+(* space_step C : state name -> option (event name value) -> option (state name) -> Prop *)
 Notation "C ⊢ σ →{ e } τ" := (space_step C σ e τ) (no associativity, at level 70).
+
+Reserved Notation "C ⊢ σ →*{ t } τ" (no associativity, at level 70).
+Inductive space_steps (C : StateSpace) (σ : state name)
+          : trace name value -> option (state name) -> Prop :=
+| steps0 : C ⊢ σ →*{t_empty} Some σ
+| steps1 σ' t e τ :
+    C ⊢ σ →*{t} Some σ' ->
+    C ⊢ σ' →{Some e} τ ->
+    C ⊢ σ →*{t ▶ e} τ
+| stepsEps σ' t τ :
+    C ⊢ σ →*{t} Some σ' ->
+    C ⊢ σ' →{None} τ ->
+    C ⊢ σ →*{t} τ
+where "C ⊢ σ →*{ t } τ" := (space_steps C σ t τ).
+
 Definition space_domain (S : StateSpace) := space_input S ∪ space_output S ∪ space_internal S.
 
 Record well_formed (S : StateSpace) (σ : state name) :=
@@ -107,31 +86,31 @@ Section FuncStateSpace.
   Hint Unfold func_stable.
   
   Inductive func_step (σ : state name) :
-                      event ->
+                      option (event name value) ->
                       option (state name) ->
                       Prop :=
   | func_input_stable i (pf_i : i ∈ I) v :
     func_stable σ ->
 (*    σ i <> v -> *)
-    func_step σ (Value i v)
+    func_step σ (Some (Value i v))
                 (Some (update σ i v))
 
   | func_input_unstable i (pf_i : i ∈ I) v :
     ~ (func_stable σ) ->
 (*    ~ (func_stable (update σ i v)) -> (* in a binary system, this is ok *)*)
     f σ = f (update σ i v) -> (* ok to update input in an unstable system if the output doesn't change *)
-    func_step σ (Value i v) (Some (update σ i v))
+    func_step σ (Some (Value i v)) (Some (update σ i v))
 
 
   | func_err i (pf_i : i ∈ I) v :
     ~ (func_stable σ) ->
     f σ <> f (update σ i v) -> (* if input updates in an unstable system causes output to change, go to error state*)
-    func_step σ (Value i v) None
+    func_step σ (Some (Value i v)) None
 
   | func_output v :
     ~ (func_stable σ) ->
     σ x = v ->
-    func_step σ (Value x v)
+    func_step σ (Some (Value x v))
                 (Some (update σ x v))
   .
     
@@ -158,7 +137,7 @@ Section FuncStateSpace.
       + contradiction.
       + contradiction.
     * compare (σ x) (f σ); auto.
-      absurd (event_in (space_input func_space) (Value x (σ x))).
+      absurd (event_in (space_input func_space) (Some (Value x (σ x)))).
       { inversion 1; subst. simpl in *.
         contradiction. }
       { eapply Hstable.
@@ -199,7 +178,7 @@ Section UnionStateSpace.
   Let union_internal := space_internal S1 ∪ space_internal S2.
   Hint Unfold union_input union_output union_internal.
 
-  Inductive union_input_event e :=
+  Inductive union_input_event (e : option (event name value)) :=
   | driven_by_1 : event_in (space_output S1) e ->
               event_in (space_input S2) e ->
               union_input_event e
@@ -221,7 +200,7 @@ Section UnionStateSpace.
 
 
   Inductive union_step (σ : state name)
-                     : event ->
+                     : option (event name value) ->
                        option (state name) ->
                        Prop :=
   | union_step_1 e τ :
@@ -352,12 +331,12 @@ Section HideStateSpace.
   Let hide_internal := space_internal S ∪ singleton x.
 
   Inductive hide_step (σ : state name) :
-                      event ->
+                      option (event name value) ->
                       option (state name) ->
                       Prop :=
   | Hide_Eq v τ:
-    S ⊢ σ →{Value x v} τ ->
-    hide_step σ Eps τ
+    S ⊢ σ →{Some (Value x v)} τ ->
+    hide_step σ None τ
   | Hide_Neq e τ :
     S ⊢ σ →{e} τ ->
     ~(event_in (singleton x) e) ->
@@ -415,7 +394,7 @@ Section Flop.
     end.
 
   Inductive flop_step (σ : state name) :
-                      event ->
+                      option (event name value) ->
                       option (state name) ->
                       Prop :=
     (* an input is allowed when, either (1) the flip-flop is stable aka any
@@ -425,21 +404,21 @@ Section Flop.
     flop_stable σ \/ Q_output σ = Q_output (update σ i v) ->
     i ∈ flop_input ->
     σ' = update σ i v ->
-    flop_step σ (Value i v) (Some σ')
+    flop_step σ (Some (Value i v)) (Some σ')
 
     (* other inputs lead to the error state *)
   | Flop_input_err i v :
     ~ flop_stable σ ->
     Q_output σ <> Q_output (update σ i v) ->
     i ∈ flop_input ->
-    flop_step σ (Value i v) None
+    flop_step σ (Some (Value i v)) None
 
     (* if the set line is high, raise Q *)
   | Flop_set σ' :
     σ set = Num 0 ->
     σ Q  <> Num 1 ->
     σ' = update σ Q (Num 1) ->
-    flop_step σ (Value Q (Num 1)) (Some σ')
+    flop_step σ (Some (Value Q (Num 1))) (Some σ')
 
     (* if the reset line is high, lower Q *)
   | Flop_reset σ' :
@@ -447,7 +426,7 @@ Section Flop.
     σ reset = Num 0 ->
     σ Q    <> Num 0 ->
     σ' = update σ Q (Num 0) ->
-    flop_step σ (Value Q (Num 0)) (Some σ')
+    flop_step σ (Some (Value Q (Num 0))) (Some σ')
 
     (* if the clock has fallen (i.e. input changed and clk is no longer 1), do
     nothing to the outputs, but propogate thd change to the old_clk. *)
@@ -455,7 +434,7 @@ Section Flop.
     σ clk <> Num 1 ->
     σ clk <> σ old_clk ->
     σ' = update σ old_clk (σ clk) ->
-    flop_step σ Eps (Some σ')
+    flop_step σ None (Some σ')
 
     (* if the clock has risen (i.e. input changed and clk is now equal to 1),
     update Q and old_clk to their proper values. The result will now be stable *)
@@ -468,7 +447,7 @@ Section Flop.
     v = σ D ->
     σ' = update (update σ Q v) old_clk (σ clk) ->
 
-    flop_step σ (Value Q v) (Some σ')
+    flop_step σ (Some (Value Q v)) (Some σ')
   .
 
   Definition flop : StateSpace :=
@@ -652,11 +631,12 @@ Arguments space_output {name}.
 Arguments space_internal {name}.
 Arguments space_domain {name}.
 Arguments stable {name}.
-Arguments Value {name}.
-Arguments Eps {name}.
+Arguments Value {latch val}.
+Definition Eps {latch val} : option (event latch val) := None.
 Arguments func_space {name name_eq_dec}.
 Arguments C_elem {name name_eq_dec}.
 Arguments hide {name}.
 Arguments flop {name name_eq_dec}.
 Notation "C ⊢ σ →{ e } τ" := (space_step _ C σ e τ) (no associativity, at level 70).
+ Notation "C ⊢ σ →*{ t } τ" := (space_steps _ C σ t τ) (no associativity, at level 70).
 Notation "S1 ∥ S2" := (union _ S1 S2) (left associativity, at level 91).

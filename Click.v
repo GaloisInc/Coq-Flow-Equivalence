@@ -32,7 +32,7 @@ Variable fail_ : Fresh name.
 Section Split.
 
   Definition forward x y := func_space (singleton x) y (fun σ => σ x).
-  Definition output x (v : option value) := 
+  Definition output x (v : option value) :=
     func_space ∅ x (fun σ => match v with
                          | None => σ x
                          | Some v' => v'
@@ -138,38 +138,66 @@ Section Stage.
                                  ∥ NOT state0 not_state0
                                  ∥ output hidden_reset (Some (Num 1)))).
 
-  Definition stage :=
+  Definition stage_with_reset :=
     clk_component ∥ flop_component ∥ forward state0 (ack i) ∥ forward state0 (req o).
 
-  Definition token_stage :=
+  Definition token_stage_with_reset :=
     tok_clk_component ∥ tok_flop_component ∥ NOT state0 (ack i) ∥ forward state0 (req o).
 
+  Definition stage :=
+    stage_with_reset ∥ output dp_reset_n None ∥ output ctrl_reset_n None.
+  Definition token_stage :=
+    token_stage_with_reset ∥ output dp_reset_n None ∥ output ctrl_reset_n None.
 
-  Lemma stage_input : space_input stage == from_list [req i;ack o;dp_reset_n;ctrl_reset_n].
+  Definition Bit0 : value := Num 0.
+  Definition Bit1 : value := Num 1.
+
+  Definition σR (is_token : bool) : state name :=
+    fun x =>
+      (* acknowledgments are 0 *)
+      if x =? ack o then Bit0
+      else if x =? ack i then Bit0
+      (*a non-token stage connected on the left to a token stage *)
+      else if x =? req i then (if is_token then Bit0 else Bit1)
+      (* a non-token stage so the right request is 0, and vice versa *)
+      else if x =? req o then (if is_token then Bit1 else Bit0)
+      else if x =? state0 then Bit1
+      else if x =? not_state0 then Bit0
+      (* clock starts out 0 *)
+      else if x =? clk then Bit0
+      else if x =? old_clk then Bit0
+      (* reset wires start at 1 *)
+      else if x =? dp_reset_n then Bit1
+      else if x =? ctrl_reset_n then Bit1
+      else if x =? hidden_set then Bit1
+      else Bit0.
+
+
+  Lemma stage_with_reset_input : space_input stage_with_reset == from_list [req i;ack o;dp_reset_n;ctrl_reset_n].
   Proof.
     constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
   Qed.
 
-  Lemma stage_output : space_output stage == from_list [ack i;req o;state0;clk].
+  Lemma stage_with_reset_output : space_output stage_with_reset == from_list [ack i;req o;state0;clk].
   Proof.
     constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
   Qed.
 
-  Lemma stage_internal : space_internal stage == from_list [old_clk;hidden_set; not_state0].
+  Lemma stage_with_reset_internal : space_internal stage_with_reset == from_list [old_clk;hidden_set; not_state0].
   Proof.
     constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
   Qed.
-  Lemma token_stage_input : space_input token_stage == from_list [req i;ack o;dp_reset_n;ctrl_reset_n].
-  Proof.
-    constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
-  Qed.
-
-  Lemma token_stage_output : space_output token_stage == from_list [ack i;req o;state0;clk].
+  Lemma token_stage_with_reset_input : space_input token_stage_with_reset == from_list [req i;ack o;dp_reset_n;ctrl_reset_n].
   Proof.
     constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
   Qed.
 
-  Lemma token_stage_internal : space_internal token_stage == from_list [old_clk;hidden_reset;not_state0].
+  Lemma token_stage_with_reset_output : space_output token_stage_with_reset == from_list [ack i;req o;state0;clk].
+  Proof.
+    constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
+  Qed.
+
+  Lemma token_stage_with_reset_internal : space_internal token_stage_with_reset == from_list [old_clk;hidden_reset;not_state0].
   Proof.
     constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
   Qed.
@@ -198,11 +226,13 @@ Section Desync.
 
   Definition latch_stage (l : latch even odd) : StateSpace name :=
     match l with
-    | Even _ => token_stage (latch_input l) (latch_output l)
+    | Even _ => token_stage_with_reset
+                            (latch_input l) (latch_output l)
                             ctrl_reset_n dp_reset_n
                             (latch_hidden l)
                             (latch_clk l) (latch_old_clk l) (latch_state0 l) (latch_not_state0 l)
-    | Odd _ => stage (latch_input l) (latch_output l)
+    | Odd _ => stage_with_reset
+                     (latch_input l) (latch_output l)
                      ctrl_reset_n dp_reset_n
                      (latch_hidden l)
                      (latch_clk l) (latch_old_clk l) (latch_state0 l) (latch_not_state0 l)

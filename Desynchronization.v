@@ -26,13 +26,13 @@ Section Desynchronization.
   Variable init_st : state (latch even odd).
 
 
-  Inductive desync_place : event even odd -> event even odd -> Set :=
+  Inductive desync_place : event (latch even odd) bool -> event (latch even odd) bool -> Set :=
   | latch_fall (l : latch even odd) : desync_place (Rise l) (Fall l)
   | latch_rise (l : latch even odd) : desync_place (Fall l) (Rise l)
   | neighbor_fall : forall l l', neighbor c l l' -> desync_place (Rise l) (Fall l')
   | neighbor_rise : forall l l', neighbor c l l' -> desync_place (Fall l') (Rise l).
 
-  Definition desynchronization : marked_graph (event even odd) :=
+  Definition desynchronization : marked_graph (event (latch even odd) bool) :=
     {| place := desync_place
      ; init_marking := fun t1 t2 p => match p with
                                       | latch_rise (Even _) => 1
@@ -43,7 +43,7 @@ Section Desynchronization.
     |}.
 
 (** * Specialized is_enabled constraint *)
-Inductive is_enabled_desync : event even odd -> marking desynchronization -> Prop :=
+Inductive is_enabled_desync : event (latch even odd) bool -> marking desynchronization -> Prop :=
 | latch_fall_enbled l (m : marking desynchronization) :
     0 < m _ _ (latch_fall l) ->
     (forall l0 (pf : neighbor c l0 l), 0 < m _ _ (neighbor_fall l0 l pf)) ->
@@ -58,7 +58,7 @@ Inductive is_enabled_desync : event even odd -> marking desynchronization -> Pro
 Lemma desync_is_enabled_equiv : forall e m,
     is_enabled_desync e m -> is_enabled desynchronization e m.
 Proof.
-  destruct e as [[O | E] | [O | E]];
+  destruct e as [[O | E] v];
     intros m; inversion 1; subst;
     intros e0 p;
     simpl in p;
@@ -73,7 +73,7 @@ Lemma is_enabled_desync_equiv : forall e m,
 Proof.
   intros e m Henabled.
   unfold is_enabled in *.
-  destruct e as [[O | E] | [O | E]];
+  destruct e as [[O | E] [|]];
     constructor; intros; apply Henabled; eexists; try (econstructor; eauto; fail).
 Qed.
 
@@ -194,7 +194,7 @@ Section EnvPipeline.
 
 
   (** ** Counterexample trace *)
-  Definition counter_trace : trace even odd :=
+  Definition counter_trace : trace (latch even odd) bool :=
     t_empty ▶ Fall SNK ▶ Rise C
             ▶ Fall B
             ▶ Fall C

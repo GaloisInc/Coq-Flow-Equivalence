@@ -25,7 +25,7 @@ Section RiseDecoupled.
   Variable init_st : state (latch even odd).
 
 
-  Inductive rd_place : event even odd -> event even odd -> Set :=
+  Inductive rd_place : event (latch even odd) bool -> event (latch even odd) bool -> Set :=
   | latch_fall l : rd_place (Rise l) (Fall l)
   | latch_rise l : rd_place (Fall l) (Rise l)
   (* E- → O- for (E,O) *)
@@ -39,7 +39,7 @@ Section RiseDecoupled.
   .
 
 
-  Definition rise_decoupled : marked_graph (event even odd) :=
+  Definition rise_decoupled : marked_graph (event (latch even odd) bool) :=
     {| place := rd_place
      ; init_marking := fun t1 t2 p => match p with
                                       | latch_fall (Odd _) => 1
@@ -52,7 +52,7 @@ Section RiseDecoupled.
 Open Scope nat_scope.
 
 (** * Specialized is_enabled predicate *)
-Inductive is_enabled_RD : event even odd -> marking rise_decoupled -> Prop :=
+Inductive is_enabled_RD : event (latch even odd) bool -> marking rise_decoupled -> Prop :=
 | fall_enabled_RD l (m : marking rise_decoupled) :
     0 < m _ _ (latch_fall l) ->
     (forall l0 (pf : neighbor c l0 l),
@@ -68,7 +68,7 @@ Inductive is_enabled_RD : event even odd -> marking rise_decoupled -> Prop :=
 Lemma RD_is_enabled_equiv : forall e m,
     is_enabled_RD e m -> is_enabled rise_decoupled e m.
 Proof.
-  destruct e as [l | l];
+  destruct e as [l v];
     intros m; inversion 1; subst;
     intros e0 p;
     simpl in p;
@@ -76,15 +76,14 @@ Proof.
     auto.
 Qed.
  
-
 Lemma is_enabled_RD_equiv : forall e m,
     is_enabled rise_decoupled e m ->
     is_enabled_RD e m.
 Proof.
   intros e m Henabled.
   unfold is_enabled in *.
-  destruct e as [l | l];
-    constructor; intros; apply Henabled; eexists; try (econstructor; eauto; fail).
+  destruct e as [l [|]];
+    try (constructor; intros; apply Henabled; eexists; try (econstructor; eauto; fail)).
 Qed.
 
 
@@ -142,11 +141,12 @@ Proof.
       assert (Rise l <> e).
       { inversion 1; subst.
         repeat get_enabled_constraints.
-        compare_next; try omega.
-        { inversion e; subst. reduce_eqb. omega. }
-        { simpl in *. omega. }
+        compare_next. 
+        { inversion Heq; subst. reduce_eqb. omega. }
+        compare_next.
+        compare_next.
+        omega.
       }
-      reduce_eqb.
 
       repeat (compare_next; find_event_contradiction); auto.
       { contradict Henabled. omega. }

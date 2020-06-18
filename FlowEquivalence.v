@@ -33,79 +33,11 @@ Section LatchSequence.
   | Even : even -> latch
   .
 
-  (** Events are either the rise or fall of a latch's clock *)
-  Inductive event : Set :=
-  | Rise : latch -> event
-  | Fall : latch -> event
-  . 
-
-  (** A transparency state records whether latches are currently transparent or opaque. *)
-  Inductive transparency := Transparent | Opaque.
-  Definition tstate := latch -> transparency.
-
-  (** Decidability *)
-  Instance latch_eq_dec : eq_dec latch.
-  Proof.
-    split.
-    intros [o1 | e1] [o2 | e2];
-    try (right; inversion 1; fail).
-    * destruct Hodd as [H].
-      destruct (H o1 o2);
-        [subst; left; reflexivity | right; inversion 1; contradiction].
-    * destruct Heven as [H].
-      destruct (H e1 e2);
-        [subst; left; reflexivity | right; inversion 1; contradiction].
-  Defined.
-  Instance event_eq_dec : eq_dec event.
-  Proof.
-    constructor.
-    intros [l1 | l1] [l2 | l2].
-    * destruct (Dec l1 l2); [ subst; auto | ].
-      right. inversion 1. contradiction.
-    * right. inversion 1.
-    * right. inversion 1.
-    * destruct (Dec l1 l2); [ subst; auto | ].
-      right. inversion 1. contradiction.
-  Defined.
-
-
-  (** A trace is a list of events *)
-  Definition trace := tail_list event.
-
-  (** Calculate the set of transparent latches after executing the trace t *)
-  Fixpoint transparent (t : trace) : tstate :=
-    match t with
-    | t_empty => fun l => match l with
-                          | Even _ => Opaque
-                          | Odd _ => Transparent
-                          end
-    | t' ▶ e => fun l => if Rise l =? e then Transparent
-                              else if Fall l =? e then Opaque
-                              else transparent t' l
-    end.
-
-  (** Calculate the number of occurrences of an event in a trace *)
-  Fixpoint num_events (e : event) (t : trace) : nat :=
-    match t with
-    | t_empty => 0
-    | t' ▶ e' => if e =? e'
-                 then 1 + num_events e t'
-                 else num_events e t'
-    end.
-
-
-End LatchSequence.
-
-Existing Instance event_eq_dec.
-
-
-(** * Circuits *)
-Section Circuits.
-
   (** Latches need not hold single bits; in practice, they will hold numeric
   values *)
   Inductive value := 
   | Num : nat -> value
+(*  | Bool : bool -> value*)
   | X  : value.
 
   Instance nat_eq_dec : eq_dec nat.
@@ -124,6 +56,89 @@ Section Circuits.
     compare x y; auto.
     right. congruence.
   Defined.
+
+  Inductive event latch val :=
+(*  | Eps : event *)
+  | Value : latch -> val -> event latch val.
+  (** Events are either the rise or fall of a latch's clock *)
+(*  Inductive event : Set :=
+  | Rise : latch -> event
+  | Fall : latch -> event
+  . *)
+  Arguments Value {latch val}.
+  Definition Rise l : event latch bool := Value l true.
+  Definition Fall l : event latch bool := Value l false.
+
+  (** A transparency state records whether latches are currently transparent or opaque. *)
+  Inductive transparency := Transparent | Opaque.
+  Definition tstate := latch -> transparency.
+
+  (** Decidability *)
+  Instance latch_eq_dec : eq_dec latch.
+  Proof.
+    split.
+    intros [o1 | e1] [o2 | e2];
+    try (right; inversion 1; fail).
+    * destruct Hodd as [H].
+      destruct (H o1 o2);
+        [subst; left; reflexivity | right; inversion 1; contradiction].
+    * destruct Heven as [H].
+      destruct (H e1 e2);
+        [subst; left; reflexivity | right; inversion 1; contradiction].
+  Defined.
+  Instance event_eq_dec {val} `{eq_dec val} : eq_dec (event latch val).
+  Proof.
+    constructor.
+    intros [l1 v1] [l2 v2];
+      try (left; reflexivity);
+      try (right; inversion 1; fail).
+    destruct (Dec l1 l2); destruct (Dec v1 v2); subst;
+      try (left; reflexivity);
+    try (right; inversion 1; contradiction).
+(*.
+    intros [l1 | l1] [l2 | l2].
+    * destruct (Dec l1 l2); [ subst; auto | ].
+      right. inversion 1. contradiction.
+    * right. inversion 1.
+    * right. inversion 1.
+    * destruct (Dec l1 l2); [ subst; auto | ].
+      right. inversion 1. contradiction.
+*)
+  Defined.
+
+
+  (** A trace is a list of events *)
+  Definition trace latch val := tail_list (event latch val).
+
+  (** Calculate the set of transparent latches after executing the trace t *)
+  Fixpoint transparent (t : trace latch bool) : tstate :=
+    match t with
+    | t_empty => fun l => match l with
+                          | Even _ => Opaque
+                          | Odd _ => Transparent
+                          end
+    | t' ▶ e => fun l => if Rise l =? e then Transparent
+                              else if Fall l =? e then Opaque
+                              else transparent t' l
+    end.
+
+  (** Calculate the number of occurrences of an event in a trace *)
+  Fixpoint num_events (e : event latch bool) (t : trace latch bool) : nat :=
+    match t with
+    | t_empty => 0
+    | t' ▶ e' => if e =? e'
+                 then 1 + num_events e t'
+                 else num_events e t'
+    end.
+
+
+End LatchSequence.
+
+Existing Instance event_eq_dec.
+
+
+(** * Circuits *)
+Section Circuits.
 
   (** A state (e.g. of a set of latches) maps each of those latches to values *)
   Definition state (tp : Set) := tp -> value.
@@ -161,7 +176,7 @@ Section Circuits.
 
   Reserved Notation "⟨ c , st ⟩⊢ t ↓ l ↦{ O } v" (no associativity, at level 90).
   Inductive async (c : circuit) (st0 : state latch)
-                    : trace -> latch -> transparency -> value -> Prop :=
+                    : trace latch bool -> latch -> transparency -> value -> Prop :=
   | async_nil : forall E, 
     ⟨c,st0⟩⊢ t_empty ↓ Even E ↦{Opaque} st0 (Even E)
 
@@ -192,7 +207,7 @@ Lemma async_b : forall c st0 l O t v,
 Proof.
   intros c st0 l O t v H.
   induction H; auto. simpl.
-  subst. simpl. reduce_eqb. auto.
+  subst. simpl. compare_next; auto.
 Qed.
 
 Lemma next_state_eq : forall c st1 st2 l,
@@ -218,10 +233,10 @@ Proof.
   * apply next_state_eq.
     intros l' Hl'.
     eapply H1; eauto.
-  * reduce_eqb; find_contradiction. 
+  * compare_next.
   * compare (Rise l) e.
     eapply IHasync; eauto.
-  * reduce_eqb; find_contradiction.
+  * compare_next.
   * apply next_state_eq.
     intros l' Hl'.
     eapply H1; eauto.
@@ -312,7 +327,7 @@ Notation "⟨ c , st  ⟩⊢ t ↓ l ↦{ O } v" := (async c st t l O v) (no ass
 
 Section FlowEquivalence.
 
-  Definition flow_equivalence (M : marked_graph event)
+  Definition flow_equivalence (M : marked_graph (event latch bool))
                               (c : circuit) 
                               (st0 : state latch) :=
     forall l t v,
