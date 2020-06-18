@@ -12,21 +12,37 @@ Open Scope list_scope.
 on trace theory *)
 Section state_space.
 
+
+(** In this section we will use Ensembles heavily, and for the sake of
+consistency we will assume there is an abstract type [name] that all the
+Ensembles will quantify over. *)
 Variable name : Set.
 Context `{name_eq_dec : eq_dec name}.
 
 Import EnsembleNotation.
 Open Scope ensemble_scope.
 
-
+(** An event is an element of an ensemble exactly if its underlying key is in the ensemble. *)
 Inductive event_in {val} (I : Ensemble name) : option (event name val) -> Prop :=
 | Event_In i (pf : i ∈ I) v : event_in I (Some (Event i v)).
 
+(** A state space consists of 
 
-Definition update {X : Set} `{eq_dec X} (σ : state X) (x : X) (v : value) : state X :=
-  fun y => if x =? y then v
-           else σ y.
+1. a set of input wires
+2. a set of output wires
+3. a set of internal wires (not visible in the events of the transition relation
+4. a transition relation
 
+The transition relation for a state space [C] holds of the triple ([σ],[e],[τ]),
+also written [C ⊢ σ →{e} τ], if the state [σ] transitions to the state [τ] via
+the event [e]. In this case, [e] may be either an actual event ([Some e']) or an
+epsilon transition ([None]), and [τ] may be an actual state ([Some σ']) or the
+error state ([None]).
+
+The transition relation is a relation and not a function primarily because of
+the presence of epsilon transitions.
+
+*)
 Record StateSpace :=
   { space_input : Ensemble name
   ; space_output : Ensemble name
@@ -35,6 +51,9 @@ Record StateSpace :=
   }.
 Notation "C ⊢ σ →{ e } τ" := (space_step C σ e τ) (no associativity, at level 70).
 
+(** The multi-step relation [C ⊢ σ →*{t} τ] is the closure of the step relation
+over a trace of events. Note that epsilon transitions are not present in the
+trace. *)
 Reserved Notation "C ⊢ σ →*{ t } τ" (no associativity, at level 70).
 Inductive space_steps (C : StateSpace) (σ : state name)
           : trace name value -> option (state name) -> Prop :=
@@ -49,14 +68,23 @@ Inductive space_steps (C : StateSpace) (σ : state name)
     C ⊢ σ →*{t} τ
 where "C ⊢ σ →*{ t } τ" := (space_steps C σ t τ).
 
+(** The domain of a state space is the union of its input, output, and internal wires *)
 Definition space_domain (S : StateSpace) := space_input S ∪ space_output S ∪ space_internal S.
 
+(** A state space is well-formed if several properties hold. There may be other
+properties that also hold not included here, such as the condition that each
+input/output/internal set are individually all_disjoint, or that the transition
+relation is only valid for events in [space_input S ∪ space_outupt S]. *)
 Record well_formed (S : StateSpace) (σ : state name) :=
   { (*space_dom : forall x, x ∈ space_domain S <-> in_fin_state σ x*)
     space_input_output : space_input S ⊥ space_output S
   ; space_input_internal : space_input S ⊥ space_internal S
   ; space_output_internal : space_output S ⊥ space_internal S
   }.
+
+(** A state [σ] in the state space [S] is stable if the only events that are
+enabled in σ are input events. That is, S will not take any more steps except
+those prompted by the environment. *)
 Record stable (S : StateSpace) (σ : state name) :=
   { stable_wf : well_formed S σ
   ; stable_step : forall e τ, S ⊢ σ →{e} τ -> event_in (space_input S) e }.
@@ -64,9 +92,9 @@ Record stable (S : StateSpace) (σ : state name) :=
 Class stable_dec (S : StateSpace) :=
   { space_stable_dec : forall σ, stable S σ + ~ stable S σ }.
 
-Section FuncStateSpace.
 
-  (* Define a circuit state space from a combinational logic function *)
+(** * Define a circuit state space from a combinational logic function *)
+Section FuncStateSpace.
 
   Variable I : Ensemble name.
   Variable x : name.
@@ -79,6 +107,10 @@ Section FuncStateSpace.
   Lemma I_subset_dom : forall i, i ∈ I -> i ∈ dom.
   Proof. unfold dom. auto with sets. Qed.
 
+  (** The definition of func_step requires a notion of stability of the state
+  space, which in this case corresponds to [x] being equal to the value of
+  [f(I)] in [σ]. Below we will prove that this condition exactly correlates with
+  the stability of the state space. *)
   Let func_stable (σ : state name) := σ x = f σ.
   Hint Unfold func_stable.
   
@@ -88,7 +120,7 @@ Section FuncStateSpace.
                       Prop :=
   | func_input_stable i (pf_i : i ∈ I) v :
     func_stable σ ->
-(*    σ i <> v -> *)
+(*    σ i <> v -> *) (* Question: what happens if an event occurs that doesn't change the value of the variable? Is it allowed? Is it a no-op? *)
     func_step σ (Some (Event i v))
                 (Some (update σ i v))
 
@@ -99,9 +131,10 @@ Section FuncStateSpace.
     func_step σ (Some (Event i v)) (Some (update σ i v))
 
 
+  (* if input updates in an unstable system causes output to change, go to error state*)
   | func_err i (pf_i : i ∈ I) v :
     ~ (func_stable σ) ->
-    f σ <> f (update σ i v) -> (* if input updates in an unstable system causes output to change, go to error state*)
+    f σ <> f (update σ i v) -> 
     func_step σ (Some (Event i v)) None
 
   | func_output v :
@@ -118,7 +151,10 @@ Section FuncStateSpace.
    ; space_step := func_step
    |}.
 
-  (* This just depends on the enumerability of I *)
+
+  (** ** Decidability of stability for function spaces *)
+
+  (** This just depends on the enumerability of I *)
   Hypothesis space_wf_decidable : forall σ, well_formed func_space σ + ~(well_formed func_space σ).
 
   Lemma func_stable_equiv : forall σ, well_formed func_space σ ->
@@ -160,11 +196,14 @@ Section FuncStateSpace.
 
 End FuncStateSpace.
 
+(** * Composition of two state spaces, written S1 ∥ S2. *)
 Section UnionStateSpace.
 
   Variable S1 S2 : StateSpace.
   Hypothesis output_dec1 : in_dec (space_output S1).
   Hypothesis output_dec2 : in_dec (space_output S2).
+
+  (** The union is only defined for two spaces that are appropriately disjoint. The spaces may share input wires with the others' output wires, however. *)
 
   Hypothesis output_disjoint : space_output S1 ⊥ space_output S2.
   Hypothesis wires1_disjoint : space_internal S1 ⊥ space_domain S2.
@@ -228,17 +267,6 @@ Section UnionStateSpace.
      ; space_step := union_step
     |}.
 
-
-  Instance union_stable_dec `{stable_dec S1} `{stable_dec S2} : stable_dec union.
-  Proof. split.
-    intros σ.
-    destruct (@space_stable_dec S1 _ σ) as [stable1 | stable1];
-    destruct (@space_stable_dec S2 _ σ) as [stable2 | stable2].
-    
-  Abort.
-
-
-
   Definition union_stable (σ : state name) := 
     stable S1 σ /\ stable S2 σ.
 
@@ -269,7 +297,10 @@ Section UnionStateSpace.
     find_contradiction.
   Qed.
 
-  (** Note: I'm not sure the other direction actually is true, as written *)
+  (** Although this direction ([union_stable_implies]) is true, I don't know if the other direction
+  actually is true, e.g. if [S1 ∥ S2] is stable, then both [S1] and [S2] are
+  stable. If it is true, I may have to make some subtle arguments about the fact
+  that certain (e.g. input events) are always enabled in a state. *)
   Lemma union_stable_implies : forall σ, 
         stable S1 σ ->
         stable S2 σ ->
@@ -316,6 +347,8 @@ Section UnionStateSpace.
 
 End UnionStateSpace.
 
+
+(** * Move a name from the output of a state space to the input of a state space. *)
 Section HideStateSpace.
 
   Variable x : name.
@@ -346,10 +379,10 @@ Section HideStateSpace.
      ; space_internal := hide_internal
      ; space_step := hide_step
     |}.
-
-
 End HideStateSpace.
 
+
+(** * A state space modeling a D-flip-flop with set and reset lines. *)
 Section Flop.
 
   (* the set and reset lines can be optional*)
@@ -488,120 +521,17 @@ Section Flop.
         destruct Hstable as [_ Hstable]; auto.
   Qed.
 
-(* Not true as is; flop_stable would need to be more precise as to how we handle when set and reset lines are X *)
-(*
+(** The reverse is not true as is; flop_stable would need to be more precise as to how we handle
+when set and reset lines are X:
+
   Lemma stable_implies_flop_stable : forall σ,
     stable flop σ ->
     flop_stable σ.
-  Proof.
-    intros σ Hstable. constructor.
-    + unfold Q_output.
-      destruct (σ set) as [ [ | [ | ?]] | ] eqn:Hset.
-      { (* σ set = Num 0 *)
-        compare (σ Q) (Num 1); auto.
-        (* if these are not equal, we can take a step *)
-        assert (Hstep : flop ⊢ σ →{Event Q (Num 1)} Some (update σ Q (Num 1))).
-        { apply Flop_set; auto. }
-        destruct Hstable as [_ Hstable].
-        specialize (Hstable _ _ Hstep).
-        (*contradict Hstable.*)
-        inversion Hstable; subst.
-        simpl in pf. unfold flop_input in pf. 
-        decompose_set_structure.
-      }
-      destruct (σ reset) as [ [ | [ | ?]] | ] eqn:Hreset.
-      { compare (σ Q) (Num 0); auto.
-        assert (Hstep : flop ⊢ σ →{Event Q (Num 0)} Some (update σ Q (Num 0))).
-        { apply Flop_reset; auto. }
-        destruct Hstable as [_ Hstable].
-        specialize (Hstable _ _ Hstep).
-        (*contradict Hstable.*)
-        inversion Hstable; subst.
-        simpl in pf. unfold flop_input in pf. 
-        decompose_set_structure.
-      }
-      { compare (σ Q) (σ D); auto.
-        compare (σ clk) (σ old_clk)
-        compare (σ clk) (Num 1).
-        { set (σ' := update (update σ Q (σ D)) old_clk (σ clk)). 
-          assert (Hstep : flop ⊢ σ →{Event Q (σ D)} Some σ').
-          { apply Flop_clk_rise; auto.
-        { apply Flop_reset; auto. }
-        destruct Hstable as [_ Hstable].
-        specialize (Hstable _ _ Hstep).
-        (*contradict Hstable.*)
-        inversion Hstable; subst.
-        simpl in pf. unfold flop_input in pf. 
-        decompose_set_structure.
-
-        destruct (σ 
-          
-
-      ++ compare (σ reset) (Num 0).
-
-         simpl in pf.
-         decompose_set_structure.
-
-         inversion pf; find_contradiction.
-          
-         inversion H14. clear H14. contradiction.
-         inversion H14. clea
-
-         
-
-
-    + (* dp_reset = 0 *)
-      compare (σ state0) (Num 0); auto.
-      (* derive a contradiction, since we can have σ -> σ[state0 ↦ 0] *)
-      assert (Hstep : flop ⊢ σ →{Event state0 reset_value} Some (update σ state0 reset_value)).
-      { apply Flop_Reset; auto.
-        intros [Hreset0 _].
-        specialize (Hreset0 Hdp_reset).
-        contradiction.
-      }
-      destruct Hstable as [_ Hstable].
-      specialize (Hstable _ _ Hstep).
-      (*contradict Hstable.*)
-      inversion Hstable; subst.
-        simpl in pf. unfold flop_input in pf. 
-      decompose_set_structure.
-      inversion pf; find_contradiction.
-
-    + (* dp_reset = 1 *)
-      compare (σ clk) (σ old_clk); auto.
-      (* derive a contradiction, since σ is no longer flop_stable *)
-      assert (Hstable' : ~ flop_stable σ).
-      { intros [Hreset0 Hreset1].
-        specialize (Hreset1 Hdp_reset).
-        contradiction.
-      }
-      compare (σ clk) (Num 1).
-      { assert (Hstep : flop ⊢ σ →{Event state0 (neg_value (σ state0))}
-                                  Some (update (update σ state0 (neg_value (σ state0))) old_clk (Num 1))).
-        { eapply Flop_clk1; auto. }
-        destruct Hstable as [_ Hstable].
-        specialize (Hstable _ _ Hstep).
-        contradict Hstable.
-        inversion 1; subst.
-          decompose_set_structure. 
-          simpl in pf. inversion pf; find_contradiction.
-      }
-      { assert (Hstep : flop ⊢ σ →{Eps} (Some (update σ old_clk (σ clk)))).
-        { eapply Flop_clk0; auto. }
-        
-        destruct Hstable as [_ Hstable].
-        specialize (Hstable _ _ Hstep).
-        contradict Hstable.
-        inversion 1; subst.
-      }
-  Qed.
 *)
 
 End Flop.
 
-
-
-
+(** * A state space modeling a C element. *)
 
 Section Celem.
 

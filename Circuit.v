@@ -150,6 +150,10 @@ Section Circuits.
   (** A state (e.g. of a set of latches) maps each of those latches to values *)
   Definition state (tp : Set) := tp -> value.
 
+  Definition update {X : Set} `{eq_dec X} (σ : state X) (x : X) (v : value) : state X :=
+    fun y => if x =? y then v
+             else σ y.
+
   (** Restrict a state to only its even or odd members. *)
   Definition odd_state {P : odd -> Prop}
                        (s : state latch) : state {o : odd & P o} :=
