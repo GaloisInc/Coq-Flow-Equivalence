@@ -1,13 +1,10 @@
 This repository contains a Coq formalization of flow equivalence, adapted from 
 
-> Cortadella, Jordi, Alex Kondratyev, Luciano Lavagno, and Christos P. Sotiriou. "Desynchronization: Synthesis of asynchronous circuits from synchronous specifications." IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 25, no. 10 (2006). DOI 10.1109/TCAD.2005.860958.
+> Jordi Cortadella, Alex Kondratyev, Luciano Lavagno, and Christos P. Sotiriou. "Desynchronization: Synthesis of asynchronous circuits from synchronous specifications." IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 25, no. 10 (2006). DOI [10.1109/TCAD.2005.860958](https://dx.doi.org/10.1109/TCAD.2005.860958).
 
 Much of this formalization is presented in the paper 
 
-> "Formal Verification of Flow Equivalence in Desynchronized Designs"
-
-by Jennifer Paykin, Brian Huffman, Daniel M. Zimmerman, and Peter Beerel, 
-in ASYNC 2020.
+> Jennifer Paykin, Brian Huffman, Daniel M. Zimmerman, and Peter Beerel. "Formal Verification of Flow Equivalence in Desynchronized Designs." 26th IEEE International Symposium on Asynchronous Circuits and Systems (ASYNC 2020), 2020. Available as [arXiv:2004.10655](https://arxiv.org/abs/2004.10655).
 
 The repository also contains work in progress building on the ASYNC paper.
 
