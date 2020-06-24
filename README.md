@@ -19,6 +19,7 @@ The repository also contains work in progress building on the ASYNC paper.
 * `Desynchronization.v`: Counterexample to Cortadella et al's proof tha the desynchronization protocol satisfies flow equivalence.
 * `StateSpace.v`: Formalization of state spaces, used to model the behavior of asynchronous controllers.
 * `Click.v`: Implementation of Click controllers as state spaces.
+* `ClickMG.v`: Marked graph refinements of Click controllers.
 
 
 ## Building the project and documentation
