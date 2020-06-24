@@ -153,6 +153,10 @@ Section Circuits.
   Definition update {X : Set} `{eq_dec X} (σ : state X) (x : X) (v : value) : state X :=
     fun y => if x =? y then v
              else σ y.
+  Definition update_event {X : Set} `{eq_dec X} (σ : state X) (e : event X value) : state X :=
+    match e with
+    | Event _ _ i v => update σ i v
+    end.
 
   (** Restrict a state to only its even or odd members. *)
   Definition odd_state {P : odd -> Prop}

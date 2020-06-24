@@ -126,6 +126,7 @@ Module EnsembleNotation.
   Open Scope ensemble_scope.
   Class in_dec {Z} (X : Ensemble Z) := {In_Dec : forall (x:Z), {x ∈ X} + {~(x ∈ X)}}.
   Notation "x ∈? X" := (@In_Dec _ X _ x) : ensemble_scope.
+  Arguments In_Dec {Z} X {in_dec}.
 
   Instance in_dec_singleton {X} `{eq_dec X} {x : X} : in_dec (Singleton _ x).
   Proof.
@@ -136,6 +137,7 @@ Module EnsembleNotation.
     - right. inversion 1; contradiction.
   Defined.
   Hint Resolve in_dec_singleton : sets. 
+
 
   (** ** Helper lemmas *)
   Lemma Setminus_in : forall {A} x (X Y : Ensemble A),
@@ -238,6 +240,20 @@ Module EnsembleNotation.
     | nil => ∅
     | x :: l' => singleton x ∪ from_list l'
     end.
+  Instance from_list_in_dec {A} `{eq_dec A} (l : list A) : in_dec (from_list l).
+  Proof.
+    constructor. intros a.
+    induction l.
+    * right. inversion 1.
+    * destruct (Dec a a0) as [Heq | Hneq].
+      + subst. left. constructor. constructor.
+      + destruct IHl as [IHl | IHl].
+        ++ left. right. auto.
+        ++ right. simpl.
+           apply not_in_union.
+           split; auto.
+           inversion 1; subst; contradiction.
+  Defined.
 
   (** The [all_disjoint ls] predicate asserts that every element of the list
   [ls] is disjoint from every other elemenet of the list [ls]. *)

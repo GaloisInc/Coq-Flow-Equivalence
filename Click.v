@@ -190,34 +190,13 @@ Section Stage.
     tok_clk_component ∥ tok_flop_component ∥ NOT state0 (ack i) ∥ forward state0 (req o).
 
   Definition stage :=
-    stage_with_reset ∥ output dp_reset_n None ∥ output ctrl_reset_n None.
+    hide state0 (stage_with_reset ∥ output dp_reset_n None ∥ output ctrl_reset_n None).
   Definition token_stage :=
-    token_stage_with_reset ∥ output dp_reset_n None ∥ output ctrl_reset_n None.
+    hide state0 (token_stage_with_reset ∥ output dp_reset_n None ∥ output ctrl_reset_n None).
 
   Definition Bit0 : value := Num 0.
   Definition Bit1 : value := Num 1.
 
-  (** The state obtained by the reset procedure relevant to this particular
-  stage... really, this should be defined concurrently for all stages. *)
-  Definition σR (is_token : bool) : state name :=
-    fun x =>
-      (* acknowledgments are 0 *)
-      if x =? ack o then Bit0
-      else if x =? ack i then Bit0
-      (*a non-token stage connected on the left to a token stage *)
-      else if x =? req i then (if is_token then Bit0 else Bit1)
-      (* a non-token stage so the right request is 0, and vice versa *)
-      else if x =? req o then (if is_token then Bit1 else Bit0)
-      else if x =? state0 then Bit1
-      else if x =? not_state0 then Bit0
-      (* clock starts out 0 *)
-      else if x =? clk then Bit0
-      else if x =? old_clk then Bit0
-      (* reset wires start at 1 *)
-      else if x =? dp_reset_n then Bit1
-      else if x =? ctrl_reset_n then Bit1
-      else if x =? hidden_set then Bit1
-      else Bit0.
 
   (** Some lemmas to act as sanity checks that the definitions are correct, and to test automation *)
   Lemma stage_with_reset_input : space_input stage_with_reset == from_list [req i;ack o;dp_reset_n;ctrl_reset_n].
@@ -261,17 +240,43 @@ Section Desync.
   Context `{eq_dec_even : eq_dec even} `{eq_dec_odd : eq_dec odd}.
   Existing Instance latch_eq_dec.
 
-  Variable c : circuit even odd.
+  Class naming_scheme :=
+    { latch_input : latch even odd -> handshake
+    ; latch_output : latch even odd -> handshake
+    ; latch_clk : latch even odd -> name
+    ; latch_state0 : latch even odd -> name
+    ; latch_old_clk : latch even odd -> name
+    ; latch_not_state0 : latch even odd -> name
+    ; latch_hidden : latch even odd -> name
+    ; ctrl_reset_n : name
+    ; dp_reset_n : name
+    }.
 
-  (** Each latch has an associated input and output handshake *)
-  Variable latch_input : latch even odd -> handshake.
-  Variable latch_output : latch even odd -> handshake.
-  Variable latch_clk : latch even odd -> name.
-  Variable latch_state0 : latch even odd -> name.
-  Variable latch_old_clk : latch even odd -> name.
-  Variable latch_not_state0 : latch even odd -> name.
-  Variable latch_hidden : latch even odd -> name.
-  Variable ctrl_reset_n dp_reset_n : name.
+  Variable c : circuit even odd.
+  Context `{naming_scheme}.
+
+
+  (** The state obtained by the reset procedure relevant to this particular
+  stage... really, this should be defined concurrently for all stages. *)
+  Definition σR (l : latch even odd) (is_token : bool) : state name :=
+    fun x =>
+      (* acknowledgments are 0 *)
+      if x =? ack (latch_output l) then Bit0
+      else if x =? ack (latch_input l) then Bit0
+      (*a non-token stage connected on the left to a token stage *)
+      else if x =? req (latch_input l) then (if is_token then Bit0 else Bit1)
+      (* a non-token stage so the right request is 0, and vice versa *)
+      else if x =? req (latch_output l) then (if is_token then Bit1 else Bit0)
+      else if x =? latch_state0 l then Bit1
+      else if x =? latch_not_state0 l then Bit0
+      (* clock starts out 0 *)
+      else if x =? latch_clk l then Bit0
+      else if x =? latch_old_clk l then Bit0
+      (* reset wires start at 1 *)
+      else if x =? dp_reset_n then Bit1
+      else if x =? ctrl_reset_n then Bit1
+      else if x =? latch_hidden l then Bit1
+      else Bit0.
 
   (** even latches are driven by token controllers, while odd latches are driven by non-token controllers. 
 
@@ -388,3 +393,19 @@ Fixpoint sequence {N} `{Monad N} {A} (l : list (N A)) : N (list A) :=
 End Desync.
 
 End Click.
+
+Arguments latch_input  {name even odd} {naming_scheme}.
+Arguments latch_output {name even odd} {naming_scheme}.
+Arguments latch_clk    {name even odd} {naming_scheme}.
+Arguments latch_state0 {name even odd} {naming_scheme}.
+Arguments latch_old_clk {name even odd} {naming_scheme}.
+Arguments latch_not_state0 {name even odd} {naming_scheme}.
+Arguments latch_hidden {name even odd} {naming_scheme}.
+Arguments ctrl_reset_n {name even odd} {naming_scheme}.
+Arguments dp_reset_n {name even odd} {naming_scheme}.
+
+Arguments req {name}.
+Arguments ack {name}.
+
+Arguments latch_stage {name} {name_dec} {even odd} {naming_scheme} : rename.
+Arguments σR {name} {name_dec} {even odd} {naming_scheme} l is_token : rename.
