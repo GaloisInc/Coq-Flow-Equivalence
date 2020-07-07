@@ -580,3 +580,86 @@ Arguments flop {name name_eq_dec}.
 Notation "C ⊢ σ →{ e } τ" := (space_step _ C σ e τ) (no associativity, at level 70).
  Notation "C ⊢ σ →*{ t } τ" := (space_steps _ C σ t τ) (no associativity, at level 70).
 Notation "S1 ∥ S2" := (union _ S1 S2) (left associativity, at level 91).
+
+
+Section MG_to_SS.
+
+  Set Implicit Arguments.
+  (** ** Convert a marked graph to a state space *)
+  Variable name : Set.
+  Context `{name_dec : eq_dec name}.
+
+  Variable transition : Set.
+  Context `{transition_dec : eq_dec transition}.
+  Variable MG : marked_graph transition.
+
+  Import EnsembleNotation.
+  Open Scope ensemble_scope.
+
+
+  Class MG_naming_scheme :=
+  { transition_name : transition -> name
+  ; place_name : forall {t1 t2} (p : place MG t1 t2), name
+
+  ;  name_is_place_dec : forall (x : name),
+     {t1 : transition & {t2 : transition & {p : place MG t1 t2 & x = place_name p}}}
+   + {forall t1 t2 (p : place MG t1 t2), x <> place_name p}
+
+
+  ; transition_update_value : transition -> value -> value
+
+  ; input_transition : Ensemble transition
+  ; output_transition : Ensemble transition
+  ; input_output_transition_disjoint : input_transition ⊥ output_transition
+  ; input_output_transition_total : forall t, {t ∈ input_transition} + {t ∈ output_transition}
+  }.
+  Context `{MG_scheme : MG_naming_scheme}.
+
+  Definition places_set : Ensemble name :=
+    fun x => exists t1 t2 (p : place MG t1 t2), x = place_name p.
+  Definition state_to_marking (σ : state name) : marking MG :=
+    fun t1 t2 p => val_to_nat (σ (place_name p)).
+
+  Definition fire_in_state (t : transition) (σ : state name) : state name :=
+    fun x =>
+    match name_is_place_dec x with
+    (* if x is not a place, do nothign *)
+    | inright _ => σ x
+    | inleft (existT _ tin (existT _ tout (existT _ p x_is_p))) =>
+      (* corner case: do nothing *)
+      if tin =? tout then σ x
+      (* if x is a place leading into t, increment the value *)
+      else if t =? tout then dec_value (σ x)
+      (* if x is a place leading out of t, decrement the value *)
+      else if t =? tin then inc_value (σ x)
+      (* otherwise do nothing *)
+      else σ x
+    end.
+
+
+  Inductive MG_SS_step
+    : state name -> option (event name value) -> option (state name) -> Prop :=
+
+  | transition_enabled σ σ' x v (t : transition) :
+    x = transition_name t ->
+    is_enabled MG t (state_to_marking σ) ->
+    v = transition_update_value t (σ x) ->
+    σ' = update (fire_in_state t σ) x v ->
+    MG_SS_step σ (Some (Event x v)) (Some σ')
+
+  | input_not_enabled σ x v t :
+    x = transition_name t ->
+    t ∈ input_transition ->
+    ~ is_enabled MG t (state_to_marking σ) ->
+   MG_SS_step σ (Some (Event x v)) None
+  .
+
+  Definition MG_SS : StateSpace name :=
+  {| space_input := fmap transition_name input_transition
+   ; space_output := fmap transition_name output_transition
+   ; space_internal := places_set
+   ; space_step := MG_SS_step
+   |}.
+
+  Unset Implicit Arguments.
+End MG_to_SS.
