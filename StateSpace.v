@@ -420,8 +420,22 @@ Section Flop.
     match v with 
     | Num 0 => Num 1
     | Num 1 => Num 0
-    | _ => v
+    | Bit0  => Bit1
+    | Bit1  => Bit0
+    | _     => v
     end.
+  Definition inc_value (v : value) : value :=
+    match v with
+    | Num n => Num (n+1)
+    | _     => v
+    end.
+  Definition dec_value (v : value) : value :=
+    match v with
+    | Num n => Num (n-1)
+    | _     => v
+    end.
+
+  
 
   Inductive flop_step (σ : state name) :
                       option (event name value) ->

@@ -60,6 +60,14 @@ Section LatchSequence.
 
   Definition Rise l : event latch bool := Event l true.
   Definition Fall l : event latch bool := Event l false.
+  Definition val_to_nat (v : value) : nat :=
+  match v with
+  | Num n => n
+  | Bit0  => 0
+  | Bit1  => 1
+  | X     => 0
+  end.
+
 
 
   (** A transparency state records whether latches are currently transparent or opaque. *)

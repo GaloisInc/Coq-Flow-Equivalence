@@ -133,12 +133,12 @@ Section Stage.
 
   (** 1. declare all wire names *)
   Variable i o : handshake.
-  Variable ctrl_reset_n dp_reset_n hidden_set hidden_reset: name.
+  Variable ctrl_reset_n dp_reset_n hidden_reset : name.
   Variable clk old_clk state0 not_state0 : name.
 
   Hypothesis domain_disjoint : all_disjoint [req i; ack i; req o; ack o;
                                              ctrl_reset_n; dp_reset_n;
-                                             hidden_set; hidden_reset;
+                                             hidden_reset;
                                              clk; old_clk; state0; not_state0].
 
   (** 2. Define the combinational logic that drives the clock *)
@@ -170,10 +170,10 @@ Section Stage.
 
   (** 3. Define the flip flop components *)
   Definition flop_component := hide not_state0
-                             ( hide hidden_set
-                             ( flop hidden_set dp_reset_n clk old_clk not_state0 state0
+                             ( hide hidden_reset
+                             ( flop hidden_reset dp_reset_n clk old_clk not_state0 state0
                              ∥ NOT state0 not_state0
-                             ∥ output hidden_set (Some (Num 1)))).
+                             ∥ output hidden_reset (Some (Num 1)))).
   Definition tok_flop_component := hide not_state0
                                  ( hide hidden_reset
                                  ( flop dp_reset_n hidden_reset clk old_clk not_state0 state0
@@ -183,48 +183,46 @@ Section Stage.
   (** 4. Combine these components. We define variants with reset, as well as
   variants where the reset inputs remain stable, meaning that reset is not a
   factor. *)
-  Definition stage_with_reset :=
-    clk_component ∥ flop_component ∥ forward state0 (ack i) ∥ forward state0 (req o).
+  Inductive token_flag := Token | NonToken.
+  Definition latch_to_token_flag {even odd} (l : latch even odd) :=
+    match l with
+    | Odd _ => NonToken
+    | Even _ => Token
+    end.
 
-  Definition token_stage_with_reset :=
-    tok_clk_component ∥ tok_flop_component ∥ NOT state0 (ack i) ∥ forward state0 (req o).
 
-  Definition stage :=
-    hide state0 (stage_with_reset ∥ output dp_reset_n None ∥ output ctrl_reset_n None).
-  Definition token_stage :=
-    hide state0 (token_stage_with_reset ∥ output dp_reset_n None ∥ output ctrl_reset_n None).
+  Definition stage_with_reset (f : token_flag) :=
+    match f with
+    | NonToken =>
+        clk_component ∥ flop_component ∥ forward state0 (ack i) ∥ forward state0 (req o)
+    | Token =>
+        tok_clk_component ∥ tok_flop_component ∥ NOT state0 (ack i) ∥ forward state0 (req o)
+    end.
 
-  Definition Bit0 : value := Num 0.
-  Definition Bit1 : value := Num 1.
+
+  Definition stage (f : token_flag) :=
+    hide state0 (stage_with_reset f ∥ output dp_reset_n None ∥ output ctrl_reset_n None).
 
 
   (** Some lemmas to act as sanity checks that the definitions are correct, and to test automation *)
-  Lemma stage_with_reset_input : space_input stage_with_reset == from_list [req i;ack o;dp_reset_n;ctrl_reset_n].
+  Lemma stage_with_reset_input : forall f,
+    space_input (stage_with_reset f) == from_list [req i;ack o;dp_reset_n;ctrl_reset_n].
   Proof.
+    intros [ | ];
     constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
   Qed.
 
-  Lemma stage_with_reset_output : space_output stage_with_reset == from_list [ack i;req o;state0;clk].
+  Lemma stage_with_reset_output : forall f,
+    space_output (stage_with_reset f) == from_list [ack i;req o;state0;clk].
   Proof.
+    intros [ | ];
     constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
   Qed.
 
-  Lemma stage_with_reset_internal : space_internal stage_with_reset == from_list [old_clk;hidden_set; not_state0].
+  Lemma stage_with_reset_internal_NT : forall f,
+    space_internal (stage_with_reset f) == from_list [old_clk; hidden_reset; not_state0].
   Proof.
-    constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
-  Qed.
-  Lemma token_stage_with_reset_input : space_input token_stage_with_reset == from_list [req i;ack o;dp_reset_n;ctrl_reset_n].
-  Proof.
-    constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
-  Qed.
-
-  Lemma token_stage_with_reset_output : space_output token_stage_with_reset == from_list [ack i;req o;state0;clk].
-  Proof.
-    constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
-  Qed.
-
-  Lemma token_stage_with_reset_internal : space_internal token_stage_with_reset == from_list [old_clk;hidden_reset;not_state0].
-  Proof.
+    intros [ | ];
     constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
   Qed.
 
@@ -282,18 +280,21 @@ Section Desync.
 
     TODO: is this opposite?
     *)
+About stage_with_reset.
   Definition latch_stage (l : latch even odd) : StateSpace name :=
     match l with
-    | Even _ => token_stage_with_reset
+    | Even _ => stage_with_reset
                             (latch_input l) (latch_output l)
                             ctrl_reset_n dp_reset_n
                             (latch_hidden l)
                             (latch_clk l) (latch_old_clk l) (latch_state0 l) (latch_not_state0 l)
+                            Token
     | Odd _ => stage_with_reset
                      (latch_input l) (latch_output l)
                      ctrl_reset_n dp_reset_n
                      (latch_hidden l)
                      (latch_clk l) (latch_old_clk l) (latch_state0 l) (latch_not_state0 l)
+                     NonToken
     end.
 
   (** In order to add the appropriate splits and joins, we need a *function*
