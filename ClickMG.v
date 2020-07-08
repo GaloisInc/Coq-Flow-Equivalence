@@ -127,19 +127,32 @@ Section TokenMG_to_SS.
   Variable even odd : Set.
 
   Class stage_naming_scheme `{naming_scheme name even odd} :=
-    {stage_place_name : forall {t1 t2 : token_transition}, stage_place t1 t2 -> name}.
+    { stage_place_name : forall (l : latch even odd) {t1 t2 : token_transition}, stage_place t1 t2 -> name
+    ; stage_places_disjoint_transitions : forall l t1 t2 (p : stage_place t1 t2),
+      stage_place_name l p ∉ space_domain (latch_stage l)
+    ; stage_places_all_disjoint : forall l {t1 t2 t1' t2' : token_transition} (p : stage_place t1 t2) (p' : stage_place t1' t2'),
+      stage_place_name l p <> stage_place_name l p'
+    }.
 
+
+
+  Variable l : latch even odd.
+  Variable in_flag : token_flag.
+  Let out_flag := latch_to_token_flag l.
   Context `{scheme : naming_scheme name even odd}.
   Context `{x_scheme : stage_naming_scheme}.
+
+
+
   Definition name_is_stage_place_dec : forall x,
                            {t1 : token_transition &
-                           {t2 : token_transition & {p : stage_place t1 t2 & x = stage_place_name p}}}
-                        + {forall t1 t2 (p : stage_place t1 t2), x <> stage_place_name p}.
+                           {t2 : token_transition & {p : stage_place t1 t2 & x = stage_place_name l p}}}
+                        + {forall t1 t2 (p : stage_place t1 t2), x <> stage_place_name l p}.
   Proof.
     intros x.
 
     Ltac compare_place_name x p :=
-      compare x (stage_place_name p);
+      compare x (stage_place_name l p);
         [ left; do 3 eexists; reflexivity | ].
     compare_place_name x left_ack_left_req.
     compare_place_name x clk_fall_left_req.
@@ -155,11 +168,8 @@ Section TokenMG_to_SS.
     right. intros t1 t2 p; destruct p; auto.
   Defined.
 
-  Variable dp_reset_n ctrl_reset_n : name.
 
-  Variable l : latch even odd.
-  Variable in_flag : token_flag.
-  Let out_flag := latch_to_token_flag l.
+
 
   Definition token_transition_update_value (t : token_transition) (v : value) : value :=
     match t with
@@ -179,7 +189,7 @@ Section TokenMG_to_SS.
 
   Program Instance stage_MG_scheme : MG_naming_scheme name (stage_MG in_flag out_flag) :=
   {| transition_name := token_transition_name
-   ; place_name := @stage_place_name _ _
+   ; place_name := @stage_place_name _ _ _
    ; name_is_place_dec := name_is_stage_place_dec
    ; transition_update_value := token_transition_update_value
    ; input_transition := from_list [left_req; right_ack]
@@ -194,7 +204,8 @@ Arguments name_is_place_dec {name transition} MG {MG_naming_scheme}.
 Existing Instance stage_MG_scheme.
 About stage_MG_scheme.
 Arguments traces_of {name}.
-Arguments stage_MG_SS {even odd} {scheme x_scheme} : rename.
+About stage_MG_SS.
+Arguments stage_MG_SS {even odd} l f {scheme x_scheme} : rename.
 
 Section SS_to_TokenMG.
 
@@ -233,12 +244,6 @@ Section SS_to_TokenMG.
     latch_stage l ⊢ init_stage_MG_state →*{t} τ'. *)
   Abort.
 
-Print event.
-(*
-  Lemma left_req_inversion :
-    latch_stage l ⊢ σR l →{Some (Event (
-
-*)
 
 
   Notation "σ1 'R{' t '}' σ2" := (relate_trace name (latch_stage l) (stage_MG_SS l in_flag)
@@ -333,16 +338,11 @@ Print event.
   Admitted.
 
 
-  Hypothesis dom_all_disjoint :
-    all_disjoint
-       [req (latch_input l); ack (latch_input l); req (latch_output l); ack (latch_output l); ctrl_reset_n;
-       dp_reset_n; latch_hidden l; latch_clk l; latch_old_clk l; latch_state0 l; 
-       latch_not_state0 l].
-
   Lemma MG_relate_trace_step_lemma :
     relate_trace_step_lemma name (latch_stage l) (stage_MG_SS l in_flag) (σR l) init_stage_MG_state.
   Proof.
     unfold relate_trace_step_lemma.
+    set (Hdisjoint := scheme_all_disjoint l).
     intros σ1 σ1' σ2 [x v] t Hstep Hrelate.
     assert (Hx : x ∈ visible_domain (latch_stage l)).
     { eapply step_visible; eauto. }
@@ -378,7 +378,11 @@ Print event.
         { unfold space_domain. simpl.
           left. left. left. constructor. 2:{ solve_set. }
           left. constructor. 2:{ solve_set. }
-          left. constructor. 2:{ unfold ack_i_output. admit (* true! *). }
+          left. constructor.
+          2:{ unfold ack_i_output.
+              destruct x_scheme.
+               admit (* true! *).
+             }
           solve_set.
         }
         { unfold space_domain. simpl. 
@@ -390,7 +394,34 @@ Print event.
       }
     + (* x = ack (latch_input l) *)
   Admitted.
-    
+
+  Lemma place_name_disjoint_SS : forall t1 t2 (p : place (stage_MG in_flag out_flag) t1 t2),
+    place_name p ∉ space_domain (latch_stage l).
+  Proof.
+    destruct x_scheme.
+    intros t1 t2 p. simpl.
+    auto.
+  Qed.
+
+  Theorem MG_refines_stage :
+    traces_of (latch_stage l) (σR l) ⊆ traces_of (stage_MG_SS l in_flag) init_stage_MG_state.
+  Proof.
+    Search relate_trace_step_lemma.
+    apply relate_trace_step_subset.
+    { intros x Hdom1 Hdom2.
+      unfold init_stage_MG_state.
+      destruct (name_is_place_dec (stage_MG in_flag out_flag) x)
+        as [[t1 [t2 [p Hplace]]] | Htransition].
+      + subst.
+        contradict Hdom1.
+        apply place_name_disjoint_SS.
+      + reflexivity.
+    }
+    { apply MG_relate_trace_step_lemma. }
+  Qed.
+
+
+
 (*
   Definition transition_to_event (t : token_transition) (σ : state name) : event name value :=
     let x := transition_name t in

@@ -279,6 +279,14 @@ Section Desync.
     ; latch_hidden : latch even odd -> name
     ; ctrl_reset_n : name
     ; dp_reset_n : name
+
+    ; scheme_all_disjoint : forall l, all_disjoint
+       [req (latch_input l); ack (latch_input l);
+        req (latch_output l); ack (latch_output l);
+        ctrl_reset_n; dp_reset_n; latch_hidden l;
+        latch_clk l; latch_old_clk l;
+        latch_state0 l; latch_not_state0 l]
+
     }.
   Context `{scheme : naming_scheme}.
 
