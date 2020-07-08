@@ -7,6 +7,8 @@ Require Import List.
 Import ListNotations.
 Open Scope list_scope.
 
+Import EnsembleNotation.
+Open Scope ensemble_scope.
 
 (** * Define a state space for modeling asynchronous controllers, based loosely
 on trace theory *)
@@ -19,8 +21,6 @@ Ensembles will quantify over. *)
 Variable name : Set.
 Context `{name_eq_dec : eq_dec name}.
 
-Import EnsembleNotation.
-Open Scope ensemble_scope.
 
 (** An event is an element of an ensemble exactly if its underlying key is in the ensemble. *)
 Inductive event_in {val} (I : Ensemble name) : option (event name val) -> Prop :=
@@ -49,6 +49,10 @@ Record StateSpace :=
   ; space_internal : Ensemble name
   ; space_step  : state name -> option (event name value) -> option (state name) -> Prop
   }.
+
+(** The domain of a state space is the union of its input, output, and internal wires *)
+Definition space_domain (S : StateSpace) := space_input S ∪ space_output S ∪ space_internal S.
+
 Notation "C ⊢ σ →{ e } τ" := (space_step C σ e τ) (no associativity, at level 70).
 
 (** The multi-step relation [C ⊢ σ →*{t} τ] is the closure of the step relation
@@ -68,8 +72,151 @@ Inductive space_steps (C : StateSpace) (σ : state name)
     C ⊢ σ →*{t} τ
 where "C ⊢ σ →*{ t } τ" := (space_steps C σ t τ).
 
-(** The domain of a state space is the union of its input, output, and internal wires *)
-Definition space_domain (S : StateSpace) := space_input S ∪ space_output S ∪ space_internal S.
+Definition traces_of (S : StateSpace) (σ0 : state name) : Ensemble (trace name value) :=
+  fun t => exists σ, S ⊢ σ0 →*{t} Some σ.
+
+Section RelateTrace.
+
+  Variable S1 S2 : StateSpace.
+  Variable σ1_0 σ2_0 : state name.
+  Hypothesis init_domain_consistent :
+    forall x, x ∈ space_domain S1 ->
+              x ∈ space_domain S2 ->
+              σ1_0 x = σ2_0 x.
+
+  (* input(SS1)=input(SS2)
+     output(SS1)=output(SS2) *)
+  Inductive relate_trace : state name -> trace name value -> state name -> Prop :=
+  | relate_trace_nil :
+    relate_trace σ1_0 t_empty σ2_0
+
+  | relate_trace_left σ1 σ1' σ2 t :
+    relate_trace σ1 t σ2 ->
+    S1 ⊢ σ1 →{None} Some σ1' ->
+    relate_trace σ1' t σ2
+
+  | relate_trace_right σ1 σ2 σ2' t :
+    relate_trace σ1 t σ2 ->
+    S2 ⊢ σ2 →{None} Some σ2' ->
+    relate_trace σ1 t σ2'
+
+  | relate_trace_sync σ1 σ1' σ2 σ2' t e :
+    relate_trace σ1 t σ2 ->
+    S1 ⊢ σ1 →{Some e} Some σ1' ->
+    S2 ⊢ σ2 →{Some e} Some σ2' ->
+    relate_trace σ1' (t ▶ e) σ2'.
+
+  Lemma relate_trace_domain : forall σ1 σ2 t,
+    relate_trace σ1 t σ2 ->
+    forall x, x ∈ space_domain S1 ->
+              x ∈ space_domain S2 ->
+              σ1 x = σ2 x.
+  Proof.
+    intros σ1 σ2 t Hrelate x Hx1 Hx2.
+    assert (x ∉ space_internal S1).
+    { (* if it were, it would be disjoint from dom(S2) *)
+      admit. }
+    assert (x ∉ space_internal S2).
+    { (* if it were, it would be disjoint from dom(S1) *)
+      admit. }
+
+    induction Hrelate.
+    * apply init_domain_consistent; auto.
+    * assert (Hσ1' : σ1' x = σ1 x).
+      { (* Since σ1 →{None} Some σ1', it must be the case that σ1 and σ1' only
+        differ on internal wires *)
+        admit. }
+      congruence.
+    * assert (Hσ2' : σ2' x = σ2 x).
+      { (* Since σ2 →{None} Some σ2', it must be the case that σ2 and σ2' only
+        differ on internal wires *)
+        admit. }
+      congruence.
+    * destruct e as [y v].
+      compare x y.
+      + (* x = y *)
+        assert (σ1' y = v).
+        { (* another feature of well-formed step relations *) admit. }
+        assert (σ2' y = v).
+        { (* another feature of well-formed step relations *) admit. }
+        congruence.
+      + (* x <> y *)
+        assert (σ1' x = σ1 x).
+        { (* σ1 and σ1' must only vary on interal wires and y *) admit. }
+        assert (σ2' x = σ2 x).
+        { (* σ2 and σ2' must only vary on interal wires and y *) admit. }
+        congruence.
+  Admitted.
+
+  Definition relate_trace_step_lemma := forall σ1 σ1' σ2 e t,
+    S1 ⊢ σ1 →{Some e} Some σ1' ->
+    relate_trace σ1 t σ2 ->
+    exists σ2', S2 ⊢ σ2 →{Some e} Some σ2'.
+
+
+  Theorem relate_trace_subset_lemma :
+    relate_trace_step_lemma ->
+    forall (σ1 : state name) t,
+      S1 ⊢ σ1_0 →*{t} Some σ1 ->
+      exists σ2, relate_trace σ1 t σ2.
+  Proof.
+    intros Hlemma σ1 t Hstep.
+    remember (Some σ1) as τ1 eqn:Heqτ.
+      generalize dependent σ1.
+    induction Hstep as [ | | ]; intros σ1 Heqτ; subst.
+    * inversion Heqτ; subst. rewrite <- H0.
+      exists σ2_0. constructor.
+    * unfold relate_trace_step_lemma in Hlemma.
+      rename σ' into σ1'.
+      destruct (IHHstep σ1' eq_refl) as [σ2' IH].
+      specialize (Hlemma _ _ _ _ _ H IH).
+      destruct Hlemma as [σ2 Hstep2].
+      exists σ2.
+      eapply relate_trace_sync; eauto.
+    * rename σ' into σ1'.
+      destruct (IHHstep σ1' eq_refl) as [σ2' IH].
+      exists σ2'.
+      eapply relate_trace_left; eauto.
+  Qed.
+
+  Lemma relate_trace_project_left : forall σ1 t σ2,
+      relate_trace σ1 t σ2 ->
+      S1 ⊢ σ1_0 →*{t} Some σ1.
+  Proof.
+    intros σ1 t σ2 Hrelate.
+    induction Hrelate.
+    * constructor.
+    * eapply stepsEps; eauto.
+    * apply IHHrelate.
+    * eapply steps1; eauto.
+  Qed.
+
+  Lemma relate_trace_project_right : forall σ1 t σ2,
+      relate_trace σ1 t σ2 ->
+      S2 ⊢ σ2_0 →*{t} Some σ2.
+  Proof.
+    intros σ1 t σ2 Hrelate.
+    induction Hrelate.
+    * constructor.
+    * apply IHHrelate.
+    * eapply stepsEps; eauto.
+    * eapply steps1; eauto.
+  Qed.
+
+  Theorem relate_trace_step_subset :
+    relate_trace_step_lemma ->
+    traces_of S1 σ1_0 ⊆ traces_of S2 σ2_0.
+  Proof.
+    intros Hlemma t H1.
+    destruct H1 as [σ1 H1].
+    destruct (relate_trace_subset_lemma Hlemma _ _ H1) as [σ2 Hrelate].
+    exists σ2.
+    eapply relate_trace_project_right; eauto.
+  Qed.
+
+End RelateTrace.
+
+
 
 (** A state space is well-formed if several properties hold. There may be other
 properties that also hold not included here, such as the condition that each
@@ -347,6 +494,29 @@ Section UnionStateSpace.
 
 End UnionStateSpace.
 
+Notation "S1 ∥ S2" := (union S1 S2) (left associativity, at level 91).
+
+Section UnionStateSpaceRefinement.
+
+  Variable S1 S2 S1' S2' : StateSpace.
+  Variable σ0 σ0' : state name.
+
+  Theorem union_refinement : 
+    traces_of S1 σ0 ⊆ traces_of S1' σ0' ->
+    traces_of S2 σ0 ⊆ traces_of S2' σ0' ->
+    traces_of (S1 ∥ S2) σ0 ⊆ traces_of (S1' ∥ S2') σ0'.
+  Proof.
+    intros H1 H2.
+    apply relate_trace_step_subset.
+    { admit (* need to assert this is true *). }
+    unfold relate_trace_step_lemma.
+    intros σ σ' σT e t Hstep1 Hrelate.
+    inversion Hrelate; subst.
+    * (* σ0' = σT ???*)
+  Abort.
+      
+End UnionStateSpaceRefinement.
+
 
 (** * Move a name from the output of a state space to the input of a state space. *)
 Section HideStateSpace.
@@ -609,9 +779,6 @@ Section MG_to_SS.
   ; transition_update_value : transition -> value -> value
 
   ; input_transition : Ensemble transition
-  ; output_transition : Ensemble transition
-  ; input_output_transition_disjoint : input_transition ⊥ output_transition
-  ; input_output_transition_total : forall t, {t ∈ input_transition} + {t ∈ output_transition}
   }.
   Context `{MG_scheme : MG_naming_scheme}.
 
@@ -654,6 +821,8 @@ Section MG_to_SS.
    MG_SS_step σ (Some (Event x v)) None
   .
 
+  Let output_transition : Ensemble transition :=
+    fun t => t ∉ input_transition.
   Definition MG_SS : StateSpace name :=
   {| space_input := fmap transition_name input_transition
    ; space_output := fmap transition_name output_transition
@@ -663,3 +832,43 @@ Section MG_to_SS.
 
   Unset Implicit Arguments.
 End MG_to_SS.
+
+Section Structural_SS.
+
+  Set Implicit Arguments.
+  (** ** Convert a marked graph to a state space *)
+  Variable name : Set.
+  Context `{name_dec : eq_dec name}.
+
+
+  Inductive structural_state_space :=
+  | Prim : StateSpace name -> structural_state_space
+  | Union : structural_state_space -> structural_state_space -> structural_state_space
+  | Hide  : name -> structural_state_space -> structural_state_space
+  .
+  Fixpoint interp_S (S : structural_state_space) : StateSpace name :=
+    match S with
+    | Prim S0 => S0
+    | Union S1 S2 => interp_S S1 ∥ interp_S S2
+    | Hide x S'    => hide x (interp_S S')
+    end.
+
+  Ltac reflect_S_constr S :=
+  match S with
+  | hide ?x ?S' => let SSS' := reflect_S_constr S' in
+                   constr:(Hide x SSS')
+  | ?S1 ∥ ?S2   => let SS1 := reflect_S_constr S1 in
+                   let SS2 := reflect_S_constr S2 in
+                   constr:(Union SS1 SS2)
+  | _           => constr:(Prim S)
+  end.
+  Ltac reflect_S S := let S' := reflect_S_constr S in
+                      replace S with (interp_S S') by reflexivity.
+
+  Variable x : name.
+  Definition S : StateSpace name := C_elem x x x.
+  Lemma foo : (C_elem x x x ∥ func_space (singleton x) x (fun _ => X)) = C_elem x x x.
+  reflect_S (C_elem x x x ∥ func_space (singleton x) x (fun _ => X)).
+  Abort.
+
+End Structural_SS.

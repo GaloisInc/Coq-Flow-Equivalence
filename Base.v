@@ -463,23 +463,23 @@ Ltac decompose_set_structure_1 :=
 Ltac decompose_set_structure :=
   repeat (decompose_set_structure_1; try find_contradiction; auto with sets).
 
-
-
-Ltac solve_set :=
+Ltac try_solve_set :=
   repeat (auto with sets;
   match goal with
   | [ |- ?x <> ?y ] => auto; fail
   | [ |- ?x <> ?y ] => intro; my_subst; all_disjoint_contradiction
   | [ |- ?x ∉ singleton ?y ] => apply not_in_singleton_neq
   | [ |- ?x ∈ ?X ∖ ?Y ] => constructor
-  | [ |- ?x ∈ ?X ∪ ?Y ] => left; solve_set; fail
-  | [ |- ?x ∈ ?X ∪ ?Y ] => right; solve_set; fail
+  | [ |- ?x ∈ ?X ∪ ?Y ] => left; try_solve_set; fail
+  | [ |- ?x ∈ ?X ∪ ?Y ] => right; try_solve_set; fail
   | [ |- ?x ∈ ?X ∩ ?Y ] => constructor
-  | [ |- ?x ∉ ?X ∖ ?Y ] => apply in_Y_not_in_setminus_X_Y; solve_set; fail
-  | [ |- ?x ∉ ?X ∖ ?Y ] => apply not_in_X_not_in_setminus_X_Y; solve_set; fail
+  | [ |- ?x ∉ ?X ∖ ?Y ] => apply in_Y_not_in_setminus_X_Y; try_solve_set; fail
+  | [ |- ?x ∉ ?X ∖ ?Y ] => apply not_in_X_not_in_setminus_X_Y; try_solve_set; fail
   | [ |- ?x ∉ ?X ∪ ?Y ] => apply not_in_union; constructor
-  end);
-  fail.
+  end).
+
+Ltac solve_set :=
+  try_solve_set; fail.
 
 
 (** ** Tactics for decidable equality 
