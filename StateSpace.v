@@ -790,7 +790,7 @@ Section MG_to_SS.
   Definition fire_in_state (t : transition) (σ : state name) : state name :=
     fun x =>
     match name_is_place_dec x with
-    (* if x is not a place, do nothign *)
+    (* if x is not a place, do nothing *)
     | inright _ => σ x
     | inleft (existT _ tin (existT _ tout (existT _ p x_is_p))) =>
       (* corner case: do nothing *)
@@ -803,7 +803,7 @@ Section MG_to_SS.
       else σ x
     end.
 
-
+  (* NOTE: this may not be the right relation for all marked graphs--get example from Peter *)
   Inductive MG_SS_step
     : state name -> option (event name value) -> option (state name) -> Prop :=
 
