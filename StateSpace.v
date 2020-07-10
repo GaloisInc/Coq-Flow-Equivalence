@@ -203,6 +203,7 @@ Section RelateTrace.
     * eapply steps1; eauto.
   Qed.
 
+
   Theorem relate_trace_step_subset :
     relate_trace_step_lemma ->
     traces_of S1 σ1_0 ⊆ traces_of S2 σ2_0.
@@ -222,23 +223,25 @@ End RelateTrace.
 properties that also hold not included here, such as the condition that each
 input/output/internal set are individually all_disjoint, or that the transition
 relation is only valid for events in [space_input S ∪ space_outupt S]. *)
-Record well_formed (S : StateSpace) (σ : state name) :=
+Record well_formed (S : StateSpace) :=
   { (*space_dom : forall x, x ∈ space_domain S <-> in_fin_state σ x*)
     space_input_output : space_input S ⊥ space_output S
   ; space_input_internal : space_input S ⊥ space_internal S
   ; space_output_internal : space_output S ⊥ space_internal S
+  ; wf_space : forall σ x v σ',
+    S ⊢ σ →{Some (Event x v)} Some σ' ->
+    x ∈ space_input S ∪ space_output S
   }.
 
 (** A state [σ] in the state space [S] is stable if the only events that are
 enabled in σ are input events. That is, S will not take any more steps except
 those prompted by the environment. *)
 Record stable (S : StateSpace) (σ : state name) :=
-  { stable_wf : well_formed S σ
+  { stable_wf : well_formed S
   ; stable_step : forall e τ, S ⊢ σ →{e} τ -> event_in (space_input S) e }.
 
 Class stable_dec (S : StateSpace) :=
   { space_stable_dec : forall σ, stable S σ + ~ stable S σ }.
-
 
 (** * Define a circuit state space from a combinational logic function *)
 Section FuncStateSpace.
@@ -298,18 +301,38 @@ Section FuncStateSpace.
    ; space_step := func_step
    |}.
 
+  Lemma func_wf : well_formed func_space.
+  Proof.
+    split.
+    + constructor.
+      simpl.
+      intros y Hy.
+      decompose_set_structure.
+    + constructor.
+      simpl.
+      intros y Hy.
+      decompose_set_structure.
+    + constructor.
+      simpl.
+      intros y Hy.
+      decompose_set_structure.
+    + 
+    intros σ y v σ' Hstep.
+    inversion Hstep; try (subst; solve_set).
+    rewrite <- H. simpl. solve_set.
+  Qed.
 
   (** ** Decidability of stability for function spaces *)
 
   (** This just depends on the enumerability of I *)
-  Hypothesis space_wf_decidable : forall σ, well_formed func_space σ + ~(well_formed func_space σ).
+(*  Hypothesis space_wf_decidable : forall σ, well_formed func_space σ + ~(well_formed func_space σ).*)
 
-  Lemma func_stable_equiv : forall σ, well_formed func_space σ ->
+  Lemma func_stable_equiv : forall σ, 
         func_stable σ <-> stable func_space σ.
   Proof.
-    intros σ Hwf. split; intros Hstable.
+    intros σ. split; intros Hstable.
     * (*destruct Hstable as [H_x_stable H_I_stable].*)
-      split; [assumption | ].
+      split; [apply func_wf | ].
       intros e τ Hstep.
       inversion Hstep; subst.
       + constructor. auto.
@@ -330,8 +353,6 @@ Section FuncStateSpace.
   Proof.
     split.
     intros σ.
-    destruct (space_wf_decidable σ) as [Hwf | Hwf].
-    2:{ right. inversion 1. contradiction. }
     {
     compare (f σ) (σ x).
     * left. apply func_stable_equiv; auto.
@@ -414,35 +435,66 @@ Section UnionStateSpace.
      ; space_step := union_step
     |}.
 
+
   Definition union_stable (σ : state name) := 
     stable S1 σ /\ stable S2 σ.
 
 
-  Lemma wf_union : forall σ,
-    well_formed S1 σ ->
-    well_formed S2 σ ->
-    well_formed union σ.
+  Lemma wf_union : 
+    well_formed S1 ->
+    well_formed S2 ->
+    well_formed union.
   Proof.
-  intros σ [disjoint_in_out1 disjoint_in_int1 disjoint_out_int1]
-           [disjoint_in_out2 disjoint_in_int2 disjoint_out_int2].
+  intros [disjoint_in_out1 disjoint_in_int1 disjoint_out_int1 wf1]
+         [disjoint_in_out2 disjoint_in_int2 disjoint_out_int2 wf2].
   constructor;
     simpl in *;
-      unfold union_input, union_output, union_internal in *;
-    constructor; intros x Hintersect;
-    decompose_set_structure.
-  - assert (x ∈ space_domain S2).
-    { unfold space_domain. auto with sets. }
-    find_contradiction.
-  - assert (x ∈ space_domain S1).
-    { unfold space_domain. auto with sets. }
-    find_contradiction.
-  - assert (x ∈ space_domain S2).
-    { unfold space_domain. auto with sets. }
-    find_contradiction.
-  - assert (x ∈ space_domain S1).
-    { unfold space_domain. auto with sets. }
-    find_contradiction.
+      unfold union_input, union_output, union_internal in *.
+    
+  - constructor; intros x Hintersect; decompose_set_structure.
+  - constructor; intros x Hintersect; decompose_set_structure.
+    { destruct wires1_disjoint as [Hdisjoint].
+      apply (Hdisjoint x). unfold space_domain. solve_set.
+    }
+    { destruct wires2_disjoint as [Hdisjoint].
+      apply (Hdisjoint x). unfold space_domain. solve_set.
+    } 
+  - constructor; intros x Hintersect; decompose_set_structure.
+    { destruct wires1_disjoint as [Hdisjoint].
+      apply (Hdisjoint x). unfold space_domain. solve_set.
+    }
+    { destruct wires2_disjoint as [Hdisjoint].
+      apply (Hdisjoint x). unfold space_domain. solve_set.
+    } 
+  - intros ? ? ? ? Hstep.
+    simpl. unfold union_input, union_output.
+    inversion Hstep; subst.
+    * apply wf1 in H2.
+      simpl. unfold union_input, union_output.
+      decompose_set_structure.
+      { assert (x ∉ space_output S2).
+        { intro. apply H1. constructor; auto. unfold space_domain. solve_set. }
+        solve_set.
+      }
+    * apply wf2 in H2.
+      decompose_set_structure.
+      assert (x ∉ space_output S1).
+      { intro. apply H1. constructor; auto. unfold space_domain. solve_set. }
+      solve_set.
+    * inversion H1.
+      + inversion H4; subst. inversion H5; subst.
+        solve_set.
+      + inversion H4; subst. inversion H5; subst.
+        solve_set.
+      + inversion H4; subst. inversion H5; subst.
+        assert (x ∉ space_output S1).
+        { intro. inversion disjoint_in_out1 as [wf].
+          apply (wf x).
+          solve_set.
+        }
+        solve_set.
   Qed.
+
 
   (** Although this direction ([union_stable_implies]) is true, I don't know if the other direction
   actually is true, e.g. if [S1 ∥ S2] is stable, then both [S1] and [S2] are
@@ -549,6 +601,30 @@ Section HideStateSpace.
      ; space_internal := hide_internal
      ; space_step := hide_step
     |}.
+
+
+  Lemma hide_wf : well_formed S -> well_formed hide.
+  Proof.
+    intros [[wfIO] [wfII] [wfOI] wfStep].
+    constructor; simpl; unfold hide_input, hide_output, hide_internal.
+    - constructor. intros y Hy.
+      decompose_set_structure.
+      apply (wfIO y). solve_set.
+    - constructor. intros y Hy.
+      decompose_set_structure.
+      { apply (wfII y). solve_set. }
+      { apply (wfIO x). solve_set. }
+    - constructor. intros y Hy.
+      decompose_set_structure.
+      { apply (wfOI y). solve_set. }
+    - intros σ y v σ' Hstep.
+      inversion Hstep; subst.
+      assert (x <> y).
+      { intro. apply H0. constructor. subst. auto with sets. }
+      specialize (wfStep _ _ _ _ H).
+      decompose_set_structure.
+      solve_set.
+  Qed.
 End HideStateSpace.
 
 
@@ -671,12 +747,9 @@ Section Flop.
      ; space_step := flop_step
     |}.
 
-  Lemma flop_stable_implies_stable : forall σ, 
-    flop_stable σ -> stable flop σ.
+
+  Lemma flop_wf : well_formed flop.
   Proof.
-    intros σ Hstable.
-    constructor.
-    * (* well-formed *)
       constructor; simpl in *; unfold flop_input, flop_output, flop_internal in *.
       + constructor.
         intros x Hx.
@@ -687,6 +760,17 @@ Section Flop.
       + constructor.
         intros x Hx.
         decompose_set_structure.
+      + intros ? ? ? ? Hstep.
+        inversion Hstep; try subst; try solve_set.
+  Qed.
+
+  Lemma flop_stable_implies_stable : forall σ, 
+    flop_stable σ -> stable flop σ.
+  Proof.
+    intros σ Hstable.
+    constructor.
+    * (* well-formed *)
+      apply flop_wf.
     * intros e τ Hstep.
       destruct Hstep;
         try contradiction;
@@ -712,6 +796,7 @@ when set and reset lines are X:
     stable flop σ ->
     flop_stable σ.
 *)
+
 
 End Flop.
 
@@ -779,6 +864,9 @@ Section MG_to_SS.
   ; transition_update_value : transition -> value -> value
 
   ; input_transition : Ensemble transition
+
+  ; transition_place_name_disjoint : forall t {t1 t2} (p : place MG t1 t2),
+    transition_name t <> place_name p
   }.
   Context `{MG_scheme : MG_naming_scheme}.
 
@@ -830,6 +918,32 @@ Section MG_to_SS.
    ; space_step := MG_SS_step
    |}.
 
+Arguments well_formed {name}.
+  Lemma wf_MG_SS : well_formed MG_SS.
+  Proof.
+    split.
+    * simpl. constructor.
+      intros x Hx. decompose_set_structure.
+      inversion H; subst. destruct H1.
+      inversion H0; subst. destruct H3.
+      admit (* need more assumptions about naming scheme *).
+    * simpl. constructor.
+      intros x Hx. decompose_set_structure.
+      inversion H; subst. destruct H1.
+      inversion H0; subst. destruct H3.
+      destruct H2 as [p H2].
+      set (Hdisjoint := transition_place_name_disjoint x0 p).
+      find_contradiction.
+    * simpl. constructor.
+      intros x Hx. decompose_set_structure.
+      inversion H; subst. destruct H1.
+      inversion H0; subst. destruct H3.
+      destruct H2 as [p H2].
+      set (Hdisjoint := transition_place_name_disjoint x0 p).
+      find_contradiction.
+    * admit (* true *).
+  Admitted.
+
   Unset Implicit Arguments.
 End MG_to_SS.
 
@@ -852,6 +966,8 @@ Section Structural_SS.
     | Union S1 S2 => interp_S S1 ∥ interp_S S2
     | Hide x S'    => hide x (interp_S S')
     end.
+
+  
 
   Ltac reflect_S_constr S :=
   match S with

@@ -145,7 +145,7 @@ Section TokenMG_to_SS.
 
   Variable even odd : Set.
 
-  Class stage_naming_scheme `{naming_scheme name even odd} :=
+  Class stage_naming_scheme `{scheme : naming_scheme name even odd} :=
     { stage_place_name : forall (l : latch even odd) {t1 t2 : token_transition}, stage_place t1 t2 -> name
     ; stage_places_disjoint_transitions : forall l t1 t2 (p : stage_place t1 t2),
       stage_place_name l p ∉ space_domain (latch_stage l)
@@ -158,7 +158,6 @@ Section TokenMG_to_SS.
   Variable l : latch even odd.
   Variable in_flag : token_flag.
   Let out_flag := latch_to_token_flag l.
-  Context `{scheme : naming_scheme name even odd}.
   Context `{x_scheme : stage_naming_scheme}.
 
 
@@ -213,9 +212,11 @@ Section TokenMG_to_SS.
    ; transition_update_value := token_transition_update_value
    ; input_transition := from_list [left_req; right_ack]
    |}.
+  Next Obligation.
+    admit.
+  Admitted.
 
   Definition stage_MG_SS : StateSpace name := MG_SS (stage_MG in_flag out_flag).
-
 
 End TokenMG_to_SS.
 
@@ -412,7 +413,7 @@ About is_enabled.
     state_relate_marking σ m ->
     latch_stage l ⊢ σ →{Some (transition_event t σ)} Some σ' ->
     is_enabled _ t m ->
-    m' = fire t _ m ->
+    (forall {t1 t2} (p : stage_place t1 t2), m' _ _ p = fire t _ m _ _ p) ->
     state_relate_marking σ' m'
   | R_Eps σ σ' m:
     state_relate_marking σ m ->
@@ -426,7 +427,45 @@ Lemma in_equiv_ensemble : forall (X Y : Ensemble name) (x : name),
     x ∈ Y.
 Admitted.
 
-  Lemma state_relate_marking_equiv : forall σ t σ',
+  Lemma stage_relate_trace_domain : forall σ1 t σ2,
+    relate_trace name (latch_stage l) (stage_MG_SS l in_flag)
+                      (σR l) init_stage_MG_state
+                      σ1 t σ2 ->
+    forall x tr,
+      x = @transition_name name _ (stage_MG in_flag out_flag) _ tr ->
+      σ1 x = σ2 x.
+  Proof.
+    intros σ1 t σ2 Hrelate x tr Hx.
+    eapply relate_trace_domain; [ auto | | eauto | | ].
+    * intros y HSS HMG.
+      unfold init_stage_MG_state.
+      destruct (name_is_place_dec (stage_MG in_flag out_flag) y)
+        as [[t1 [t2 [p Hp]]] | ]; auto.
+      { (* contradiction *)
+        subst.
+        contradict HSS. 
+        apply stage_places_disjoint_transitions.
+      }      
+
+    * unfold space_domain.
+      left. subst.
+      destruct tr;
+      try (right; 
+           eapply in_equiv_ensemble; [ | apply latch_stage_output];
+           simpl; solve_set);
+      try (left; 
+           eapply in_equiv_ensemble; [ | apply latch_stage_input];
+           simpl; solve_set).
+    * unfold space_domain.
+      left. subst.
+      destruct tr;
+      try (right; eexists; split; [ | reflexivity];
+           simpl; intro; decompose_set_structure; fail);
+      try (left; eexists; split; [ | reflexivity]; simpl; solve_set).
+  Qed.
+
+
+  Lemma state_relate_marking_implies : forall σ t σ',
     relate_trace name (latch_stage l) (stage_MG_SS l in_flag)
                       (σR l) init_stage_MG_state
                       σ t σ' ->
@@ -439,34 +478,57 @@ Admitted.
         by    admit.
       apply R_init.
     * eapply R_Eps; eauto.
+    * inversion H0.
     * inversion H1.
-    * inversion H2.
 
         replace e with (transition_event t0 σ1) in *.
           2:{ subst. unfold transition_event.
               f_equal. f_equal.
-              eapply relate_trace_domain; [ auto | | eauto | | ].
-              * intros x. admit (* true *).
-              * unfold space_domain.
-                left.
-                destruct t0;
-                try (right; 
-                  eapply in_equiv_ensemble; [ | apply latch_stage_output];
-                  simpl; solve_set);
-                try (left; 
-                  eapply in_equiv_ensemble; [ | apply latch_stage_input];
-                  simpl; solve_set).
-             * unfold space_domain.
-                left.
-                destruct t0;
-                  try (right; eexists; split; [ | reflexivity]; simpl; intro; decompose_set_structure; fail);
-                  try (left; eexists; split; [ | reflexivity]; simpl; solve_set).
+              eapply stage_relate_trace_domain; eauto.
               }
           subst.
 
 
       eapply R_step; eauto. 
-      admit (* true *).
+      { intros t1 t2 p. 
+        simpl. unfold fire, state_to_marking. simpl.
+        unfold update.
+        set (Hp := stage_places_disjoint_transitions _ _ l _ _ p).
+        
+        compare (token_transition_name _ _ l t0)
+                (stage_place_name _ _ l p).
+        { (* contradiction *) contradict Hp.
+          rewrite <- Heq. constructor.
+          admit (* true *).
+        }
+        unfold fire_in_state.
+        destruct (name_is_place_dec (stage_MG in_flag (latch_to_token_flag l))
+                                      (stage_place_name even odd l p))
+            as [[t1' [t2' [p' Hp']]] | Hdec].
+        2:{ (* contradiction *)
+             specialize (Hdec _ _ p).
+             simpl in Hdec. find_contradiction.
+        }
+        simpl in *.
+        (* stage_place_name should be injective, not currently enforced *)
+        replace t1' with t1 in * by admit.
+        replace t2' with t2 in * by admit.
+        (*replace p' with p in * by admit.*)
+        compare_next; auto.
+        compare_next; auto.
+        { unfold dec_value.
+          unfold val_to_nat.
+          destruct (σ2 (stage_place_name even odd l p)); auto.
+          admit (* mismatch here, maybe difference between Bit0 and Num 0?? *).
+        }
+        compare_next; auto.
+        { unfold inc_value.
+          unfold val_to_nat.
+          destruct (σ2 (stage_place_name even odd l p)); auto.
+          admit (* mismatch here, maybe difference between Bit0 and Num 0?? *).
+          admit (* mismatch here, maybe difference between Bit0 and Num 0?? *).
+          admit (* mismatch here, maybe difference between Bit0 and Num 0?? *).
+        }
   Admitted.
 
 
@@ -578,11 +640,12 @@ Admitted.
   
 
 
-  Definition visible_domain (S : StateSpace name) := space_input S ∪ space_output S.
-  (* Note: this will only be true for "well-formed" state space relations *)
-  Lemma step_visible : forall S σ x v σ',
+
+  Lemma step_implies_event_step : forall S σ x v σ' t,
     S ⊢ σ →{Some (Event x v)} Some σ' ->
-    x ∈ visible_domain S.
+    x = @transition_name name _ (stage_MG in_flag out_flag) _ t ->
+    v = @transition_update_value name _ (stage_MG in_flag out_flag) _ t (σ x).
+  Proof.
   Admitted.
 
 
@@ -593,56 +656,41 @@ Admitted.
     unfold relate_trace_step_lemma.
     set (Hdisjoint := scheme_all_disjoint l).
     intros σ1 σ1' σ2 [x v] t Hstep Hrelate.
-    assert (Hx : x ∈ visible_domain (latch_stage l)).
-    { eapply step_visible; eauto. }
-    assert (Hx' : x ∈ from_list [req (latch_input l);ack (latch_input l);
-                                 ack (latch_output l);req (latch_output l);
-                                 latch_clk l]).
-    { unfold visible_domain in Hx.
-      destruct Hx as [? Hx | ? Hx].
-      * apply stage_input in Hx; auto.
-        decompose_set_structure; simpl; solve_set.
-      * apply stage_output in Hx; auto.
-        decompose_set_structure; simpl; solve_set.
-    }
-
-    clear Hx.
-    rename Hx' into Hx.
-    simpl in Hx.
-
-    decompose_set_structure.
-    + (* x = req (latch_input l) *)
-      apply left_req_inversion in Hstep.
-      destruct Hstep as [Hstable Hv].
-      assert (Henabled : is_enabled (stage_MG in_flag out_flag) left_req (state_to_marking σ2)).
-      { eapply left_req_relation_enabled; eauto. }
-      exists (update (fire_in_state left_req σ2) (req (latch_input l)) v).
-      apply transition_enabled with (t := left_req); auto.
-      { simpl.
-        replace (σ2 (req (latch_input l))) with (σ1 (req (latch_input l))); auto.
-        eapply relate_trace_domain; [ auto | | apply Hrelate | |].
-        { intros y Hy1 Hy2.
-          admit (* need to prove, but true *).
-        }
-        { unfold space_domain. simpl.
-          left. left. left. constructor. 2:{ solve_set. }
-          left. constructor. 2:{ solve_set. }
-          left. constructor.
-          2:{ unfold ack_i_output.
-              destruct x_scheme.
-               admit (* true! *).
-             }
-          solve_set.
-        }
-        { unfold space_domain. simpl. 
-          left. left.
-          exists left_req. split.
-          + solve_set.
-          + auto.
-        }
+    assert (Hwf : well_formed _ (latch_stage l)) by admit.
+    assert (Hx : x ∈ space_input (latch_stage l) ∪ space_output (latch_stage l)).
+    { destruct Hwf. eapply wf_space; eauto. }
+    assert (Ht : exists t, x = @transition_name _ _ (stage_MG in_flag out_flag) _ t).
+    { 
+      assert (Hx' : x ∈ from_list [req (latch_input l);ack (latch_input l);
+                                   ack (latch_output l);req (latch_output l);
+                                   latch_clk l]).
+      { destruct Hx as [? Hx | ? Hx].
+        * apply latch_stage_input in Hx; auto.
+          decompose_set_structure; simpl; solve_set.
+        * apply latch_stage_output in Hx; auto.
+          decompose_set_structure; simpl; solve_set.
       }
-    + (* x = ack (latch_input l) *)
+      clear Hx.
+      decompose_set_structure.
+      + exists left_req; auto.
+      + exists left_ack; auto.
+      + exists right_ack; auto.
+      + exists right_req; auto.
+      + (* how do we know that v=Bit0 | Bit1?? *) admit.
+    }
+    destruct Ht as [tr Htr].
+    replace v with (transition_update_value tr (σ1 x)) in *.
+    2:{ erewrite (step_implies_event_step _ σ1 x v σ1' tr) in *; eauto. }
+    rewrite Htr in *.
+    eexists. econstructor; eauto.
+    { eapply state_related_enabled; eauto.
+      eapply state_relate_marking_implies; eauto.
+    }
+    { f_equal. 
+      eapply stage_relate_trace_domain; eauto.
+    }
   Admitted.
+
 
   Lemma place_name_disjoint_SS : forall t1 t2 (p : place (stage_MG in_flag out_flag) t1 t2),
     place_name p ∉ space_domain (latch_stage l).
