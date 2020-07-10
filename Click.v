@@ -327,12 +327,56 @@ Section Desync.
 
     TODO: is this opposite?
     *)
+    (*
   Definition latch_stage (l : latch even odd) : StateSpace name :=
     stage (latch_input l) (latch_output l)
           ctrl_reset_n dp_reset_n
           (latch_hidden l)
           (latch_clk l) (latch_old_clk l) (latch_state0 l) (latch_not_state0 l)
           (latch_to_token_flag l).
+*)
+
+  Definition latch_flop_component (l : latch even odd) : StateSpace name :=
+    flop_component dp_reset_n (latch_hidden l)
+                   (latch_clk l) (latch_old_clk l)
+                   (latch_state0 l) (latch_not_state0 l)
+                   (latch_to_token_flag l).
+  Definition latch_clk_component (l : latch even odd) : StateSpace name :=
+    clk_component (latch_input l) (latch_output l) ctrl_reset_n (latch_clk l) (latch_state0 l)
+                  (latch_to_token_flag l).
+  Definition latch_right_req_component (l : latch even odd) :=
+    forward (latch_state0 l) (req (latch_output l)).
+  Definition latch_left_ack_component (l : latch even odd) :=
+    ack_i_output (latch_input l) (latch_state0 l) (latch_to_token_flag l).
+  Definition latch_stage_with_reset l :=
+      latch_clk_component l ∥ latch_flop_component l
+    ∥ latch_left_ack_component l ∥ latch_right_req_component l.
+  Definition latch_stage (l : latch even odd) :=
+      hide (latch_state0 l)
+    ( hide dp_reset_n
+    ( hide ctrl_reset_n
+    ( latch_stage_with_reset l ∥ output dp_reset_n None ∥ output ctrl_reset_n None ))).
+
+
+
+ Lemma latch_stage_input : forall l,
+    space_input (latch_stage l) == from_list [req (latch_input l);ack (latch_output l)].
+  Proof.
+    intro l.
+    set (Hdisjoint := scheme_all_disjoint l).
+    destruct l;
+    constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
+  Qed.
+
+  Lemma latch_stage_output : forall l,
+    space_output (latch_stage l) == from_list [ack (latch_input l);req (latch_output l);latch_clk l].
+  Proof.
+    intro l.
+    set (Hdisjoint := scheme_all_disjoint l).
+    destruct l;
+    constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
+  Qed.
+
 
   (** In order to add the appropriate splits and joins, we need a *function*
   that produces a list of all the right (resp. left) neighbors of a latch [l].
