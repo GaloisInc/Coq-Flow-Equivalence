@@ -206,10 +206,14 @@ Section Stage.
     | Even _ => Token
     end.
 
-  Definition ack_i_output f := match f with
+  Definition ack_i_output f := (*match f with
                             | Token => NOT state0 (ack i)
                             | NonToken => forward state0 (ack i)
-                            end.
+                            end.*)
+    func_space (singleton state0) (ack i) (fun σ => match f with
+                                                    | Token => neg_value (σ state0)
+                                                    | NonToken => σ state0
+                                                    end).
 
   Definition stage_with_reset (f : token_flag) :=
     clk_component f ∥ flop_component f ∥ forward state0 (req o) ∥ ack_i_output f.

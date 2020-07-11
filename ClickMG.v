@@ -251,9 +251,17 @@ Section SS_to_TokenMG.
     exact (Num (init_marking (stage_MG in_flag out_flag) _ _ p)).
   Defined.
 
+  Definition left_env_component (l : latch even odd) :=
+    NOT (ack (latch_input l)) (req (latch_input l)).
+  Definition right_env_component (l : latch even odd) :=
+    forward (req (latch_output l)) (ack (latch_output l)).
+
+
+  Definition latch_stage_with_env l := left_env_component l ∥ latch_stage l ∥ right_env_component l.
+
   (* The theorem *)
   Theorem MG_refines_stage :
-    traces_of (latch_stage l) (σR l) ⊆ traces_of (stage_MG_SS l in_flag) init_stage_MG_state.
+    traces_of (latch_stage_with_env l) (σR l) ⊆ traces_of (stage_MG_SS l in_flag) init_stage_MG_state.
   Proof.
     unfold traces_of.
     intros t Hstage.
@@ -265,7 +273,70 @@ Section SS_to_TokenMG.
   Abort.
 
 
+Lemma union_inversion_left : forall (S1 S2 : StateSpace name) σ x v σ',
+    (S1 ∥ S2) ⊢ σ →{Some (Event x v)} Some σ' ->
+    x ∈ space_domain S1 ->
+    S1 ⊢ σ →{Some (Event x v)} Some σ'.
+Proof.
+  intros ? ? ? ? ? ? Hstep Hdom.
+  inversion Hstep; subst; auto.
+  (* the only remaining case is when x ∉ dom(S1), a contradiction *)
+  { contradict H0. constructor. auto. }
+Qed.
 
+Lemma union_inversion_right : forall (S1 S2 : StateSpace name) σ x v σ',
+    (S1 ∥ S2) ⊢ σ →{Some (Event x v)} Some σ' ->
+    x ∈ space_domain S2 ->
+    S2 ⊢ σ →{Some (Event x v)} Some σ'.
+Proof.
+  intros ? ? ? ? ? ? Hstep Hdom.
+  inversion Hstep; subst; auto.
+  (* the only remaining case is when x ∉ dom(S2), a contradiction *)
+  { contradict H0. constructor. auto. }
+Qed.
+
+Lemma hide_inversion : forall (S : StateSpace name) σ x e σ',
+    (hide x S) ⊢ σ →{Some e} Some σ' ->
+    S ⊢ σ →{Some e} Some σ'.
+Proof.
+  intros ? ? ? ? ? Hstep.
+  inversion Hstep; auto.
+Qed.
+
+Lemma func_space_output_inversion : forall I (o : name) f (σ : state name) x v σ',
+    o ∉ I ->
+    func_space I o f ⊢ σ →{Some (Event x v)} Some σ' ->
+    x = o ->
+    v = f σ.
+Proof.
+  intros ? ? ? ? ? ? ? Ho Hstep ?. subst.
+    inversion Hstep; try find_contradiction.
+    subst. auto.
+Qed.
+
+Lemma func_space_output_unstable : forall I (o : name) f σ x v σ',
+    func_space I o f ⊢ σ →{Some (Event x v)} Some σ' ->
+    x = o ->
+    σ x <> v.
+Admitted.
+
+(*
+(* Not true in general due to extra  assumptions *)
+Lemma func_space_input_inversion : forall I o f σ x v σ',
+    o ∉ I ->
+    func_space I o f ⊢ σ →{Some (Event x v)} Some σ' ->
+    x ∈ I ->
+    stable (func_space I o f) σ.
+Proof.
+  intros ? ? ? ? ? ? ? Hwf Hstep Hx.
+  inversion Hstep; subst; auto.
+  * (* x ∈ I  case *)
+    apply func_stable_equiv; auto.
+  * (* f σ = f (update σ x v ) *)
+    unfold update in H4.
+    admit (* not true??? *).
+  * find_contradiction.
+Abort.
   
 
   Lemma left_req_inversion : forall σ σ' v,
@@ -273,12 +344,39 @@ Section SS_to_TokenMG.
     stable (latch_clk_component l) σ 
     /\ v = neg_value (σ (req (latch_input l))).
   Proof.
-    intros.
+    intros ? ? ? Hstep.
+    set (Hdisjoint := scheme_all_disjoint l).
+    assert (Hclk : latch_clk_component l ⊢ σ →{ Some (Event (req (latch_input l)) v)} Some σ').
+    { unfold latch_stage in Hstep.
+      apply hide_inversion in Hstep.
+      apply hide_inversion in Hstep.
+      apply hide_inversion in Hstep.
+      unfold latch_stage_with_reset in Hstep.
+      apply union_inversion_left in Hstep.
+      2:{ unfold space_domain. simpl. solve_set. }
+      apply union_inversion_left in Hstep.
+      2:{ unfold space_domain. simpl. solve_set. }
+      apply union_inversion_left in Hstep.    
+      2:{ unfold space_domain. simpl. solve_set. }
+      apply union_inversion_left in Hstep.    
+      2:{ unfold space_domain. simpl. solve_set. }
+      apply union_inversion_left in Hstep.    
+      2:{ unfold space_domain. simpl. solve_set. }
+      assumption.
+    }
+
+    inversion Hclk; subst.
+
     unfold latch_clk_component, clk_component.
     split.
-    apply func_stable_equiv.
-    * admit (* true *).
-    * admit (* true *).
+    { apply func_stable_equiv. About func_stable_equiv.
+
+
+     
+    * set (HH := scheme_all_disjoint l).
+      simpl.
+      intro Hclk. decompose_set_structure.
+    * admit.
     * admit (* needs work *).
   Admitted.
   Lemma right_ack_inversion : forall σ σ' v,
@@ -298,6 +396,7 @@ Section SS_to_TokenMG.
        σ (latch_clk l) = σ (latch_old_clk l)
     /\ ~ stable (latch_clk_component l) σ.
   Admitted.
+*)
 
 
   (** If σ1 R{t} σ2, then the stage_relation_property will hold on σ1 and
@@ -311,12 +410,7 @@ Print stage_place.
     (* Timing constraint: wait for both lack AND rreq before enabling either lreq or rack *)
     (* Timing constraint: clk should fall BEFORE lreq changes, and clk should fall BEFORE rack changes 
        NOTE: why is this timing constraint necessary? *)
-Print flop_component.
 
-  Definition left_env_component (l : latch even odd) :=
-    NOT (ack (latch_input l)) (req (latch_input l)).
-  Definition right_env_component (l : latch even odd) :=
-    forward (req (latch_output l)) (ack (latch_output l)).
 
 
   Record stage_relation_property (σ : state name) (m : marking (stage_MG in_flag out_flag)) :=
@@ -398,26 +492,23 @@ Print flop_component.
 (*  Context `{mg_scheme : MG_naming_scheme name _ (stage_MG in_flag out_flag)}.*)
   Existing Instance stage_MG_scheme.
 
-About transition_name.
-About transition_update_value.
   Definition transition_event (t : token_transition) (σ : state name) : event name value :=
     let x := @transition_name name _ (stage_MG in_flag out_flag) _ t in
     let v := @transition_update_value name _ (stage_MG in_flag out_flag) _ t (σ x) in
     Event x v.
 
 
-About is_enabled.
   Inductive state_relate_marking : state name -> marking (stage_MG in_flag out_flag) -> Prop :=
   | R_init : state_relate_marking (σR l) (init_marking (stage_MG in_flag out_flag))
   | R_step σ σ' t m m' : 
     state_relate_marking σ m ->
-    latch_stage l ⊢ σ →{Some (transition_event t σ)} Some σ' ->
+    latch_stage_with_env l ⊢ σ →{Some (transition_event t σ)} Some σ' ->
     is_enabled _ t m ->
     (forall {t1 t2} (p : stage_place t1 t2), m' _ _ p = fire t _ m _ _ p) ->
     state_relate_marking σ' m'
   | R_Eps σ σ' m:
     state_relate_marking σ m ->
-    latch_stage l ⊢ σ →{None} Some σ' ->
+    latch_stage_with_env l ⊢ σ →{None} Some σ' ->
     state_relate_marking σ' m
   .
 
@@ -428,7 +519,7 @@ Lemma in_equiv_ensemble : forall (X Y : Ensemble name) (x : name),
 Admitted.
 
   Lemma stage_relate_trace_domain : forall σ1 t σ2,
-    relate_trace name (latch_stage l) (stage_MG_SS l in_flag)
+    relate_trace name (latch_stage_with_env l) (stage_MG_SS l in_flag)
                       (σR l) init_stage_MG_state
                       σ1 t σ2 ->
     forall x tr,
@@ -444,29 +535,30 @@ Admitted.
       { (* contradiction *)
         subst.
         contradict HSS. 
-        apply stage_places_disjoint_transitions.
+        admit (* true; apply stage_places_disjoint_transitions.*).
       }      
 
     * unfold space_domain.
       left. subst.
       destruct tr;
+      admit (* true:
       try (right; 
            eapply in_equiv_ensemble; [ | apply latch_stage_output];
            simpl; solve_set);
       try (left; 
            eapply in_equiv_ensemble; [ | apply latch_stage_input];
-           simpl; solve_set).
+           simpl; solve_set).*).
     * unfold space_domain.
       left. subst.
       destruct tr;
       try (right; eexists; split; [ | reflexivity];
            simpl; intro; decompose_set_structure; fail);
       try (left; eexists; split; [ | reflexivity]; simpl; solve_set).
-  Qed.
+  Admitted.
 
 
   Lemma state_relate_marking_implies : forall σ t σ',
-    relate_trace name (latch_stage l) (stage_MG_SS l in_flag)
+    relate_trace name (latch_stage_with_env l) (stage_MG_SS l in_flag)
                       (σR l) init_stage_MG_state
                       σ t σ' ->
     state_relate_marking σ (state_to_marking σ').
@@ -531,6 +623,56 @@ Admitted.
         }
   Admitted.
 
+About left_env_component.
+
+  Lemma left_req_val_inversion : forall σ v σ',
+    latch_stage_with_env l ⊢ σ →{Some (Event (req (latch_input l)) v)} Some σ' ->
+    v = neg_value (σ (ack (latch_input l))).
+  Proof.
+    set (Hdisjoint := scheme_all_disjoint l).
+    intros ? ? ? Hstep.
+      set (Hstep' := Hstep).
+      apply union_inversion_left in Hstep'.
+      2:{ unfold space_domain. simpl. solve_set. }
+      apply union_inversion_left in Hstep'.
+      2:{ unfold space_domain. simpl. solve_set. }
+      unfold left_env_component, NOT in Hstep'.
+      apply func_space_output_inversion in Hstep'; auto.
+      { solve_set. }
+  Qed.
+
+(*
+  Lemma left_input_0_1 : forall σ t,
+    latch_stage_with_env l ⊢ σR l →*{t} Some σ ->
+       σ (ack (latch_input l)) = σ (req (latch_input l))
+    \/ σ (ack (latch_input l)) = neg_value (σ (req (latch_input l))).
+  Proof.
+    intros σ t Hsteps.
+    dependent induction Hsteps.
+    * unfold σR. repeat compare_next; auto;
+        destruct l; auto.
+    * specialize (IHHsteps _ _ _ _ _ eq_refl eq_refl eq_refl).
+      destruct IHHsteps as [IH | IH].
+      + destruct e as [x v].
+        compare x (ack (latch_input l)).
+Print well_formed.
+        assert (σ (ack (latch_input l)) = v).
+        { eapply wf_update; eauto. admit (* true *). }
+        erewrite left_req_val_inversion in H2. eauto.
+        apply func_space_output_inversion in H0.
+  Qed.
+*)
+
+  (* How to prove this? *)
+  Lemma step_implies_event_step : forall t tr σ x v σ',
+    latch_stage_with_env l ⊢ σR l →*{tr ▶ Event x v} Some σ' ->
+    x = @transition_name name _ (stage_MG in_flag out_flag) _ t ->
+    v = @transition_update_value name _ (stage_MG in_flag out_flag) _ t (σ x).
+  Proof.
+    destruct t; intros tr σ x v σ' Hstep; simpl; intros Hx.
+    * 
+  Admitted.
+
 
   (** Intuitively, [prop_marked p σ] is a property that holds on a state σ
   whenever a related marking m satisfies [m(p) > 0]. *)
@@ -538,25 +680,25 @@ Admitted.
   .
 
   Lemma step_implies_prop_marked : forall σ t σ',
-    latch_stage l ⊢ σ →{Some (transition_event t σ)} Some σ' ->
+    latch_stage_with_env l ⊢ σ →{Some (transition_event t σ)} Some σ' ->
     forall t0 (p : stage_place t0 t), prop_marked p σ.
   Admitted.
 
   (* Helper lemmas for relate_implies_marked below *)
   Lemma relate_implies_marked_eps : forall σ σ' m,
-    latch_stage l ⊢ σ →{None} Some σ' ->
+    latch_stage_with_env l ⊢ σ →{None} Some σ' ->
     state_relate_marking σ m ->
     state_relate_marking σ' m.
   Admitted.
 
   Lemma incoming_place_not_marked : forall σ σ' t,
-    latch_stage l ⊢ σ →{Some (transition_event t σ)} Some σ' ->
+    latch_stage_with_env l ⊢ σ →{Some (transition_event t σ)} Some σ' ->
     forall t0 (p : stage_place t0 t),
         ~ prop_marked p σ.
   Admitted.
 
   Lemma disjoint_place_marked : forall σ σ' t,
-    latch_stage l ⊢ σ →{Some (transition_event t σ)} Some σ' ->
+    latch_stage_with_env l ⊢ σ →{Some (transition_event t σ)} Some σ' ->
     forall t1 t2 (p : stage_place t1 t2),
       t1 <> t ->
       t2 <> t ->
@@ -575,7 +717,7 @@ Admitted.
 
 
   Theorem state_related_enabled : forall σ σ' t m,
-    latch_stage l ⊢ σ →{Some (transition_event t σ)} Some σ' ->
+    latch_stage_with_env l ⊢ σ →{Some (transition_event t σ)} Some σ' ->
     state_relate_marking σ m ->
     is_enabled _ t m.
   Proof.
@@ -641,23 +783,16 @@ Admitted.
 
 
 
-  Lemma step_implies_event_step : forall S σ x v σ' t,
-    S ⊢ σ →{Some (Event x v)} Some σ' ->
-    x = @transition_name name _ (stage_MG in_flag out_flag) _ t ->
-    v = @transition_update_value name _ (stage_MG in_flag out_flag) _ t (σ x).
-  Proof.
-  Admitted.
-
 
 
   Lemma MG_relate_trace_step_lemma :
-    relate_trace_step_lemma name (latch_stage l) (stage_MG_SS l in_flag) (σR l) init_stage_MG_state.
+    relate_trace_step_lemma name (latch_stage_with_env l) (stage_MG_SS l in_flag) (σR l) init_stage_MG_state.
   Proof.
     unfold relate_trace_step_lemma.
     set (Hdisjoint := scheme_all_disjoint l).
     intros σ1 σ1' σ2 [x v] t Hstep Hrelate.
-    assert (Hwf : well_formed _ (latch_stage l)) by admit.
-    assert (Hx : x ∈ space_input (latch_stage l) ∪ space_output (latch_stage l)).
+    assert (Hwf : well_formed _ (latch_stage_with_env l)) by admit.
+    assert (Hx : x ∈ space_input (latch_stage_with_env l) ∪ space_output (latch_stage_with_env l)).
     { destruct Hwf. eapply wf_space; eauto. }
     assert (Ht : exists t, x = @transition_name _ _ (stage_MG in_flag out_flag) _ t).
     { 
@@ -665,10 +800,10 @@ Admitted.
                                    ack (latch_output l);req (latch_output l);
                                    latch_clk l]).
       { destruct Hx as [? Hx | ? Hx].
-        * apply latch_stage_input in Hx; auto.
-          decompose_set_structure; simpl; solve_set.
-        * apply latch_stage_output in Hx; auto.
-          decompose_set_structure; simpl; solve_set.
+        * admit (* apply latch_stage_input in Hx; auto.
+          decompose_set_structure; simpl; solve_set. *).
+        * admit (* apply latch_stage_output in Hx; auto.
+          decompose_set_structure; simpl; solve_set. *).
       }
       clear Hx.
       decompose_set_structure.
@@ -680,11 +815,16 @@ Admitted.
     }
     destruct Ht as [tr Htr].
     replace v with (transition_update_value tr (σ1 x)) in *.
-    2:{ erewrite (step_implies_event_step _ σ1 x v σ1' tr) in *; eauto. }
-    rewrite Htr in *.
+    2:{ set (res := step_implies_event_step tr t σ1 x v σ1').
+        rewrite res; auto.
+        econstructor; eauto.
+        Search relate_trace.
+        eapply relate_trace_project_left; eauto.
+    }
     eexists. econstructor; eauto.
     { eapply state_related_enabled; eauto.
-      eapply state_relate_marking_implies; eauto.
+      admit (*eapply state_relate_marking_implies; eauto.*).
+      admit.
     }
     { f_equal. 
       eapply stage_relate_trace_domain; eauto.
@@ -693,15 +833,16 @@ Admitted.
 
 
   Lemma place_name_disjoint_SS : forall t1 t2 (p : place (stage_MG in_flag out_flag) t1 t2),
-    place_name p ∉ space_domain (latch_stage l).
+    place_name p ∉ space_domain (latch_stage_with_env l).
   Proof.
     destruct x_scheme.
     intros t1 t2 p. simpl.
     auto.
-  Qed.
+    admit (* see x_scheme *).
+  Admitted.
 
   Theorem MG_refines_stage :
-    traces_of (latch_stage l) (σR l) ⊆ traces_of (stage_MG_SS l in_flag) init_stage_MG_state.
+    traces_of (latch_stage_with_env l) (σR l) ⊆ traces_of (stage_MG_SS l in_flag) init_stage_MG_state.
   Proof.
     Search relate_trace_step_lemma.
     apply relate_trace_step_subset.
@@ -906,7 +1047,7 @@ Admitted.
       exists m. exists t'. split; auto.
   Admitted.
 *)
-*)        
+
 
   End SS_to_TokenMG.
 

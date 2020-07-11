@@ -26,6 +26,11 @@ Context `{name_eq_dec : eq_dec name}.
 Inductive event_in {val} (I : Ensemble name) : option (event name val) -> Prop :=
 | Event_In i (pf : i ∈ I) v : event_in I (Some (Event i v)).
 
+Lemma not_event_in : forall {val} x (v : val) I, ~ event_in I (Some (Event x v)) -> x ∉ I.
+Proof.
+ intros. intro. apply H. constructor. auto.
+Qed.
+
 (** A state space consists of 
 
 1. a set of input wires
@@ -231,6 +236,14 @@ Record well_formed (S : StateSpace) :=
   ; wf_space : forall σ x v σ',
     S ⊢ σ →{Some (Event x v)} Some σ' ->
     x ∈ space_input S ∪ space_output S
+  ; wf_scoped : forall σ e σ',
+    S ⊢ σ →{e} Some σ' ->
+    forall x, (forall v, e <> Some (Event x v)) ->
+              x ∉ space_internal S ->
+              σ' x = σ x
+  ; wf_update : forall σ x v σ',
+    S ⊢ σ →{Some (Event x v)} Some σ' ->
+    σ' x = v
   }.
 
 (** A state [σ] in the state space [S] is stable if the only events that are
@@ -289,7 +302,7 @@ Section FuncStateSpace.
 
   | func_output v :
     ~ (func_stable σ) ->
-    σ x = v ->
+    v = f σ ->
     func_step σ (Some (Event x v))
                 (Some (update σ x v))
   .
@@ -316,11 +329,14 @@ Section FuncStateSpace.
       simpl.
       intros y Hy.
       decompose_set_structure.
-    + 
-    intros σ y v σ' Hstep.
-    inversion Hstep; try (subst; solve_set).
-    rewrite <- H. simpl. solve_set.
-  Qed.
+    + intros σ y v σ' Hstep.
+      inversion Hstep; try (subst; solve_set).
+      rewrite <- H. simpl. solve_set.
+
+    + admit (*intros ? z ? ? Hstep y y_neq_z y_not_internal.
+      inversion Hstep; try subst; unfold update; reduce_eqb; auto. *)
+    + admit (*TODO*).
+  Admitted.
 
   (** ** Decidability of stability for function spaces *)
 
@@ -340,12 +356,13 @@ Section FuncStateSpace.
       + contradiction.
       + contradiction.
     * compare (σ x) (f σ); auto.
-      absurd (event_in (space_input func_space) (Some (Event x (σ x)))).
-      { inversion 1; subst. simpl in *.
-        contradiction. }
-      { eapply Hstable.
-        apply func_output; auto.
-      }
+
+      inversion Hstable.
+      assert (Hstep : func_space ⊢ σ →{Some (Event x (f σ))} Some (update σ x (f σ))).
+      { apply func_output; auto. }
+      specialize (stable_step0 _ _ Hstep).
+      inversion stable_step0; subst.
+      simpl in *. find_contradiction.
   Qed.
 
 
@@ -493,7 +510,19 @@ Section UnionStateSpace.
           solve_set.
         }
         solve_set.
-  Qed.
+
+  - intros ? ? ? Hstep x Hx x_not_internal.
+    decompose_set_structure.
+    inversion Hstep; subst.
+    + specialize (wf_scoped0 _ _ _ H4).
+      apply wf_scoped0; auto.
+    + specialize (wf_scoped1 _ _ _ H4).
+      apply wf_scoped1; auto.
+    + specialize (wf_scoped1 _ _ _ H5).
+      apply wf_scoped1; auto.
+
+  - admit (*TODO*).
+  Admitted.
 
 
   (** Although this direction ([union_stable_implies]) is true, I don't know if the other direction
@@ -624,7 +653,16 @@ Section HideStateSpace.
       specialize (wfStep _ _ _ _ H).
       decompose_set_structure.
       solve_set.
-  Qed.
+    - intros ? ? ? Hstep y Hy y_not_internal.
+      decompose_set_structure.
+      inversion Hstep; subst.
+      + specialize (wf_scoped0 _ _ _ H1).
+        apply wf_scoped0; auto.
+        intro. inversion 1; subst. find_contradiction.
+      + specialize (wf_scoped0 _ _ _ H1).
+        apply wf_scoped0; auto.
+    - admit (*TODO*).
+  Admitted.
 End HideStateSpace.
 
 
@@ -762,7 +800,32 @@ Section Flop.
         decompose_set_structure.
       + intros ? ? ? ? Hstep.
         inversion Hstep; try subst; try solve_set.
-  Qed.
+      + intros ? ? ? Hstep y Hy H_not_internal.
+        decompose_set_structure.
+        inversion Hstep; try subst.
+        ++ unfold update. specialize (Hy v).
+           assert (i <> y). { inversion 1; subst. apply Hy. auto. }
+           reduce_eqb; auto.
+           
+        ++ unfold update.
+           assert (y <> Q). { specialize (Hy (Num 1)).
+                              inversion 1; subst. apply Hy. auto. }
+           reduce_eqb. auto.
+        ++ unfold update.
+           compare_next; auto.
+           rewrite <- Heq in Hy.
+           specialize (Hy (Num 0)).
+           contradict Hy; auto.
+        ++ unfold update.
+           compare_next; auto.
+        ++ unfold update.
+           compare_next; auto.
+           compare_next; auto.
+           specialize (Hy (σ D)).
+           contradict Hy; rewrite <- Heq; auto.
+
+    + admit (* TODO *).
+  Admitted.
 
   Lemma flop_stable_implies_stable : forall σ, 
     flop_stable σ -> stable flop σ.
@@ -941,8 +1004,9 @@ Arguments well_formed {name}.
       destruct H2 as [p H2].
       set (Hdisjoint := transition_place_name_disjoint x0 p).
       find_contradiction.
-    * admit (* true *).
-  Admitted.
+    * admit.
+    * admit.
+  Abort.
 
   Unset Implicit Arguments.
 End MG_to_SS.
