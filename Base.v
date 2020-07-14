@@ -548,6 +548,7 @@ Ltac my_subst :=
 Ltac decompose_set_structure_1 :=
   match goal with
   | [ H : ?x ∉ ∅ |- _ ] => clear H
+  | [ H : ?x ∈ ∅ |- _ ] => inversion H
   | [ H : ?x ∈ ?X ∖ ?Y |- _ ] => destruct H 
   | [ H : ?x ∈ ?X ∪ ?Y |- _ ] => inversion H; subst; clear H
   | [ H : ?x ∈ ?X ∩ ?Y |- _ ] => inversion H; subst; clear H
@@ -584,6 +585,7 @@ Ltac try_solve_set :=
   | [ |- ?x ∉ ?X ∖ ?Y ] => apply in_Y_not_in_setminus_X_Y; try_solve_set; fail
   | [ |- ?x ∉ ?X ∖ ?Y ] => apply not_in_X_not_in_setminus_X_Y; try_solve_set; fail
   | [ |- ?x ∉ ?X ∪ ?Y ] => apply not_in_union; constructor
+  | [ |- ?x ∉ ?X ]      => intro; decompose_set_structure; fail
   end).
 
 Ltac solve_set :=
