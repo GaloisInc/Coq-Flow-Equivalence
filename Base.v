@@ -11,6 +11,7 @@ Import ListNotations.
 Open Scope list_scope.
 
 Require Export Coq.Sets.Ensembles.
+Require Import Setoid.
 
 
 (** * Decidable equality
@@ -137,6 +138,113 @@ Module EnsembleNotation.
     - right. inversion 1; contradiction.
   Defined.
   Hint Resolve in_dec_singleton : sets. 
+
+
+  (** ** Ensembles as a setoid *)
+
+  Lemma Included_refl : forall A (X : Ensemble A), X ⊆ X.
+  Proof.
+    intros A X. intros x Hx; auto.
+  Qed.
+  Lemma Included_trans : forall A (X Y Z : Ensemble A), X ⊆ Y -> Y ⊆ Z -> X ⊆ Z.
+  Proof.
+    intros A X Y Z HXY HYZ x HX.
+    apply HYZ. apply HXY. auto.
+  Qed.
+
+  Add Parametric Relation A : (Ensemble A) (Included A)
+    reflexivity proved by (Included_refl A)
+    transitivity proved by (Included_trans A)
+    as subset_ensemble_rel.
+
+
+  Lemma Same_set_refl : forall A (X : Ensemble A), X == X.
+  Proof.
+    intros A X. split; reflexivity.
+  Qed.
+  Lemma Same_set_symm : forall A (X Y : Ensemble A), X == Y -> Y == X.
+  Proof.
+    intros A X Y [HXY HYX]. split.
+    * intros y Hy. apply HYX. auto.
+    * intros x Hx. apply HXY. auto.
+  Qed.
+  Lemma Same_set_trans : forall A (X Y Z : Ensemble A), X == Y -> Y == Z -> X == Z.
+  Proof.
+    intros A X Y Z [HXY HYX] [HYZ HZY].
+    split; transitivity Y; auto.
+  Qed.
+
+
+  Add Parametric Relation A : (Ensemble A) (Same_set A)
+    reflexivity proved by (Same_set_refl A)
+    symmetry proved by (Same_set_symm A)
+    transitivity proved by (Same_set_trans A)
+    as eq_ensemble_rel.
+
+  Add Parametric Morphism A : (Included A)
+    with signature (Same_set A) ==> (Same_set A) ==> iff as subset_mor.
+  Proof.
+    intros X Y [HXY HYX] X' Y' [HXY' HYX'].
+    split; intros H.
+    * intros y Hy. apply HXY'. apply H. apply HYX. assumption.
+    * intros x HX. apply HYX'. apply H. apply HXY. assumption.
+  Qed.
+
+  Add Parametric Morphism A : (In A)
+    with signature (Same_set A) ==> (@eq A) ==> iff as in_mor.
+  Proof.
+    intros X Y [HXY HYX] a.
+    split; intros Ha.
+    * apply HXY; auto.
+    * apply HYX; auto.
+  Qed.
+
+  Add Parametric Morphism A : (Union A)
+    with signature (Same_set A) ==> (Same_set A) ==> (Same_set A) as union_mor.
+  Proof.
+    intros X Y HXY X' Y' HXY'.
+    split.
+    * intros x Hx. inversion Hx; subst; clear Hx.
+      + left. rewrite <- HXY. auto.
+      + right. rewrite <- HXY'. auto.
+    * intros x Hx. inversion Hx; subst; clear Hx.
+      + left. rewrite HXY. auto.
+      + right. rewrite HXY'. auto.
+  Qed.
+
+  Add Parametric Morphism A : (Intersection A)
+    with signature (Same_set A) ==> (Same_set A) ==> (Same_set A) as intersection_mor.
+  Proof.
+    intros X Y HXY X' Y' HXY'.
+    split.
+    * intros x Hx. inversion Hx; subst; clear Hx.
+      split. 
+      + rewrite <- HXY. auto.
+      + rewrite <- HXY'. auto.
+    * intros x Hx. inversion Hx; subst; clear Hx.
+      split.
+      + rewrite HXY. auto.
+      + rewrite HXY'. auto.
+  Qed.
+
+  Add Parametric Morphism A : (Disjoint A)
+    with signature (Same_set A) ==> (Same_set A) ==> iff as disjoint_mor.
+  Proof.
+    intros X Y HXY X' Y' HXY'.
+    split; intros [Hdisjoint]; constructor; intros x.
+    * rewrite <- HXY, <- HXY'. auto.
+    * rewrite HXY, HXY'. auto.
+  Qed.
+
+  Add Parametric Morphism A : (Setminus A)
+    with signature (Same_set A) ==> (Same_set A) ==> (Same_set A) as setminus_mor.
+  Proof.
+    intros X Y HXY X' Y' HXY'.
+    split; intros x [Hx Hx'].
+    * split; [rewrite <- HXY; auto | rewrite <- HXY'; auto].
+    * split; [rewrite HXY; auto | rewrite HXY'; auto].
+  Qed.
+
 
 
   (** ** Helper lemmas *)

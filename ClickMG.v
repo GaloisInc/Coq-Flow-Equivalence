@@ -259,6 +259,11 @@ Section SS_to_TokenMG.
 
   Definition latch_stage_with_env l := left_env_component l ∥ latch_stage l ∥ right_env_component l.
 
+  Lemma dom_latch_stage_with_env : forall l,
+    space_domain (latch_stage_with_env l) == space_domain (latch_stage l).
+  Admitted.
+
+
   (* The theorem *)
   Theorem MG_refines_stage :
     traces_of (latch_stage_with_env l) (σR l) ⊆ traces_of (stage_MG_SS l in_flag) init_stage_MG_state.
@@ -315,10 +320,15 @@ Proof.
 Qed.
 
 Lemma func_space_output_unstable : forall I (o : name) f σ x v σ',
+    o ∉ I ->
     func_space I o f ⊢ σ →{Some (Event x v)} Some σ' ->
     x = o ->
     σ x <> v.
-Admitted.
+Proof.
+    intros ? ? ? ? ? ? ? ? Hstep Heq.
+    subst.
+    inversion Hstep; subst; try find_contradiction; auto.
+Qed.
 
 (*
 (* Not true in general due to extra  assumptions *)
@@ -512,12 +522,6 @@ Print stage_place.
     state_relate_marking σ' m
   .
 
-Lemma in_equiv_ensemble : forall (X Y : Ensemble name) (x : name),
-    x ∈ X ->
-    Y == X ->
-    x ∈ Y.
-Admitted.
-
   Lemma stage_relate_trace_domain : forall σ1 t σ2,
     relate_trace name (latch_stage_with_env l) (stage_MG_SS l in_flag)
                       (σR l) init_stage_MG_state
@@ -534,27 +538,24 @@ Admitted.
         as [[t1 [t2 [p Hp]]] | ]; auto.
       { (* contradiction *)
         subst.
-        contradict HSS. 
-        admit (* true; apply stage_places_disjoint_transitions.*).
+        contradict HSS.
+        rewrite dom_latch_stage_with_env.
+        apply stage_places_disjoint_transitions.
       }      
 
-    * unfold space_domain.
-      left. subst.
-      destruct tr;
-      admit (* true:
-      try (right; 
-           eapply in_equiv_ensemble; [ | apply latch_stage_output];
-           simpl; solve_set);
-      try (left; 
-           eapply in_equiv_ensemble; [ | apply latch_stage_input];
-           simpl; solve_set).*).
+    * rewrite dom_latch_stage_with_env. 
+      unfold space_domain.
+      rewrite latch_stage_output, latch_stage_input.
+      destruct tr; subst; simpl; solve_set.
+
+
     * unfold space_domain.
       left. subst.
       destruct tr;
       try (right; eexists; split; [ | reflexivity];
            simpl; intro; decompose_set_structure; fail);
       try (left; eexists; split; [ | reflexivity]; simpl; solve_set).
-  Admitted.
+  Qed.
 
 
   Lemma state_relate_marking_implies : forall σ t σ',
@@ -591,7 +592,8 @@ Admitted.
                 (stage_place_name _ _ l p).
         { (* contradiction *) contradict Hp.
           rewrite <- Heq. constructor.
-          admit (* true *).
+          rewrite latch_stage_input, latch_stage_output.
+          destruct t0; simpl; solve_set.
         }
         unfold fire_in_state.
         destruct (name_is_place_dec (stage_MG in_flag (latch_to_token_flag l))
