@@ -358,10 +358,25 @@ Section FuncStateSpace.
       inversion Hstep; try (subst; solve_set).
       rewrite <- H. simpl. solve_set.
 
-    + admit (*intros ? z ? ? Hstep y y_neq_z y_not_internal.
-      inversion Hstep; try subst; unfold update; reduce_eqb; auto. *)
-    + admit (*TODO*).
-  Admitted.
+    + intros ? ? ? Hstep y y_neq_z y_not_internal.
+
+      inversion Hstep; try subst; unfold update.
+      ++ assert (i <> y).
+         { intro. apply (y_neq_z v). subst; auto. }
+         reduce_eqb; auto.
+      ++ assert (i <> y).
+         { intro. apply (y_neq_z v). subst; auto. }
+         reduce_eqb; auto.
+      ++ compare x y; auto.
+         (* x = y *)
+            rewrite Heq in y_neq_z.
+            specialize (y_neq_z (f σ) eq_refl).
+            find_contradiction.
+
+    + intros ? y ? ? Hstep.
+      inversion Hstep; try subst; unfold update; simpl;
+        reduce_eqb; auto.
+  Qed.
 
   (** ** Decidability of stability for function spaces *)
 
@@ -546,8 +561,12 @@ Section UnionStateSpace.
     + specialize (wf_scoped1 _ _ _ H5).
       apply wf_scoped1; auto.
 
-  - admit (*TODO*).
-  Admitted.
+  - intros ? ? ? ? Hstep.
+    inversion Hstep; subst.
+    + eapply wf_update0; eauto.
+    + eapply wf_update1; eauto.
+    + eapply wf_update0; eauto.
+  Qed.
 
 
   (** Although this direction ([union_stable_implies]) is true, I don't know if the other direction
@@ -686,8 +705,10 @@ Section HideStateSpace.
         intro. inversion 1; subst. find_contradiction.
       + specialize (wf_scoped0 _ _ _ H1).
         apply wf_scoped0; auto.
-    - admit (*TODO*).
-  Admitted.
+    - intros ? ? ? ? Hstep.
+      inversion Hstep; subst; auto.
+      eapply wf_update0; eauto.
+  Qed.
 End HideStateSpace.
 
 
@@ -849,8 +870,15 @@ Section Flop.
            specialize (Hy (σ D)).
            contradict Hy; rewrite <- Heq; auto.
 
-    + admit (* TODO *).
-  Admitted.
+    + intros ? ? ? ? Hstep.
+      inversion Hstep; try subst; unfold update; reduce_eqb; auto.
+      ++ rewrite H4. unfold update. reduce_eqb; auto.
+      ++ rewrite H5. unfold update. reduce_eqb; auto.
+      ++ rewrite H7. unfold update.
+         repeat my_subst. reduce_eqb.
+         compare_next; auto.
+         { my_subst. find_contradiction. }
+  Qed.
 
   Lemma flop_stable_implies_stable : forall σ, 
     flop_stable σ -> stable flop σ.
