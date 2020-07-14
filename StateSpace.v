@@ -80,6 +80,42 @@ where "C ⊢ σ →*{ t } τ" := (space_steps C σ t τ).
 Definition traces_of (S : StateSpace) (σ0 : state name) : Ensemble (trace name value) :=
   fun t => exists σ, S ⊢ σ0 →*{t} Some σ.
 
+
+
+(** A state space is well-formed if several properties hold. There may be other
+properties that also hold not included here, such as the condition that each
+input/output/internal set are individually all_disjoint, or that the transition
+relation is only valid for events in [space_input S ∪ space_outupt S]. *)
+Record well_formed (S : StateSpace) :=
+  { (*space_dom : forall x, x ∈ space_domain S <-> in_fin_state σ x*)
+    space_input_output : space_input S ⊥ space_output S
+  ; space_input_internal : space_input S ⊥ space_internal S
+  ; space_output_internal : space_output S ⊥ space_internal S
+  ; wf_space : forall σ x v σ',
+    S ⊢ σ →{Some (Event x v)} Some σ' ->
+    x ∈ space_input S ∪ space_output S
+  ; wf_scoped : forall σ e σ',
+    S ⊢ σ →{e} Some σ' ->
+    forall x, (forall v, e <> Some (Event x v)) ->
+              x ∉ space_internal S ->
+              σ' x = σ x
+  ; wf_update : forall σ x v σ',
+    S ⊢ σ →{Some (Event x v)} Some σ' ->
+    σ' x = v
+  }.
+
+(** A state [σ] in the state space [S] is stable if the only events that are
+enabled in σ are input events. That is, S will not take any more steps except
+those prompted by the environment. *)
+Record stable (S : StateSpace) (σ : state name) :=
+  { stable_wf : well_formed S
+  ; stable_step : forall e τ, S ⊢ σ →{e} τ -> event_in (space_input S) e }.
+
+Class stable_dec (S : StateSpace) :=
+  { space_stable_dec : forall σ, stable S σ + ~ stable S σ }.
+
+
+
 Section RelateTrace.
 
   Variable S1 S2 : StateSpace.
@@ -111,47 +147,70 @@ Section RelateTrace.
     S2 ⊢ σ2 →{Some e} Some σ2' ->
     relate_trace σ1' (t ▶ e) σ2'.
 
+  Hypothesis internal_disjoint_1 : space_internal S1 ⊥ space_domain S2.
+  Hypothesis internal_disjoint_2 : space_internal S2 ⊥ space_domain S1.
+
   Lemma relate_trace_domain : forall σ1 σ2 t,
+    well_formed S1 ->
+    well_formed S2 ->
     relate_trace σ1 t σ2 ->
     forall x, x ∈ space_domain S1 ->
               x ∈ space_domain S2 ->
               σ1 x = σ2 x.
   Proof.
-    intros σ1 σ2 t Hrelate x Hx1 Hx2.
+    intros σ1 σ2 t Hwf1 Hwf2 Hrelate x Hx1 Hx2.
     assert (x ∉ space_internal S1).
     { (* if it were, it would be disjoint from dom(S2) *)
-      admit. }
+      intro Hx.
+      find_contradiction.
+    }
     assert (x ∉ space_internal S2).
     { (* if it were, it would be disjoint from dom(S1) *)
-      admit. }
+      intros Hx.
+      find_contradiction.
+    }
 
     induction Hrelate.
     * apply init_domain_consistent; auto.
     * assert (Hσ1' : σ1' x = σ1 x).
       { (* Since σ1 →{None} Some σ1', it must be the case that σ1 and σ1' only
         differ on internal wires *)
-        admit. }
+        eapply (wf_scoped _ Hwf1); eauto.
+        { intros v; inversion 1. }
+      }
       congruence.
     * assert (Hσ2' : σ2' x = σ2 x).
       { (* Since σ2 →{None} Some σ2', it must be the case that σ2 and σ2' only
         differ on internal wires *)
-        admit. }
+        eapply (wf_scoped _ Hwf2); eauto.
+        { intros v; inversion 1. }
+      }
       congruence.
     * destruct e as [y v].
       compare x y.
       + (* x = y *)
         assert (σ1' y = v).
-        { (* another feature of well-formed step relations *) admit. }
+        { (* another feature of well-formed step relations *) 
+          eapply (wf_update _ Hwf1); eauto. 
+        }
         assert (σ2' y = v).
-        { (* another feature of well-formed step relations *) admit. }
+        { (* another feature of well-formed step relations *)
+          eapply (wf_update _ Hwf2); eauto.
+        }
         congruence.
       + (* x <> y *)
         assert (σ1' x = σ1 x).
-        { (* σ1 and σ1' must only vary on interal wires and y *) admit. }
+        { (* σ1 and σ1' must only vary on interal wires and y *) 
+          eapply (wf_scoped _ Hwf1); eauto.
+          intros v'; inversion 1; subst; find_contradiction.
+        }
         assert (σ2' x = σ2 x).
-        { (* σ2 and σ2' must only vary on interal wires and y *) admit. }
+        { (* σ2 and σ2' must only vary on interal wires and y *)
+          eapply (wf_scoped _ Hwf2); eauto.
+          intros v'; inversion 1; subst; find_contradiction.
+        }
         congruence.
-  Admitted.
+  Qed.
 
   Definition relate_trace_step_lemma := forall σ1 σ1' σ2 e t,
     S1 ⊢ σ1 →{Some e} Some σ1' ->
@@ -221,40 +280,6 @@ Section RelateTrace.
   Qed.
 
 End RelateTrace.
-
-
-
-(** A state space is well-formed if several properties hold. There may be other
-properties that also hold not included here, such as the condition that each
-input/output/internal set are individually all_disjoint, or that the transition
-relation is only valid for events in [space_input S ∪ space_outupt S]. *)
-Record well_formed (S : StateSpace) :=
-  { (*space_dom : forall x, x ∈ space_domain S <-> in_fin_state σ x*)
-    space_input_output : space_input S ⊥ space_output S
-  ; space_input_internal : space_input S ⊥ space_internal S
-  ; space_output_internal : space_output S ⊥ space_internal S
-  ; wf_space : forall σ x v σ',
-    S ⊢ σ →{Some (Event x v)} Some σ' ->
-    x ∈ space_input S ∪ space_output S
-  ; wf_scoped : forall σ e σ',
-    S ⊢ σ →{e} Some σ' ->
-    forall x, (forall v, e <> Some (Event x v)) ->
-              x ∉ space_internal S ->
-              σ' x = σ x
-  ; wf_update : forall σ x v σ',
-    S ⊢ σ →{Some (Event x v)} Some σ' ->
-    σ' x = v
-  }.
-
-(** A state [σ] in the state space [S] is stable if the only events that are
-enabled in σ are input events. That is, S will not take any more steps except
-those prompted by the environment. *)
-Record stable (S : StateSpace) (σ : state name) :=
-  { stable_wf : well_formed S
-  ; stable_step : forall e τ, S ⊢ σ →{e} τ -> event_in (space_input S) e }.
-
-Class stable_dec (S : StateSpace) :=
-  { space_stable_dec : forall σ, stable S σ + ~ stable S σ }.
 
 (** * Define a circuit state space from a combinational logic function *)
 Section FuncStateSpace.

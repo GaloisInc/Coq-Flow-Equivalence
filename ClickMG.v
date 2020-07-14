@@ -230,7 +230,7 @@ Arguments stage_MG_SS {even odd} l f {scheme x_scheme} : rename.
 Section SS_to_TokenMG.
 
   Variable even odd : Set.
-  Context `{scheme : naming_scheme name even odd}.
+(*  Context `{scheme : naming_scheme name even odd}.*)
   Context `{x_scheme : stage_naming_scheme even odd}.
 
 
@@ -881,15 +881,18 @@ Hint Resolve in_dec_union in_dec_intersect in_dec_setminus in_dec_singleton in_d
     }
   Qed.
 
-
   Lemma place_name_disjoint_SS : forall t1 t2 (p : place (stage_MG in_flag out_flag) t1 t2),
     place_name p ∉ space_domain (latch_stage_with_env l).
   Proof.
-    destruct x_scheme.
+    set (Hdisjoint := @stage_places_all_disjoint _ _ scheme x_scheme l).
     intros t1 t2 p. simpl.
+    rewrite dom_latch_stage_with_env.
+    unfold space_domain.
+    rewrite latch_stage_input, latch_stage_output.
     auto.
-    admit (* see x_scheme *).
-  Admitted.
+    intro Hin.
+    decompose_set_structure; try(specialize (Hdisjoint _ _ _ _ p p); find_contradiction; fail).
+  Qed.
 
   Theorem MG_refines_stage :
     traces_of (latch_stage_with_env l) (σR l) ⊆ traces_of (stage_MG_SS l in_flag) init_stage_MG_state.
@@ -901,6 +904,7 @@ Hint Resolve in_dec_union in_dec_intersect in_dec_setminus in_dec_singleton in_d
       destruct (name_is_place_dec (stage_MG in_flag out_flag) x)
         as [[t1 [t2 [p Hplace]]] | Htransition].
       + subst.
+About places_set.
         contradict Hdom1.
         apply place_name_disjoint_SS.
       + reflexivity.
