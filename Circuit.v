@@ -54,19 +54,56 @@ Section LatchSequence.
   symbolic value X (don't care), and the symbolic value Z (floating). *)
   Inductive value := 
   | Num : nat -> value
+(*
   | Bit0 : value
   | Bit1 : value
+*)
   | X  : value.
+  Definition Bit0 := Num 0.
+  Definition Bit1 := Num 1.
+  
 
   Definition Rise l : event latch bool := Event l true.
   Definition Fall l : event latch bool := Event l false.
   Definition val_to_nat (v : value) : nat :=
   match v with
   | Num n => n
-  | Bit0  => 0
+(*  | Bit0  => 0
   | Bit1  => 1
+*)
   | X     => 0
   end.
+
+  Definition neg_value (v : value) : value :=
+    match v with 
+    | Num 0 => Num 1
+    | Num 1 => Num 0
+(*
+    | Bit0  => Bit1
+    | Bit1  => Bit0
+*)
+    | _     => v
+    end.
+  Definition inc_value (v : value) : value :=
+    match v with
+    | Num n => Num (n+1)
+(*
+    | Bit0  => Bit1
+    | Bit1  => Bit0
+*)
+    | _     => v
+    end.
+  Definition dec_value (v : value) : value :=
+    match v with
+    | Num n => Num (n-1)
+(*
+    | Bit0  => Bit0
+    | Bit1  => Bit0
+*)
+    | _     => v
+    end.
+
+
 
 
 
@@ -81,7 +118,7 @@ Section LatchSequence.
 
   Instance value_eq_dec : eq_dec value.
   Proof.
-    constructor. intros [x | | |] [y | | |];
+    constructor. intros [x | ] [y | ];
     try (left; reflexivity);
     try (right; discriminate).
     compare x y; auto.

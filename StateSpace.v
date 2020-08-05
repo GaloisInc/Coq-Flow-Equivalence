@@ -744,28 +744,6 @@ Section Flop.
 
   Let flop_stable σ :=
     σ Q = Q_output σ /\ σ clk = σ old_clk.
-    
-
-  Definition neg_value (v : value) : value :=
-    match v with 
-    | Num 0 => Num 1
-    | Num 1 => Num 0
-    | Bit0  => Bit1
-    | Bit1  => Bit0
-    | _     => v
-    end.
-  Definition inc_value (v : value) : value :=
-    match v with
-    | Num n => Num (n+1)
-    | _     => v
-    end.
-  Definition dec_value (v : value) : value :=
-    match v with
-    | Num n => Num (n-1)
-    | _     => v
-    end.
-
-  
 
   Inductive flop_step (σ : state name) :
                       option (event name value) ->
@@ -877,7 +855,6 @@ Section Flop.
       ++ rewrite H7. unfold update.
          repeat my_subst. reduce_eqb.
          compare_next; auto.
-         { my_subst. find_contradiction. }
   Qed.
 
   Lemma flop_stable_implies_stable : forall σ, 
@@ -980,9 +957,17 @@ Section MG_to_SS.
   ; transition_update_value : transition -> value -> value
 
   ; input_transition : Ensemble transition
+  ; input_transition_dec : `{in_dec input_transition}
 
   ; transition_place_name_disjoint : forall t {t1 t2} (p : place MG t1 t2),
     transition_name t <> place_name p
+
+    (* I'm not sure if t ∈ input_transition is the right restriction here, but
+    we need this fact for proving well_formed, and it does not hold without this
+    transition for click, e.g. with CLK+ and CLK-. On the other hand, what about
+    4 phase handshake protocols? *)
+  ; transition_name_injective : forall t t', t ∈ input_transition ->
+    t <> t' -> transition_name t <> transition_name t'
   }.
   Context `{MG_scheme : MG_naming_scheme}.
 
@@ -1026,7 +1011,8 @@ Section MG_to_SS.
   .
 
   Let output_transition : Ensemble transition :=
-    fun t => t ∉ input_transition.
+    (fun t => True) ∖ input_transition.
+(*    fun t => t ∉ input_transition.*)
   Definition MG_SS : StateSpace name :=
   {| space_input := fmap transition_name input_transition
    ; space_output := fmap transition_name output_transition
@@ -1034,32 +1020,49 @@ Section MG_to_SS.
    ; space_step := MG_SS_step
    |}.
 
-Arguments well_formed {name}.
+  Arguments well_formed {name}.
   Lemma wf_MG_SS : well_formed MG_SS.
   Proof.
-    split.
-    * simpl. constructor.
-      intros x Hx. decompose_set_structure.
-      inversion H; subst. destruct H1.
-      inversion H0; subst. destruct H3.
-      admit (* need more assumptions about naming scheme *).
-    * simpl. constructor.
-      intros x Hx. decompose_set_structure.
-      inversion H; subst. destruct H1.
-      inversion H0; subst. destruct H3.
-      destruct H2 as [p H2].
-      set (Hdisjoint := transition_place_name_disjoint x0 p).
-      find_contradiction.
-    * simpl. constructor.
-      intros x Hx. decompose_set_structure.
-      inversion H; subst. destruct H1.
-      inversion H0; subst. destruct H3.
-      destruct H2 as [p H2].
-      set (Hdisjoint := transition_place_name_disjoint x0 p).
-      find_contradiction.
-    * admit.
-    * admit.
-  Abort.
+    set (Hdec := input_transition_dec).
+    constructor;
+    try match goal with
+    | [ |- _ ⊥ _ ] =>
+      simpl; constructor;
+      intros x Hx; deep_decompose_set_structure;
+      match goal with
+      | [ H : transition_name ?t1 = transition_name ?t2 |- _ ] =>
+        compare t1 t2;
+        try (eapply transition_name_injective; eauto; fail)
+
+      | [ H : transition_name ?t = place_name ?p |- _ ] =>
+        let Hdisjoint := fresh "Hdisjoint" in
+        set (Hdisjoint := transition_place_name_disjoint t p);
+        find_contradiction
+      end
+    end.
+
+    * intros ? ? ? ? Hstep.
+      inversion Hstep; subst; simpl.
+      destruct (t ∈? input_transition).
+      + left. econstructor; eauto.
+      + right. econstructor; split; eauto.
+        unfold output_transition. solve_set.
+    * intros ? ? ? Hstep ? He Hexternal.
+      inversion Hstep; subst.
+      unfold update. unfold fire_in_state.
+      destruct (name_is_place_dec x) as [[t1 [t2 [p Hp]]] | ].
+      { (*contradiction *)
+        contradict Hexternal. subst.
+        simpl. econstructor; eauto.
+      }
+      compare x (transition_name t); auto.
+      contradiction (He (transition_update_value t (σ (transition_name t)))); auto.
+
+    * intros ? ? ? ? Hstep.
+      inversion Hstep; subst.
+      unfold update; simpl.
+      reduce_eqb. auto.
+  Qed.
 
   Unset Implicit Arguments.
 End MG_to_SS.

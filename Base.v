@@ -138,6 +138,38 @@ Module EnsembleNotation.
     - right. inversion 1; contradiction.
   Defined.
   Hint Resolve in_dec_singleton : sets. 
+  Lemma in_dec_union : forall A (X Y : Ensemble A), in_dec X -> in_dec Y -> in_dec (X ∪ Y).
+  Proof.
+    intros A X Y HX HY.
+    constructor; intros z.
+    destruct (In_Dec X z); [ left; auto with sets | ].
+    destruct (In_Dec Y z); [ left; auto with sets | ].
+    right. intros Hz.
+    inversion Hz; contradiction.
+  Qed.
+  Lemma in_dec_intersect : forall A (X Y : Ensemble A), in_dec X -> in_dec Y -> in_dec (X ∩ Y).
+  Proof.
+    intros A X Y HX HY.
+    constructor; intros z.
+    destruct (In_Dec X z); [ | right; inversion 1; contradiction].
+    destruct (In_Dec Y z); [ | right; inversion 1; contradiction].
+    left; auto with sets.
+  Qed.
+  Lemma in_dec_setminus : forall A (X Y : Ensemble A), in_dec X -> in_dec Y -> in_dec (X ∖ Y).
+  Proof.
+    intros A X Y HX HY.
+    constructor; intros z.
+    destruct (In_Dec X z); [ | right; inversion 1; contradiction].
+    destruct (In_Dec Y z); [ right; inversion 1; contradiction |].
+    left; auto with sets.
+  Qed.
+  Lemma in_dec_empty : forall A, in_dec (Empty_set A).
+  Proof.
+    intros A.
+    constructor; intros x.
+    right. inversion 1.
+  Qed.
+  Hint Resolve in_dec_union in_dec_intersect in_dec_setminus in_dec_singleton in_dec_empty : sets.
 
 
   (** ** Ensembles as a setoid *)
@@ -494,13 +526,17 @@ Ltac reduce_count :=
   | [ |- count ?x (?y :: _) > ?n   ] => apply reduce_count_cons_neq
   end.
 Ltac all_disjoint_contradiction :=
-  match goal with
+  repeat match goal with
   (* contradiction *)
   | [ H : all_disjoint ?ls |- _ ] => let x := find_repetition ls in
                                      contradict H;
                                      apply (count_disjoint_contradiction x);
                                      reduce_count
-  end.
+  | [ H : all_disjoint ?ls, Heq : ?x = ?y |- _ ] =>
+    rewrite Heq in *;
+    clear Heq
+  end;
+  fail.
 
 (** ** [find_contradiction]
 
@@ -560,6 +596,8 @@ Ltac decompose_set_structure_1 :=
   | [ H : ?x ∉ singleton ?y |- _ ] => apply not_in_singleton_neq in H
   | [ H : ?x ∈ Couple _ ?y ?z |- _] => inversion H; try subst; clear H
   | [ H : ?x ∈ singleton ?y |- _ ] => inversion H; my_subst; clear H
+  | [ H : _ /\ _ |- _ ] => destruct H
+  | [ H : exists _, _ |- _ ] => destruct H
 
 (*
   | [ H : all_disjoint [] |- _ ] => clear H
@@ -571,6 +609,11 @@ Ltac decompose_set_structure_1 :=
   end.
 Ltac decompose_set_structure :=
   repeat (decompose_set_structure_1; try find_contradiction; auto with sets).
+Ltac deep_decompose_set_structure :=
+  repeat (decompose_set_structure;
+          try match goal with
+          | [ H : _ ∈ _ |- _ ] => inversion H; subst; clear H
+          end).
 
 Ltac try_solve_set :=
   repeat (auto with sets;
@@ -586,10 +629,11 @@ Ltac try_solve_set :=
   | [ |- ?x ∉ ?X ∖ ?Y ] => apply not_in_X_not_in_setminus_X_Y; try_solve_set; fail
   | [ |- ?x ∉ ?X ∪ ?Y ] => apply not_in_union; constructor
   | [ |- ?x ∉ ?X ]      => intro; decompose_set_structure; fail
+  | [ |- ?X ⊥ ?Y ]      => constructor; intro
   end).
 
 Ltac solve_set :=
-  try_solve_set; fail.
+  simpl; try_solve_set; fail.
 
 
 (** ** Tactics for decidable equality 
