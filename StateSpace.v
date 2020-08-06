@@ -925,10 +925,160 @@ Arguments func_space {name name_eq_dec}.
 Arguments C_elem {name name_eq_dec}.
 Arguments hide {name}.
 Arguments flop {name name_eq_dec}.
+Arguments well_formed {name}.
+
 Notation "C ⊢ σ →{ e } τ" := (space_step _ C σ e τ) (no associativity, at level 70).
  Notation "C ⊢ σ →*{ t } τ" := (space_steps _ C σ t τ) (no associativity, at level 70).
 Notation "S1 ∥ S2" := (union _ S1 S2) (left associativity, at level 91).
 
+Module Type NameType.
+  Parameter name : Set.
+  Parameter name_eq_dec : eq_dec name.
+  Existing Instance name_eq_dec.
+  Export EnsembleNotation.
+  Open Scope ensemble_scope.
+End NameType.
+
+Module StateSpaceTactics (Export name : NameType).
+  Lemma union_inversion_left : forall (S1 S2 : StateSpace name) σ x v σ',
+    (S1 ∥ S2) ⊢ σ →{Some (Event x v)} Some σ' ->
+    x ∈ space_domain S1 ->
+    S1 ⊢ σ →{Some (Event x v)} Some σ'.
+  Proof.
+    intros ? ? ? ? ? ? Hstep Hdom.
+    inversion Hstep; subst; auto.
+    (* the only remaining case is when x ∉ dom(S1), a contradiction *)
+    { absurd (event_in _ (space_domain S1) (Some (Event x v))); auto.
+      constructor; auto.
+    }
+  Qed.
+
+  Lemma union_inversion_right : forall (S1 S2 : StateSpace name) σ x v σ',
+      (S1 ∥ S2) ⊢ σ →{Some (Event x v)} Some σ' ->
+      x ∈ space_domain S2 ->
+      S2 ⊢ σ →{Some (Event x v)} Some σ'.
+  Proof.
+    intros ? ? ? ? ? ? Hstep Hdom.
+    inversion Hstep; subst; auto.
+    (* the only remaining case is when x ∉ dom(S2), a contradiction *)
+    { absurd (event_in _ (space_domain S2) (Some (Event x v))); auto.
+      constructor; auto.
+    }
+  Qed.
+
+(*
+  Instance internal_in_dec : forall l, in_dec (space_internal (latch_stage_with_env l)).
+  Proof.
+    intros l. simpl. typeclasses eauto.
+  Qed.
+
+  Instance input_in_dec : forall l, in_dec (space_input (latch_stage_with_env l)).
+  Admitted.
+
+  Instance output_in_dec : forall l, in_dec (space_output (latch_stage_with_env l)).
+  Admitted.
+*)
+
+  Lemma union_internal_inversion_right : forall (S1 S2 : StateSpace name) σ x v σ',
+      well_formed S1 ->
+      well_formed S2 ->
+      space_internal S1 ⊥ space_domain S2 ->
+      space_domain S1 ⊥ space_internal S2 ->
+      (S1 ∥ S2) ⊢ σ →{ Some (Event x v)} Some σ' ->
+      x ∉ space_domain S2 ->
+      forall y, y ∈ space_internal S2 ->
+                σ' y = σ y.
+  Proof.
+    intros ? ? ? ? ? ? Hwf1 Hwf2 Hdisj1 Hdisj2 Hstep Hx y Hy.
+    inversion Hstep as [ ? ? H_event_in Hstep' Hequiv
+                       | ? ? H_event_in Hstep' Hequiv
+                       | ? ? Hevent Hstep1 Hstep2]; subst; auto.
+    * unfold state_equiv_on in Hequiv.
+      rewrite Hequiv; auto.
+      unfold space_domain; solve_set.
+    * contradict H_event_in.
+      constructor.
+      apply wf_space in Hstep; auto.
+      2:{ apply wf_union; auto. }
+      simpl in Hstep.
+      decompose_set_structure; unfold space_domain in *;
+        try solve_set;
+        try (contradict Hx; solve_set).
+
+    * inversion Hevent as [Hevent1 Hevent2 | Hevent1 Hevent2 | Hevent1 Hevent2];
+        inversion Hevent2; subst;
+          contradict Hx; unfold space_domain; solve_set.
+  Qed.
+
+  Lemma hide_inversion : forall (S : StateSpace name) σ x e σ',
+      (hide x S) ⊢ σ →{Some e} Some σ' ->
+      S ⊢ σ →{Some e} Some σ'.
+  Proof.
+    intros ? ? ? ? ? Hstep.
+    inversion Hstep; auto.
+  Qed.
+
+  Lemma func_space_output_inversion : forall I (o : name) f (σ : state name) x v σ',
+      o ∉ I ->
+      func_space I o f ⊢ σ →{Some (Event x v)} Some σ' ->
+      x = o ->
+      v = f σ.
+  Proof.
+    intros ? ? ? ? ? ? ? Ho Hstep ?. subst.
+    inversion Hstep; try find_contradiction.
+    subst. auto.
+  Qed.
+
+  Lemma func_space_output_unstable : forall I (o : name) f σ x v σ',
+      o ∉ I ->
+      func_space I o f ⊢ σ →{Some (Event x v)} Some σ' ->
+      x = o ->
+      σ x <> v.
+  Proof.
+    intros ? ? ? ? ? ? ? ? Hstep Heq.
+    subst.
+    inversion Hstep; subst; try find_contradiction; auto.
+  Qed.
+
+  Lemma func_space_output_neq : forall I (o : name) f σ v σ' y,
+      o ∉ I ->
+      func_space I o f ⊢ σ →{Some (Event o v)} Some σ' ->
+      y <> o ->
+      σ' y = σ y.
+  Proof.
+    intros ? ? ? ? ? ? ? ? Hstep Hneq.
+    inversion Hstep; subst; unfold update;
+      compare_next; auto.
+  Qed.
+
+  Ltac step_inversion_1 :=
+  match goal with
+  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
+      apply union_inversion_left in Hstep;
+          (* the left;right is that we should only succeedd here if x ∈ output(S1) *)
+      [ | unfold space_domain; left; right; simpl; solve_set; fail]
+  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
+      apply union_inversion_right in Hstep;
+          (* the left;right is that we should only succeedd here if x ∈ output(S2) *)
+      [ | unfold space_domain; left; right; simpl; solve_set; fail]
+  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
+      apply hide_inversion in Hstep
+  end.
+  Ltac step_inversion_eq :=
+  repeat step_inversion_1;
+  match goal with
+  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
+      apply func_space_output_inversion in Hstep;
+        [ | simpl; solve_set; fail | simpl; solve_set; fail]
+  end.
+  Ltac step_inversion_unstable :=
+  repeat step_inversion_1;
+  match goal with
+  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
+      eapply func_space_output_unstable in Hstep; eauto;
+        [ | simpl; solve_set; fail ]
+  end.
+End StateSpaceTactics.
 
 Section MG_to_SS.
 

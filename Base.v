@@ -126,10 +126,10 @@ Module EnsembleNotation.
   (** ** Decidable set inclusion *)
   Open Scope ensemble_scope.
   Class in_dec {Z} (X : Ensemble Z) := {In_Dec : forall (x:Z), {x ∈ X} + {~(x ∈ X)}}.
-  Notation "x ∈? X" := (@In_Dec _ X _ x) : ensemble_scope.
-  Arguments In_Dec {Z} X {in_dec}.
+  Arguments In_Dec {Z} X {in_dec} : rename.
+  Notation "x ∈? X" := (In_Dec X x) : ensemble_scope.
 
-  Instance in_dec_singleton {X} `{eq_dec X} {x : X} : in_dec (Singleton _ x).
+  Instance in_dec_singleton {X} `{eq_dec X} {x : X} : in_dec (singleton x).
   Proof.
     constructor.
     intros y.
@@ -137,17 +137,16 @@ Module EnsembleNotation.
     - left. subst. constructor.
     - right. inversion 1; contradiction.
   Defined.
-  Hint Resolve in_dec_singleton : sets. 
-  Lemma in_dec_union : forall A (X Y : Ensemble A), in_dec X -> in_dec Y -> in_dec (X ∪ Y).
+  Instance in_dec_union : forall A (X Y : Ensemble A), in_dec X -> in_dec Y -> in_dec (X ∪ Y).
   Proof.
     intros A X Y HX HY.
     constructor; intros z.
-    destruct (In_Dec X z); [ left; auto with sets | ].
-    destruct (In_Dec Y z); [ left; auto with sets | ].
+    destruct (@In_Dec _ X HX z); [ left; auto with sets | ].
+    destruct (@In_Dec _ Y HY z); [ left; auto with sets | ].
     right. intros Hz.
     inversion Hz; contradiction.
   Qed.
-  Lemma in_dec_intersect : forall A (X Y : Ensemble A), in_dec X -> in_dec Y -> in_dec (X ∩ Y).
+  Instance in_dec_intersect : forall A (X Y : Ensemble A), in_dec X -> in_dec Y -> in_dec (X ∩ Y).
   Proof.
     intros A X Y HX HY.
     constructor; intros z.
@@ -155,7 +154,7 @@ Module EnsembleNotation.
     destruct (In_Dec Y z); [ | right; inversion 1; contradiction].
     left; auto with sets.
   Qed.
-  Lemma in_dec_setminus : forall A (X Y : Ensemble A), in_dec X -> in_dec Y -> in_dec (X ∖ Y).
+  Instance in_dec_setminus : forall A (X Y : Ensemble A), in_dec X -> in_dec Y -> in_dec (X ∖ Y).
   Proof.
     intros A X Y HX HY.
     constructor; intros z.
@@ -163,14 +162,13 @@ Module EnsembleNotation.
     destruct (In_Dec Y z); [ right; inversion 1; contradiction |].
     left; auto with sets.
   Qed.
-  Lemma in_dec_empty : forall A, in_dec (Empty_set A).
+  Instance in_dec_empty : forall A, in_dec (Empty_set A).
   Proof.
     intros A.
     constructor; intros x.
     right. inversion 1.
   Qed.
-  Hint Resolve in_dec_union in_dec_intersect in_dec_setminus in_dec_singleton in_dec_empty : sets.
-
+(*  Hint Resolve in_dec_singleton in_dec_union in_dec_intersect in_dec_setminus in_dec_singleton in_dec_empty : sets.*)
 
   (** ** Ensembles as a setoid *)
 
@@ -591,7 +589,6 @@ Ltac decompose_set_structure_1 :=
   | [ H : ~(?x ∈ ?X ∪ ?Y) |- _] => assert (~(x ∈ X)) by auto with sets;
                                    assert (~(x ∈ Y)) by auto with sets;
                                    clear H
-  | [ H : ?x ∉ ?X ∖ ?Y |- _ ] => apply not_in_setminus in H; [destruct H | auto with sets]
   | [ H : ?x ∉ ?X ∪ ?Y |- _ ] => apply not_in_union in H; destruct H
   | [ H : ?x ∉ singleton ?y |- _ ] => apply not_in_singleton_neq in H
   | [ H : ?x ∈ Couple _ ?y ?z |- _] => inversion H; try subst; clear H
@@ -606,6 +603,9 @@ Ltac decompose_set_structure_1 :=
                                          simpl in H'; clear H
 *)
   | [ H : ?x ∈ from_list _ |- _ ] => simpl in H
+  | [ H : ?x ∉ ?X ∖ ?Y |- _ ] =>
+    apply not_in_setminus in H;
+    [destruct H | typeclasses eauto]
   end.
 Ltac decompose_set_structure :=
   repeat (decompose_set_structure_1; try find_contradiction; auto with sets).

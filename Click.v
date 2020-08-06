@@ -9,16 +9,14 @@ Open Scope list_scope.
 
 Require Import Omega.
 
-Section Click. 
 
+
+Module Click (Export name : NameType).
+Existing Instance name_eq_dec.
 Set Implicit Arguments.
 
-(** * Define click circuits at state spaces, building off of StateSpace.v *)
 
-Variable name : Set.
-Context `{eq_dec name}.
-Import EnsembleNotation.
-Open Scope ensemble_scope.
+(** * Define click circuits at state spaces, building off of StateSpace.v *)
 
 (** A handshake has two names: [req h] and [ack h]. *)
 Record handshake :=
@@ -26,6 +24,7 @@ Record handshake :=
   ; ack : name }.
 
 
+(*
 (** Here, I am trying to introduce a monad that can produce a fresh variable. It
 might be a better idea to just fix [name] to be e.g. [string] and manually
 ensure that we get fresh names, because the monad is really hard to work with,
@@ -37,11 +36,11 @@ Variable fresh_ : Fresh name.
 Variable fail_ : Fresh name.
 
 Variable run_fresh : forall {A}, Fresh A -> A.
-
+*)
 Section Utils.
   (** [forward x y] is the state space that updates [y] (the output) to have the
   same value as [x] (the input). *)
-  Definition forward x y := func_space (singleton x) y (fun σ => σ x).
+  Definition forward (x y : name) := func_space (singleton x) y (fun σ => σ x).
   (** [output x (Some v)] is the state space that updates [x] (the output) to
   have the value [v].
 
@@ -92,7 +91,7 @@ Section Split.
     wire_fork (ack o) (ack i1) (ack i2)
     ∥ C_elem (req i1) (req i2) (req o).
 
-
+(* TODO: incorporate in a way separate from Fresh monad? 
   (** The n-ary C element is annoying because it requires we come up with fresh
   wire names for the internal wires. Perhaps a better choice would be: internal
   wires are always disjoint, so encode them as a type e.g. internal (S1 ∥ S2) =
@@ -127,13 +126,14 @@ Section Split.
                   do C ← nary_C (req i) (fmap req is') (req i);
                   return_ (F ∥ C)
     end.
+*)
 
 End Split.
 
+
 (** * Define an ordinary Click stage, both token and non-token variants. *)
 Section Stage.
-
-  (** 1. declare all wire names *)
+  (** 1. declare all wire names in stage : StageNames *)
 
   Variable i o : handshake.
   Variable ctrl_reset_n dp_reset_n hidden_reset : name.
@@ -143,6 +143,7 @@ Section Stage.
                                              ctrl_reset_n; dp_reset_n;
                                              hidden_reset;
                                              clk; old_clk; state0; not_state0].
+
 
   (** 2. Define the combinational logic that drives the clock *)
 (*
@@ -224,13 +225,14 @@ Section Stage.
     ( hide ctrl_reset_n
     ( stage_with_reset f ∥ output dp_reset_n None ∥ output ctrl_reset_n None))).
 
-
   (** Some lemmas to act as sanity checks that the definitions are correct, and to test automation *)
   Lemma stage_with_reset_input : forall f,
     space_input (stage_with_reset f) == from_list [req i;ack o;dp_reset_n;ctrl_reset_n].
   Proof.
     intros [ | ];
-    constructor; intros x Hx; simpl in *; decompose_set_structure; solve_set.
+    constructor; intros x Hx; simpl in *;
+      decompose_set_structure;
+      solve_set.
   Qed.
 
   Lemma stage_with_reset_output : forall f,
@@ -418,12 +420,14 @@ Section Desync.
 
 
   (** Produce the appropriate split and join components for a particular latch. *)
+(*
   Definition neighbor_split (l : latch even odd) :=
     let ls := right_neighbors_of l c in
     split_n (latch_output l) (fmap latch_input (right_neighbors_of l c)).
   Definition neighbor_join (l : latch even odd) :=
     let ls := left_neighbors_of l c in
     join_n (fmap latch_output (left_neighbors_of l c)) (latch_input l).
+*)
 
   (** TODO: move this to a more appropriate location. *)
   Class enumerable (A : Set) :=
@@ -459,6 +463,7 @@ Qed.
       apply enumerate_proof.
   Defined.
 
+(*
 Fixpoint sequence {N} `{Monad N} {A} (l : list (N A)) : N (list A) :=
   match l with
   | nil => return_ nil
@@ -474,16 +479,16 @@ Fixpoint sequence {N} `{Monad N} {A} (l : list (N A)) : N (list A) :=
     do neighbor_splits ← sequence (fmap neighbor_split latches);
     do neighbor_joins ← sequence (fmap neighbor_join latches);
     return_ (nary_union stages ∥ nary_union neighbor_splits ∥ nary_union neighbor_joins).
-
+*)
 
 End Desync.
 
-Arguments well_formed {name}.
-
-Section WF_stage.
-
-  Variable even odd : Set.
-  Context {scheme : naming_scheme even odd}.
+Module Type EvenOddType.
+  Parameter even odd : Set.
+  Axiom scheme : naming_scheme even odd.
+  Existing Instance scheme.
+End EvenOddType.
+Module WFStage (Export EO : EvenOddType).
 
   Definition left_env_component (l : latch even odd) :=
     NOT (ack (latch_input l)) (req (latch_input l)).
@@ -559,8 +564,8 @@ Section WF_stage.
     rewrite latch_stage_with_env_output.
     rewrite latch_stage_with_env_internal.
     (* monoid *)
-    admit.
-  Admitted.
+    { split; intros x Hx; decompose_set_structure; solve_set. }
+  Qed.
 
 
   Inductive val_is_bit : value -> Prop :=
@@ -641,8 +646,6 @@ Section WF_stage.
   Qed.
 
 
-
-
   Lemma latch_stage_well_formed : forall l, well_formed (latch_stage_with_env l).
   Proof.
     intros l.
@@ -663,144 +666,8 @@ Section WF_stage.
   Qed.
   Hint Resolve latch_stage_well_formed.
 
-
-Lemma union_inversion_left : forall (S1 S2 : StateSpace name) σ x v σ',
-    (S1 ∥ S2) ⊢ σ →{Some (Event x v)} Some σ' ->
-    x ∈ space_domain S1 ->
-    S1 ⊢ σ →{Some (Event x v)} Some σ'.
-Proof.
-  intros ? ? ? ? ? ? Hstep Hdom.
-  inversion Hstep; subst; auto.
-  (* the only remaining case is when x ∉ dom(S1), a contradiction *)
-  { contradict H0. constructor. auto. }
-Qed.
-
-Lemma union_inversion_right : forall (S1 S2 : StateSpace name) σ x v σ',
-    (S1 ∥ S2) ⊢ σ →{Some (Event x v)} Some σ' ->
-    x ∈ space_domain S2 ->
-    S2 ⊢ σ →{Some (Event x v)} Some σ'.
-Proof.
-  intros ? ? ? ? ? ? Hstep Hdom.
-  inversion Hstep; subst; auto.
-  (* the only remaining case is when x ∉ dom(S2), a contradiction *)
-  { contradict H0. constructor. auto. }
-Qed.
-
-
-
-  Instance internal_in_dec : forall l, in_dec (space_internal (latch_stage_with_env l)).
-  Admitted.
-
-  Instance input_in_dec : forall l, in_dec (space_input (latch_stage_with_env l)).
-  Admitted.
-
-  Instance output_in_dec : forall l, in_dec (space_output (latch_stage_with_env l)).
-  Admitted.
-
-Lemma union_internal_inversion_right : forall (S1 S2 : StateSpace name) σ x v σ',
-    well_formed S1 ->
-    well_formed S2 ->
-    space_internal S1 ⊥ space_domain S2 ->
-    space_domain S1 ⊥ space_internal S2 ->
-    (S1 ∥ S2) ⊢ σ →{ Some (Event x v)} Some σ' ->
-    x ∉ space_domain S2 ->
-    forall y, y ∈ space_internal S2 ->
-    σ' y = σ y.
-Proof.
-  intros ? ? ? ? ? ? Hwf1 Hwf2 Hdisj1 Hdisj2 Hstep Hx y Hy.
-  inversion Hstep; subst; auto.
-  * unfold state_equiv_on in H2.
-    rewrite H2; auto.
-    unfold space_domain; solve_set.
-  * contradict H0.
-    constructor.
-
-    apply wf_space in Hstep; auto.
-    simpl in Hstep.
-    decompose_set_structure; unfold space_domain in *;
-      try solve_set;
-      try (contradict Hx; solve_set).
-      apply wf_union; auto.
-
-  * inversion H0; subst;
-      inversion H4; subst;
-      contradict Hx; unfold space_domain; solve_set.
-
-Qed.
-
-Lemma hide_inversion : forall (S : StateSpace name) σ x e σ',
-    (hide x S) ⊢ σ →{Some e} Some σ' ->
-    S ⊢ σ →{Some e} Some σ'.
-Proof.
-  intros ? ? ? ? ? Hstep.
-  inversion Hstep; auto.
-Qed.
-
-Lemma func_space_output_inversion : forall I (o : name) f (σ : state name) x v σ',
-    o ∉ I ->
-    func_space I o f ⊢ σ →{Some (Event x v)} Some σ' ->
-    x = o ->
-    v = f σ.
-Proof.
-  intros ? ? ? ? ? ? ? Ho Hstep ?. subst.
-    inversion Hstep; try find_contradiction.
-    subst. auto.
-Qed.
-
-Lemma func_space_output_unstable : forall I (o : name) f σ x v σ',
-    o ∉ I ->
-    func_space I o f ⊢ σ →{Some (Event x v)} Some σ' ->
-    x = o ->
-    σ x <> v.
-Proof.
-    intros ? ? ? ? ? ? ? ? Hstep Heq.
-    subst.
-    inversion Hstep; subst; try find_contradiction; auto.
-Qed.
-
-Lemma func_space_output_neq : forall I (o : name) f σ v σ' y,
-    o ∉ I ->
-    func_space I o f ⊢ σ →{Some (Event o v)} Some σ' ->
-    y <> o ->
-    σ' y = σ y.
-Proof.
-  intros ? ? ? ? ? ? ? ? Hstep Hneq.
-  inversion Hstep; subst; unfold update;
-    compare_next; auto.
-Qed.
-
-  Ltac step_inversion_1 :=
-  match goal with
-  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
-      apply union_inversion_left in Hstep;
-          (* the left;right is that we should only succeedd here if x ∈ output(S1) *)
-      [ | unfold space_domain; left; right; simpl; solve_set; fail]
-  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
-      apply union_inversion_right in Hstep;
-          (* the left;right is that we should only succeedd here if x ∈ output(S2) *)
-      [ | unfold space_domain; left; right; simpl; solve_set; fail]
-  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
-      apply hide_inversion in Hstep
-  end.
-  Ltac step_inversion_eq :=
-  repeat step_inversion_1;
-  match goal with
-  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
-      apply func_space_output_inversion in Hstep;
-        [ | simpl; solve_set; fail | simpl; solve_set; fail]
-  end.
-  Ltac step_inversion_unstable :=
-  repeat step_inversion_1;
-  match goal with
-  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
-      eapply func_space_output_unstable in Hstep; eauto;
-        [ | simpl; solve_set; fail ]
-  end.
-
-
-
-
-Ltac rewrite_step_inversion :=
+  Module ClickTactics.
+  Ltac rewrite_step_inversion :=
   match goal with
     | [ Hstep : latch_stage_with_env ?l ⊢ ?σ →{ Some (Event ?x ?v)} Some ?σ' |- context[ ?σ' ?x ] ] =>
       rewrite (wf_update _ _ (latch_stage_well_formed l) _ _ _ _ Hstep)
@@ -812,22 +679,24 @@ Ltac rewrite_step_inversion :=
         | simpl; try (solve_set); try (simpl in *; decompose_set_structure; solve_set); fail ]
     end.
 
-Ltac solve_wf_handshake :=
-  match goal with
-  | [ H : wf_handshake (?shake ?l) ?σ
-    |- wf_handshake (?shake ?l) _ ] => 
-    inversion H; 
+  Module StateSpaceTacticsName := StateSpaceTactics(name).
+  Export StateSpaceTacticsName.
+  Ltac solve_wf_handshake :=
+    match goal with
+    | [ H : wf_handshake (?shake ?l) ?σ
+        |- wf_handshake (?shake ?l) _ ] => 
+      inversion H; 
       try (left;
-        repeat rewrite_step_inversion;
-        step_inversion_eq; auto; fail);
+           repeat rewrite_step_inversion;
+           step_inversion_eq; auto; fail);
       try (right;
-        repeat rewrite_step_inversion;
-        step_inversion_eq; auto; fail);
+           repeat rewrite_step_inversion;
+           step_inversion_eq; auto; fail);
       fail
-  end.
+    end.
 
 
-Ltac solve_val_is_bit :=
+  Ltac solve_val_is_bit :=
   auto;
   repeat match goal with
 
@@ -850,6 +719,8 @@ Ltac solve_val_is_bit :=
   | [ |- val_is_bit _ ] =>
     rewrite_step_inversion
   end; fail.
+  End ClickTactics.
+  Import ClickTactics.
 
 
   Lemma step_wf_state_lemma : forall l σ e σ',
@@ -960,19 +831,18 @@ Ltac solve_val_is_bit :=
          destruct l; simpl; auto.
          rewrite val_is_bit_neg_neg; auto; solve_val_is_bit.
        }
-        inversion Hwf2.
+        inversion Hwf2 as [Hwf2' | Hwf2'].
         + right. repeat rewrite_step_inversion.
           step_inversion_eq. subst.
-          rewrite H0.
+          rewrite Hwf2'.
           rewrite Hstate0'.
           destruct l; simpl; auto.
-
 
           rewrite val_is_bit_neg_neg; auto. solve_val_is_bit.
 
         + left. repeat rewrite_step_inversion.
           step_inversion_eq. subst.
-          rewrite H0.
+          rewrite Hwf2'.
           rewrite Hstate0'.
           destruct l; simpl; auto.
 
@@ -999,27 +869,27 @@ Ltac solve_val_is_bit :=
         | simpl; try (solve_set); try (simpl in *; decompose_set_structure; solve_set); fail ].
         solve_val_is_bit.
 
-    * assert (Hstate0 : σ (req (latch_output l)) = neg_value (σ (latch_state0 l))).
+    * (* wf_handshake *)
+      assert (Hstate0 : σ (req (latch_output l)) = neg_value (σ (latch_state0 l))).
       { replace v with (σ (latch_state0 l)) in * by (step_inversion_eq; auto).
         step_inversion_unstable.
         erewrite val_is_bit_neq; eauto; solve_val_is_bit.
       }
 
-      inversion Hwf3.
+      inversion Hwf3 as [Hwf3' | Hwf3'].
         + right. repeat rewrite_step_inversion.
           step_inversion_eq. subst.
-          rewrite <- H0.
+          rewrite <- Hwf3'.
           rewrite Hstate0.
           rewrite val_is_bit_neg_neg; auto. solve_val_is_bit.
 
         + left. repeat rewrite_step_inversion.
           step_inversion_eq. subst.
 
-
-      apply val_is_bit_neg_inversion in H0; try solve_val_is_bit.
-      rewrite <- H0.
-      rewrite Hstate0.
-      rewrite val_is_bit_neg_neg; auto; solve_val_is_bit.
+          apply val_is_bit_neg_inversion in Hwf3'; try solve_val_is_bit.
+          rewrite <- Hwf3'.
+          rewrite Hstate0.
+          rewrite val_is_bit_neg_neg; auto; solve_val_is_bit.
 
     * (* ctrl_reset_n *)
       repeat step_inversion_1.
@@ -1107,9 +977,10 @@ Ltac solve_val_is_bit :=
     * eapply step_wf_state_eps; eauto.
   Qed.
 
-End WF_stage.
+End WFStage.
 End Click.
 
+(*
 Arguments latch_input  {name even odd} {naming_scheme}.
 Arguments latch_output {name even odd} {naming_scheme}.
 Arguments latch_clk    {name even odd} {naming_scheme}.
@@ -1125,3 +996,4 @@ Arguments ack {name}.
 
 Arguments latch_stage {name} {name_dec} {even odd} {naming_scheme} : rename.
 Arguments σR {name} {name_dec} {even odd} {naming_scheme} l : rename.
+*)
