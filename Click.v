@@ -207,14 +207,18 @@ Section Stage.
     | Even _ => Token
     end.
 
+  (** NOTE: added delay here *)
   Definition ack_i_output f := (*match f with
                             | Token => NOT state0 (ack i)
                             | NonToken => forward state0 (ack i)
                             end.*)
-    func_space (singleton state0) (ack i) (fun σ => match f with
+    delay_space
+    (func_space (singleton state0) (ack i) (fun σ => match f with
                                                     | Token => neg_value (σ state0)
                                                     | NonToken => σ state0
-                                                    end).
+                                                    end))
+    (singleton clk)
+    (fun σ => σ clk = Bit0).
 
   Definition stage_with_reset (f : token_flag) :=
     clk_component f ∥ flop_component f ∥ forward state0 (req o) ∥ ack_i_output f.
@@ -353,7 +357,7 @@ Section Desync.
   Definition latch_right_req_component (l : latch even odd) :=
     forward (latch_state0 l) (req (latch_output l)).
   Definition latch_left_ack_component (l : latch even odd) :=
-    ack_i_output (latch_input l) (latch_state0 l) (latch_to_token_flag l).
+    ack_i_output (latch_input l) (latch_clk l) (latch_state0 l) (latch_to_token_flag l).
   Definition latch_stage_with_reset l :=
       latch_clk_component l ∥ latch_flop_component l
     ∥ latch_left_ack_component l ∥ latch_right_req_component l.
@@ -656,13 +660,13 @@ Module WFStage (Export EO : EvenOddType).
     | [ |- well_formed _] => apply wf_union; auto; try unfold space_domain
     | [ |- well_formed _ ] => apply hide_wf; auto; simpl; try solve_set
     | [ |- well_formed _ ] => apply func_wf; solve_set
+    | [ |- well_formed _ ] => apply delay_space_wf; typeclasses eauto
     | [ |- in_dec _ ] => simpl; auto 30 with sets; fail
     | [ |- _ ⊥ _ ] => constructor; intros x Hx; simpl in *; decompose_set_structure; fail
     end.
 
     apply flop_wf.
     destruct l; simpl; repeat (constructor; try_solve_set).
-
   Qed.
   Hint Resolve latch_stage_well_formed.
 
@@ -793,6 +797,9 @@ Module WFStage (Export EO : EvenOddType).
       2:{ intros. inversion 1; find_contradiction. }
       2:{ simpl. solve_set. }
       auto.
+ 
+    * (* val_is_bit (ack (latch_input l)) *)
+      admit (*TODO: need to update step_inversion results to account for delay. *).
 
     * (* ack (latch_input l) *)
       destruct (y ∈? space_internal (latch_stage_with_env l)) as [Hinternal | Hinternal].
@@ -806,7 +813,7 @@ Module WFStage (Export EO : EvenOddType).
         | intros; inversion 1; find_contradiction
         | simpl; try (solve_set); try (simpl in *; decompose_set_structure; solve_set); fail ].
         solve_val_is_bit.
-
+*).
 
 
     * assert (Hstate0' :

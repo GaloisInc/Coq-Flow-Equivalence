@@ -913,6 +913,82 @@ Section Celem.
 
 End Celem.
 
+(** * A state space modeling a delay until a guard holds over some sensitive input wires *)
+Section Delay.
+
+  Variable x y : name.
+  Variable sensitivities : Ensemble name.
+  (** The guard should only depend on the variables in the sensitivites set *)
+  Variable guard : state name -> bool.
+
+  Inductive delay_step (σ : state name) :
+                      option (event name value) ->
+                      option (state name) ->
+                      Prop :=
+  | delay_input_unstable : forall v, σ x <> v -> σ y <> σ x ->
+                                     delay_step σ (Some (Event x v)) None
+  | delay_input_stable : forall v, σ y = σ x -> delay_step σ (Some (Event x v)) (Some (update σ x v))
+  (* output only transitions when the guard is true *)
+  | delay_output : σ y <> σ x ->
+                   guard σ = true ->
+                   delay_step σ (Some (Event y (σ x))) (Some (update σ y (σ x)))
+  .
+
+  Definition delay : StateSpace :=
+    {| space_input := singleton x ∪ sensitivities
+     ; space_output := singleton y
+     ; space_internal := ∅
+     ; space_step := delay_step
+    |}.
+
+
+    
+  Lemma delay_wf : well_formed delay.
+  Admitted.
+
+End Delay.
+
+Section DelaySpace.
+  Variable S : StateSpace.
+  Variable sensitivities : Ensemble name.
+  (** The guard should only depend on the variables in the sensitivites set *)
+  Variable guard : state name -> Prop.
+
+  Inductive delay_space_step (σ : state name) :
+                      option (event name value) ->
+                      option (state name) ->
+                      Prop :=
+  (* input steps are always valid *)
+  | delay_space_input : forall x v τ,
+    S ⊢ σ →{Some (Event x v)} τ ->
+    x ∈ space_input S ->
+    delay_space_step σ (Some (Event x v)) τ
+
+  (* epsilon steps are always valid *)
+  | delay_space_internal : forall τ,
+    S ⊢ σ →{None} τ ->
+    delay_space_step σ None τ
+
+  (* output steps can only happen if the guard is true *)
+  | delay_space_output : forall x v τ,
+    guard σ ->
+    S ⊢ σ →{Some (Event x v)} τ ->
+    x ∈ space_output S ->
+    delay_space_step σ (Some (Event x v)) τ
+  .
+
+  Definition delay_space : StateSpace :=
+    {| space_input := space_input S ∪ sensitivities
+     ; space_output := space_output S
+     ; space_internal := space_internal S
+     ; space_step := delay_space_step
+    |}.
+
+  Lemma delay_space_wf : well_formed delay_space.
+  Admitted.
+
+End DelaySpace.
+
 End state_space.
 
 Arguments space_input {name}.
@@ -926,6 +1002,8 @@ Arguments C_elem {name name_eq_dec}.
 Arguments hide {name}.
 Arguments flop {name name_eq_dec}.
 Arguments well_formed {name}.
+Arguments delay {name name_eq_dec}.
+Arguments delay_space {name}.
 
 Notation "C ⊢ σ →{ e } τ" := (space_step _ C σ e τ) (no associativity, at level 70).
  Notation "C ⊢ σ →*{ t } τ" := (space_steps _ C σ t τ) (no associativity, at level 70).
