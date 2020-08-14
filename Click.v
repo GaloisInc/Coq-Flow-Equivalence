@@ -704,6 +704,10 @@ Module WFStage (Export EO : EvenOddType).
   auto;
   repeat match goal with
 
+  | [ H : wf_stage_state ?l ?σ |- val_is_bit (?σ ?x) ] =>
+    apply (wf_all_bits H);
+    unfold space_domain; simpl; solve_set
+
   | [ |- context[ latch_to_token_flag ?l ] ] => destruct l; simpl
 
   | [ Hwf1 : forall x, x ∈ ?X -> val_is_bit (?σ x) |- context[?σ ?y] ] =>
@@ -727,6 +731,27 @@ Module WFStage (Export EO : EvenOddType).
   Import ClickTactics.
 
 
+Ltac rewrite_wf_scoped :=
+match goal with
+| [ Hstep : ?S ⊢ ?σ →{ ?e } Some ?σ',
+    Hinternal : ?x ∉ space_internal ?S |- context[?σ' ?x] ] =>
+    let Hwf := fresh "Hwf" in
+    assert (Hwf : well_formed S) by auto;
+    let Hneq := fresh "Hneq" in
+    assert (Hneq : forall v, e <> Some (Event x v))
+      by (intro; inversion 1; subst; find_contradiction);
+    rewrite (wf_scoped _ _ Hwf _ _ _ Hstep _ Hneq Hinternal)
+end.
+
+Ltac step_inversion_neq :=
+  repeat step_inversion_1;
+  match goal with
+  | [ Hstep : _ ⊢ _ →{ Some _ } Some ?σ' |- context[?σ' ?y] ] =>
+      apply (func_space_output_neq _ _ _ _ _ _ y) in Hstep;
+      [ | simpl; solve_set; fail | simpl; solve_set; fail];
+      rewrite Hstep
+  end.
+
   Lemma step_wf_state_lemma : forall l σ e σ',
     wf_stage_state l σ ->
     latch_stage_with_env l ⊢ σ →{Some e} Some σ' ->
@@ -749,226 +774,80 @@ Module WFStage (Export EO : EvenOddType).
       | try solve_wf_handshake
       | try solve_wf_handshake
       | try solve_val_is_bit
-      ]).
-
-    *
-      destruct (y ∈? space_internal (latch_stage_with_env l)) as [Hinternal | Hinternal].
-      2:{
-        rewrite (wf_scoped _ _ (latch_stage_well_formed l) _ _ _ Hstep);
-        [
-        | intros; inversion 1; find_contradiction
-        | simpl; try (solve_set); try (simpl in *; decompose_set_structure; solve_set) ].
-        solve_val_is_bit.
-      }
-      1:{
-        (* when req (latch_input l) event occurs, no internal wires change... *)
-        assert (Heq : σ' y = σ y).
-        { repeat step_inversion_1.
-          eapply func_space_output_neq; [ | eauto | ]; solve_set.
-        }
-        rewrite Heq. solve_val_is_bit.
-      }
-
-    * (* ctrl_reset_n *)
-      repeat step_inversion_1.
-      (* rewrite_step_inversion ??? *)
-      erewrite (wf_scoped _ _ _ _ _ _ Hstep).
-      2:{ intros. inversion 1; find_contradiction. }
-      2:{ simpl. solve_set. }
-      auto.
-
-    * (* ack (latch_output l) *)
-      destruct (y ∈? space_internal (latch_stage_with_env l)) as [Hinternal | Hinternal].
-      + assert (Heq : σ' y = σ y).
-        { repeat step_inversion_1.
-          eapply func_space_output_neq; [ | eauto | ]; solve_set.
-        }
-        rewrite Heq. solve_val_is_bit.
-      + rewrite (wf_scoped _ _ (latch_stage_well_formed l) _ _ _ Hstep);
-        [
-        | intros; inversion 1; find_contradiction
-        | simpl; try (solve_set); try (simpl in *; decompose_set_structure; solve_set); fail ].
-        solve_val_is_bit.
-
-    * (* ctrl_reset_n *)
-      repeat step_inversion_1.
-      (* rewrite_step_inversion ??? *)
-      erewrite (wf_scoped _ _ _ _ _ _ Hstep).
-      2:{ intros. inversion 1; find_contradiction. }
-      2:{ simpl. solve_set. }
-      auto.
- 
-    * (* val_is_bit (ack (latch_input l)) *)
-      admit (*TODO: need to update step_inversion results to account for delay. *).
-
-    * (* ack (latch_input l) *)
-      destruct (y ∈? space_internal (latch_stage_with_env l)) as [Hinternal | Hinternal].
-      + assert (Heq : σ' y = σ y).
-        { repeat step_inversion_1.
-          eapply func_space_output_neq; [ | eauto | ]; solve_set.
-        }
-        rewrite Heq. solve_val_is_bit.
-      + rewrite (wf_scoped _ _ (latch_stage_well_formed l) _ _ _ Hstep);
-        [
-        | intros; inversion 1; find_contradiction
-        | simpl; try (solve_set); try (simpl in *; decompose_set_structure; solve_set); fail ].
-        solve_val_is_bit.
-*).
+      ]);
+      try (step_inversion_neq; auto; solve_val_is_bit; fail).
 
 
-    * assert (Hstate0' :
-                σ (ack (latch_input l)) = match latch_to_token_flag l with
-                           | Token => σ (latch_state0 l)
-                           | NonToken => neg_value (σ (latch_state0 l))
-                           end).
-       { assert (v_bit : val_is_bit v).
-         { step_inversion_eq; subst. solve_val_is_bit. }
-         assert (Hneq : σ (ack (latch_input l)) = neg_value v).
-         { step_inversion_unstable.
-           erewrite val_is_bit_neq; eauto.
-           solve_val_is_bit.
-         }
+    * (* wf_handshake latch_input *)
+      assert (v_bit : val_is_bit v).
+      { step_inversion_eq; subst; solve_val_is_bit. }
+      assert (σ_ack_bit : val_is_bit (σ (ack (latch_input l)))).
+      { solve_val_is_bit. }
+      assert (σ_req_bit : val_is_bit (σ (req (latch_input l)))).
+      { solve_val_is_bit. }
+      replace v with (σ' (ack (latch_input l))) in *
+        by (rewrite_step_inversion; auto).
+      assert (Hneq : σ' (ack (latch_input l)) = neg_value (σ (ack (latch_input l)))).
+      { step_inversion_unstable. erewrite val_is_bit_neq; eauto. }
+      assert (Heq : σ' (req (latch_input l)) = σ (req (latch_input l))).
+      { step_inversion_neq; auto. }
 
-         replace v with
-            (match latch_to_token_flag l with
-             | Token => neg_value (σ (latch_state0 l))
-             | NonToken => σ (latch_state0 l)
-             end) in * by (step_inversion_eq; auto).
-         rewrite Hneq.
-         destruct l; simpl; auto.
-         rewrite val_is_bit_neg_neg; auto; solve_val_is_bit.
-       }
-        inversion Hwf2 as [Hwf2' | Hwf2'].
-        + right. repeat rewrite_step_inversion.
-          step_inversion_eq. subst.
-          rewrite Hwf2'.
-          rewrite Hstate0'.
-          destruct l; simpl; auto.
+      inversion Hwf2 as [Hwf2' | Hwf2'].
+        + right. 
+          rewrite Hneq, Heq.
+          rewrite val_is_bit_neg_neg; auto.
+        + left.
+          rewrite Hneq, Heq; auto.
 
-          rewrite val_is_bit_neg_neg; auto. solve_val_is_bit.
-
-        + left. repeat rewrite_step_inversion.
-          step_inversion_eq. subst.
-          rewrite Hwf2'.
-          rewrite Hstate0'.
-          destruct l; simpl; auto.
-
-          rewrite val_is_bit_neg_neg; auto. solve_val_is_bit.
-
-    * (* ctrl_reset_n *)
-      repeat step_inversion_1.
-      (* rewrite_step_inversion ??? *)
-      erewrite (wf_scoped _ _ _ _ _ _ Hstep).
-      2:{ intros. inversion 1; find_contradiction. }
-      2:{ simpl. solve_set. }
-      auto.
-
-    * (* req (latch_output l) *)
-      destruct (y ∈? space_internal (latch_stage_with_env l)) as [Hinternal | Hinternal].
-      + assert (Heq : σ' y = σ y).
-        { repeat step_inversion_1.
-          eapply func_space_output_neq; [ | eauto | ]; solve_set.
-        }
-        rewrite Heq. solve_val_is_bit.
-      + rewrite (wf_scoped _ _ (latch_stage_well_formed l) _ _ _ Hstep);
-        [
-        | intros; inversion 1; find_contradiction
-        | simpl; try (solve_set); try (simpl in *; decompose_set_structure; solve_set); fail ].
-        solve_val_is_bit.
-
-    * (* wf_handshake *)
-      assert (Hstate0 : σ (req (latch_output l)) = neg_value (σ (latch_state0 l))).
-      { replace v with (σ (latch_state0 l)) in * by (step_inversion_eq; auto).
-        step_inversion_unstable.
-        erewrite val_is_bit_neq; eauto; solve_val_is_bit.
-      }
+    * (* wf_handshake latch_output *)
+      assert (v_bit : val_is_bit v).
+      { step_inversion_eq; subst; solve_val_is_bit. }
+      assert (σ_ack_bit : val_is_bit (σ (ack (latch_output l)))).
+      { solve_val_is_bit. }
+      assert (σ_req_bit : val_is_bit (σ (req (latch_output l)))).
+      { solve_val_is_bit. }
+      replace v with (σ' (req (latch_output l))) in *
+        by (rewrite_step_inversion; auto).
+      assert (Hneq : σ' (req (latch_output l)) = neg_value (σ (req (latch_output l)))).
+      { step_inversion_unstable. erewrite val_is_bit_neq; eauto. }
+      assert (Heq : σ' (ack (latch_output l)) = σ (ack (latch_output l))).
+      { step_inversion_neq; auto. }
 
       inversion Hwf3 as [Hwf3' | Hwf3'].
-        + right. repeat rewrite_step_inversion.
-          step_inversion_eq. subst.
-          rewrite <- Hwf3'.
-          rewrite Hstate0.
-          rewrite val_is_bit_neg_neg; auto. solve_val_is_bit.
+        + right. 
+          rewrite Hneq, Heq; auto.
+          rewrite Hwf3'; auto.
+        + left.
+          rewrite Hneq, Heq; auto.
+          rewrite Hwf3'.
+          rewrite val_is_bit_neg_neg; auto.
 
-        + left. repeat rewrite_step_inversion.
-          step_inversion_eq. subst.
+    * (* val_is_bit latch_clk *) 
+        rewrite_step_inversion.
+        assert (req_bit : val_is_bit (σ (req (latch_input l))))
+          by solve_val_is_bit.
+        assert (ack_bit : val_is_bit (σ (ack (latch_output l))))
+          by solve_val_is_bit.
+        assert (state0_bit : val_is_bit (σ (latch_state0 l)))
+          by solve_val_is_bit.
+        step_inversion_eq; subst.
+        destruct l; unfold tok_clk_defn, clk_defn; simpl.
+        + rewrite Hwf4. simpl.
+          inversion req_bit; inversion ack_bit; inversion state0_bit; simpl;
+          constructor.
+        + rewrite Hwf4. simpl.
+          inversion req_bit; inversion ack_bit; inversion state0_bit; simpl;
+          constructor.
 
-          apply val_is_bit_neg_inversion in Hwf3'; try solve_val_is_bit.
-          rewrite <- Hwf3'.
-          rewrite Hstate0.
-          rewrite val_is_bit_neg_neg; auto; solve_val_is_bit.
-
-    * (* ctrl_reset_n *)
-      repeat step_inversion_1.
-      (* rewrite_step_inversion ??? *)
-      erewrite (wf_scoped _ _ _ _ _ _ Hstep).
-      2:{ intros. inversion 1; find_contradiction. }
-      2:{ simpl. solve_set. }
-      auto.
-
-    * (* latch_clk *)
-      rewrite_step_inversion.
-      step_inversion_eq; subst.
-      unfold tok_clk_defn, clk_defn.
-      assert (Hctrl : σ (@ctrl_reset_n _ _ scheme) = Num 1) by admit (* why?? *).
-      assert (Hreq : val_is_bit (σ (req (latch_input l))))
-        by (apply Hwf1; simpl; try unfold space_domain; solve_set).
-      assert (Hack : val_is_bit (σ (ack (latch_output l))))
-        by (apply Hwf1; simpl; try unfold space_domain; solve_set).
-      assert (Hstate0 : val_is_bit (σ (latch_state0 l)))
-        by (apply Hwf1; simpl; try unfold space_domain; solve_set).
-
-      destruct l; simpl; rewrite Hctrl;
-        inversion Hreq; subst; simpl;
-        inversion Hstate0; subst; simpl;
-        inversion Hack; subst; simpl; constructor.
-
-    * (* latch_clk *)
-      destruct (y ∈? space_internal (latch_stage_with_env l)) as [Hinternal | Hinternal].
-      + assert (Heq : σ' y = σ y).
-        { repeat step_inversion_1.
-          eapply func_space_output_neq; [ | eauto | ]; solve_set.
-        }
-        rewrite Heq. solve_val_is_bit.
-      + rewrite (wf_scoped _ _ (latch_stage_well_formed l) _ _ _ Hstep);
-        [
-        | intros; inversion 1; find_contradiction
-        | simpl; try (solve_set); try (simpl in *; decompose_set_structure; solve_set); fail ].
-        solve_val_is_bit.
-
-    * (* ctrl_reset_n *)
-      repeat step_inversion_1.
-      (* rewrite_step_inversion ??? *)
-      erewrite (wf_scoped _ _ _ _ _ _ Hstep).
-      2:{ intros. inversion 1; find_contradiction. }
-      2:{ simpl. solve_set. }
-      auto.
-
-(*
-    * (* latch_clk *)
-      rewrite_step_inversion.
-      step_inversion_eq; subst.
-      unfold tok_clk_defn, clk_defn.
-      assert (Hctrl : σ (@ctrl_reset_n _ _ scheme) = Num 1) by admit (* why?? *).
-      assert (Hreq : val_is_bit (σ (req (latch_input l))))
-        by (apply Hwf1; simpl; try unfold space_domain; solve_set).
-      assert (Hack : val_is_bit (σ (ack (latch_output l))))
-        by (apply Hwf1; simpl; try unfold space_domain; solve_set).
-      assert (Hstate0 : val_is_bit (σ (latch_state0 l)))
-        by (apply Hwf1; simpl; try unfold space_domain; solve_set).
-
-      destruct l; simpl; rewrite Hctrl;
-        inversion Hreq; subst; simpl;
-        inversion Hstate0; subst; simpl;
-        inversion Hack; subst; simpl; constructor.
-*)
-  Admitted.
+  Qed.
 
 
   Lemma step_wf_state_eps : forall l σ σ',
     wf_stage_state l σ ->
     latch_stage_with_env l ⊢ σ →{None} Some σ' ->
     wf_stage_state l σ'.
+  Proof.
+    
   Admitted.
   Lemma step_wf_state : forall l tr σ,
     latch_stage_with_env l ⊢ σR l →*{tr} Some σ ->

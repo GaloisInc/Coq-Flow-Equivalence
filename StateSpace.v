@@ -914,6 +914,7 @@ Section Celem.
 End Celem.
 
 (** * A state space modeling a delay until a guard holds over some sensitive input wires *)
+(** Relative timing constraint *)
 Section Delay.
 
   Variable x y : name.
@@ -986,6 +987,15 @@ Section DelaySpace.
 
   Lemma delay_space_wf : well_formed delay_space.
   Admitted.
+
+  Lemma delay_space_inversion : forall σ e τ,
+    delay_space ⊢ σ →{e} τ ->
+    S ⊢ σ →{e} τ.
+  Proof.
+    intros σ e τ Hstep.
+    inversion Hstep; subst; auto.
+  Qed.
+
 
 End DelaySpace.
 
@@ -1141,6 +1151,8 @@ Module StateSpaceTactics (Export name : NameType).
       [ | unfold space_domain; left; right; simpl; solve_set; fail]
   | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
       apply hide_inversion in Hstep
+  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
+      apply delay_space_inversion in Hstep
   end.
   Ltac step_inversion_eq :=
   repeat step_inversion_1;

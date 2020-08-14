@@ -57,16 +57,11 @@ Section TokenMG.
      communication between controllers. In the controller, if this is not
      respected, it will lead to an error state as the clock component will not
      be stable when the new inputs arrive. *)
-  (* NOTE: really, this should perhaps be that CLK- must occur before BOTH
-     left_req and right_ack inputs change, not just either one... Since this
-     can't be encoded simply as a marked graph, perhaps it needs to be encoded
-     into the environment of latch_stage? *)
-  | clk_fall_left_req : stage_place clk_fall left_req
+  | clk_fall_left_ack : stage_place clk_fall left_ack
   (* TIMING constraint: changes inside the controller propogate faster than
      communication between controllers. In other words, wait for state0 to be
      propogated to both left_ack AND right_req before accepting input on
      left_req. *)
-(*  | right_req_left_req : stage_place right_req left_req *)
 
   (* CLK+ -> L.ack *)
   | clk_rise_left_ack : stage_place clk_rise left_ack
@@ -80,15 +75,9 @@ Section TokenMG.
      updated by the controller  *)
   | right_req_right_ack : stage_place right_req right_ack
   
-  (* CLK- -> R.ack *)
-  (* L.ack -> R.ack *)
-  (* TIMING constraint: See the note on clk_fall_left_req. *)
-  | clk_fall_right_ack : stage_place clk_fall right_ack
-  (* TIMING constraint: See the note on right_req_left_req. *)
-(*  | left_ack_right_ack : stage_place left_ack right_ack *)
-
   (* CLK+ -> CLK- *)
   | clock_fall : stage_place clk_rise clk_fall
+  | clock_rise : stage_place clk_fall clk_rise
   
   (* left_req -> CLK+ *)
   (* right_ack -> CLK+ *)
@@ -110,32 +99,28 @@ Section TokenMG.
     | Token, NonToken => fun t1 t2 p => match p with
                                       | left_req_clk_rise => 1
                                       | right_ack_clk_rise => 1
+                                      | clock_rise => 1
                                       | _ => 0
                                       end
     (* Traditional token stage *)
     | NonToken, Token => fun t1 t2 p => match p with
-(*                                      | right_req_left_req  => 1*)
-                                      | clk_fall_left_req   => 1
-                                      | left_ack_left_req   => 1
-                                      | right_req_right_ack => 1
-                                      | clk_fall_right_ack  => 1
-(*                                      | left_ack_right_ack  => 1*)
-                                      | _ => 0
-                                      end
+                                        | left_ack_left_req => 1
+                                        | right_req_right_ack => 1
+                                        | clock_rise => 1
+                                        | _ => 0
+                                        end
     (* Token with left token stage *)
     | Token, Token    => fun t1 t2 p => match p with
                                       | left_req_clk_rise => 1
                                       | right_req_right_ack => 1
-                                      | clk_fall_right_ack  => 1
-(*                                      | left_ack_right_ack  => 1*)
+                                      | clock_rise => 1
                                       | _ => 0
                                       end
     | NonToken, NonToken => fun t1 t2 p => match p with
-(*                                      | right_req_left_req  => 1*)
-                                      | clk_fall_left_req   => 1
-                                      | left_ack_left_req   => 1
-                                      | right_ack_clk_rise => 1
-                                      | _ => 0
+                                           | left_ack_left_req => 1
+                                           | right_ack_clk_rise => 1
+                                           | clock_rise => 1
+                                           | _ => 0
                                       end
     end.
 
@@ -192,15 +177,13 @@ Section TokenMG_to_SS.
     Ltac compare_place_name x p :=
       compare x (stage_place_name l p);
         [ left; do 3 eexists; reflexivity | ].
-    compare_place_name x left_ack_left_req.
-    compare_place_name x clk_fall_left_req.
-(*    compare_place_name x right_req_left_req.*)
+    compare_place_name x left_ack_left_req. Print stage_place.
+    compare_place_name x clk_fall_left_ack.
     compare_place_name x clk_rise_left_ack.
     compare_place_name x clk_rise_right_req.
     compare_place_name x right_req_right_ack.
-    compare_place_name x clk_fall_right_ack.
-(*    compare_place_name x left_ack_right_ack.*)
     compare_place_name x clock_fall.
+    compare_place_name x clock_rise.
     compare_place_name x left_req_clk_rise.
     compare_place_name x right_ack_clk_rise.
     right. intros t1 t2 p; destruct p; auto.
@@ -956,25 +939,36 @@ Ltac solve_bit_neq_neg :=
                               auto; find_contradiction
   end.
 
+
+Import ClickTactics.
+
   (* How to prove this? Maybe build on prop_marked?? *)
   (* Note: this is not enough to distinguish CLK+ from CLK- *)
   Lemma step_implies_event_step : forall t σ x v σ',
     wf_stage_state l σ ->
     latch_stage_with_env l ⊢ σ →{Some (Event x v)} Some σ' ->
     x = @transition_name name _ (stage_MG in_flag out_flag) _ t ->
+    exists t', v = @transition_update_value _ _ (stage_MG in_flag out_flag) _ t' (σ x).
+(*
+    latch_stage_with_env l ⊢ σ →{Some (Event x v)} Some σ' ->
+    x = @transition_name name _ (stage_MG in_flag out_flag) _ t ->
     v = @transition_update_value name _ (stage_MG in_flag out_flag) _ t (σ x).
+*)
   Proof.
     set (Hdisjoint := scheme_all_disjoint l).
     intros t σ x v σ' Hwf Hstep.
     assert (Hv : val_is_bit v).
     { eapply step_implies_bit; eauto. }
-    destruct t; simpl; intros Hx; subst;
-      try (step_inversion_unstable;
-           solve_bit_neq_neg; fail).
-    * admit (* not enough *).
-    * admit (* not enough *).
+    remember t as t'.
+    destruct t'; simpl; intros Hx;
+     try (exists t; subst; step_inversion_unstable; simpl;
+          erewrite val_is_bit_neq; eauto; solve_val_is_bit).
+    - (* clk_rise *)
+      inversion Hv; subst; [exists clk_fall | exists clk_rise]; auto.
 
-  Admitted.
+    - (* clk_fall *)
+      inversion Hv; subst; [exists clk_fall | exists clk_rise]; auto.
+  Qed.
 
 
 
