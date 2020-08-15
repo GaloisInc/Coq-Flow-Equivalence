@@ -1255,6 +1255,9 @@ Section MG_to_SS.
   Import EnsembleNotation.
   Open Scope ensemble_scope.
 
+  Inductive place_eq : forall {t1 t2 t1' t2' : transition}, place MG t1 t2 -> place MG t1' t2' -> Prop :=
+  | place_refl : forall t1 t2 (p : place MG t1 t2), place_eq p p.
+
 
   Class MG_naming_scheme :=
   { transition_name : transition -> name
@@ -1279,6 +1282,12 @@ Section MG_to_SS.
     4 phase handshake protocols? *)
   ; transition_name_injective : forall t t', t ∈ input_transition ->
     t <> t' -> transition_name t <> transition_name t'
+
+   ; places_all_disjoint : forall {t1 t2 t1' t2' : transition}
+                                        (p : place MG t1 t2) (p' : place MG t1' t2'),
+      place_name p = place_name p' ->
+      place_eq p p'
+
   }.
   Context `{MG_scheme : MG_naming_scheme}.
 
@@ -1374,6 +1383,41 @@ Section MG_to_SS.
       unfold update; simpl.
       reduce_eqb. auto.
   Qed.
+
+
+
+  Lemma MG_SS_val_not_X : forall σ0 tr σ,
+    MG_SS ⊢ σ0 →*{tr} Some σ ->
+    forall {t1 t2} (p : place MG t1 t2), 
+    σ0 (place_name p) <> X ->
+    σ (place_name p) <> X.
+  Proof.
+    intros σ0 tr σ Hstep.
+    remember (Some σ) as τ; generalize dependent σ.
+    induction Hstep; intros σ Hτ t1 t2 p Hwf; inversion Hτ; subst; auto.
+    * specialize (IHHstep σ' eq_refl t1 t2 p Hwf).
+      inversion H; subst.
+      unfold update. compare_next.
+      { Search transition_name place_name.
+        apply transition_place_name_disjoint in Heq; contradiction.
+      }
+      unfold fire_in_state.
+      destruct (name_is_place_dec (place_name p)) as [[t1' [t2' [p' Heq']]] | Hneq'].
+      2:{ specialize (Hneq' _ _ p); find_contradiction. }
+      Search place_name place_eq.
+      apply stage_places_all_disjoint in Heq'.
+Require Import Coq.Program.Equality.
+      dependent destruction Heq'.
+      compare_next; auto.
+      compare_next. { destruct (σ' (place_name p)); try (inversion 1; fail); find_contradiction. }
+      compare_next. { destruct (σ' (place_name p)); try (inversion 1; fail); find_contradiction. }
+      auto.
+
+    * specialize (IHHstep σ' eq_refl t1 t2 p Hwf).
+      inversion H; subst.
+  Qed.
+
+
 
   Unset Implicit Arguments.
 End MG_to_SS.

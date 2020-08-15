@@ -147,9 +147,10 @@ Module Type StageNamingScheme.
     { stage_place_name : forall (l : latch EO.even EO.odd) {t1 t2 : token_transition}, stage_place t1 t2 -> name
     ; stage_places_disjoint_transitions : forall l t1 t2 (p : stage_place t1 t2),
       stage_place_name l p ∉ space_domain (latch_stage l)
-    ; stage_places_all_disjoint : forall l {t1 t2 t1' t2' : token_transition} (p : stage_place t1 t2) (p' : stage_place t1' t2'),
+    ; stage_places_all_disjoint : forall l f1 f2 {t1 t2 t1' t2'} (p : stage_place t1 t2) (p' : stage_place t1' t2'),
       stage_place_name l p = stage_place_name l p' ->
-      place_eq p p'
+      StateSpace.place_eq (stage_MG f1 f2) p p'
+
     }.
 
   Parameter x_scheme : stage_naming_scheme.
@@ -236,6 +237,9 @@ Section TokenMG_to_SS.
       try (find_contradiction; fail);
       try (decompose_set_structure; fail);
       try (simpl; intro; find_contradiction; fail).
+  Qed.
+  Next Obligation.
+    eapply stage_places_all_disjoint; eauto.
   Qed.
 
   Definition stage_MG_SS : StateSpace name := MG_SS (stage_MG in_flag out_flag).
@@ -650,6 +654,11 @@ Require Import Coq.Logic.FunctionalExtensionality.
   Qed.
 
 
+Lemma val_to_nat_dec : forall v, val_to_nat (dec_value v) = val_to_nat v - 1.
+Proof. intros v; destruct v; auto. Qed.
+Lemma val_to_nat_inc : forall v, v <> X -> val_to_nat (inc_value v) = val_to_nat v + 1.
+Proof. intros v Hv; destruct v; auto. find_contradiction. Qed.
+
   Lemma state_relate_marking_implies : forall σ t σ',
     relate_trace name (latch_stage_with_env l) (stage_MG_SS l in_flag)
                       (σR l) (init_stage_MG_state l)
@@ -657,7 +666,6 @@ Require Import Coq.Logic.FunctionalExtensionality.
     state_relate_marking l σ (state_to_marking σ').
   Proof.
     intros σ t σ' Hrelate.
-Print relate_trace.
     induction Hrelate as [ | ? ? ? ? Hrelate IH Hstep
                            | ? ? ? ? Hrelate IH Hstep
                            | ? ? ? ? ? ? Hrelate IH Hstep1 Hstep2].
@@ -666,9 +674,9 @@ Print relate_trace.
       unfold init_marking_flag, state_to_marking, init_stage_MG_state. simpl.
       destruct (name_is_stage_place_dec l (stage_place_name l p))
         as [[t1' [t2' [p' Hp']]] | Hp].
-      + destruct l; simpl;
-        destruct p; destruct p'; auto;
-           try (apply stage_places_all_disjoint in Hp'; inversion Hp'; fail).
+      + apply stage_places_all_disjoint with (f1 := in_flag) (f2 := out_flag) in Hp';
+        dependent destruction Hp'.
+        destruct l; simpl; auto.
       + specialize (Hp t1 t2 p); find_contradiction.
 
     * eapply R_Eps; eauto.
@@ -677,8 +685,7 @@ Print relate_trace.
       eapply R_step; eauto.
       { unfold transition_event.
         replace (σ1 (transition_name t')) with (σ2 (transition_name t')).
-        2:{ (* should be a consequence of state_relate_marking *)
-            admit (* true *). }
+        2:{ symmetry; eapply stage_relate_trace_domain; eauto. }
         exact Hstep1.
       }
       { intros t1 t2 p.
@@ -686,23 +693,34 @@ Print relate_trace.
         unfold state_to_marking. unfold update.
         assert (@transition_name name _ (stage_MG in_flag out_flag) _ t'
              <> @place_name _ _ (stage_MG in_flag out_flag) _ t1 t2 p).
-        { admit. }
+        { apply transition_place_name_disjoint. }
         reduce_eqb.
         unfold fire_in_state.
         simpl.
         destruct (name_is_stage_place_dec l (stage_place_name l p))
           as [[t1' [t2' [p' Hp]]] | Hp].
         2:{ specialize (Hp _ _ p); find_contradiction. }
-        assert (t1 = t1') by admit. 
-        assert (t2 = t2') by admit. subst.
-        assert (Hbit : val_is_bit (σ2 (stage_place_name l p))).
-        { admit (* need o know this for stage_place_name, or maybe marked graphs in general *). }
-        compare_next; auto.
-        compare_next; auto.
-        { inversion Hbit; auto. }
-        compare_next; auto.
-        { inversion Hbit; auto. }
-  Admitted.
+
+         apply stage_places_all_disjoint with (f1 := in_flag) (f2 := out_flag) in Hp.
+         dependent destruction Hp.
+            
+
+           repeat compare_next; auto.
+           { rewrite val_to_nat_dec; auto. }
+           { rewrite val_to_nat_inc; auto.
+             eapply relate_trace_project_right in Hrelate.
+             unfold stage_MG_SS in Hrelate.
+             apply MG_SS_val_not_X with (p := p) in Hrelate.
+             { apply Hrelate. }
+             { simpl. unfold init_stage_MG_state. simpl.
+               destruct (name_is_stage_place_dec l (stage_place_name l p))
+                 as [[t1' [t2' [p' Hp']]] | Hneq'].
+               2:{ specialize (Hneq' _ _ p); find_contradiction. }
+               inversion 1.
+             }
+           }
+        }
+  Qed.
 
   Lemma left_req_val_inversion : forall σ v σ',
     latch_stage_with_env l ⊢ σ →{Some (Event (req (latch_input l)) v)} Some σ' ->
@@ -849,7 +867,6 @@ About wf_scoped.
   Lemma init_relate_implies_marked : forall {t1 t2} (p : stage_place t1 t2),
     prop_marked p (σR l) ->
     init_marking (stage_MG in_flag out_flag) _ _ p > 0.
-
   Admitted.
 
   Lemma state_relate_marking_steps : forall σ m,
