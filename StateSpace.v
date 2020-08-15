@@ -857,6 +857,34 @@ Section Flop.
          compare_next; auto.
   Qed.
 
+  Lemma flop_output_is_bit : forall σ v σ',
+    val_is_bit (σ D) ->
+    flop ⊢ σ →{Some (Event Q v)} Some σ' ->
+    val_is_bit v.
+  Proof.
+    intros ? ? ? ? Hstep.
+    inversion Hstep as [? ? ? ? Hi | | | | |]; subst;
+      auto; try constructor.
+    * contradict Hi. unfold flop_input. solve_set.
+  Qed.
+
+
+  Lemma flop_old_clk : forall σ x v σ',
+    val_is_bit v ->
+    flop ⊢ σ →{Some (Event x v)} Some σ' ->
+    val_is_bit (σ clk) ->
+    val_is_bit (σ old_clk) ->
+    val_is_bit (σ' old_clk).
+  Proof.
+    intros ? ? ? ? ? Hstep ? ?.
+    inversion Hstep as [? ? ? ? Hi | | | | |]; try subst; unfold update;
+      try match goal with
+      | [ H : σ' = _ |- _ ] => rewrite H; try unfold update; repeat (compare_next; auto)
+      end.
+    * compare_next; auto.
+  Qed.
+    
+
   Lemma flop_stable_implies_stable : forall σ, 
     flop_stable σ -> stable flop σ.
   Proof.
@@ -1054,6 +1082,14 @@ Module StateSpaceTactics (Export name : NameType).
     }
   Qed.
 
+  Lemma union_inversion : forall (S1 S2 : StateSpace name) e σ σ',
+    (S1 ∥ S2) ⊢ σ →{e} Some σ' ->
+    S1 ⊢ σ →{e} Some σ' \/ S2 ⊢ σ →{e} Some σ'.
+  Proof.
+    intros S1 S2 e σ σ' Hstep.
+    inversion Hstep; auto.
+  Qed.
+
 (*
   Instance internal_in_dec : forall l, in_dec (space_internal (latch_stage_with_env l)).
   Proof.
@@ -1106,6 +1142,15 @@ Module StateSpaceTactics (Export name : NameType).
     inversion Hstep; auto.
   Qed.
 
+  Lemma hide_inversion_None : forall (S : StateSpace name) σ x σ',
+      (hide x S) ⊢ σ →{None} Some σ' ->
+      S ⊢ σ →{None} Some σ' \/ exists v, S ⊢ σ →{Some (Event x v)} Some σ'.
+  Proof.
+    intros ? ? ? ? Hstep.
+    inversion Hstep; subst; auto.
+    right. exists v. auto.
+  Qed.
+
   Lemma func_space_output_inversion : forall I (o : name) f (σ : state name) x v σ',
       o ∉ I ->
       func_space I o f ⊢ σ →{Some (Event x v)} Some σ' ->
@@ -1116,6 +1161,7 @@ Module StateSpaceTactics (Export name : NameType).
     inversion Hstep; try find_contradiction.
     subst. auto.
   Qed.
+
 
   Lemma func_space_output_unstable : forall I (o : name) f σ x v σ',
       o ∉ I ->
@@ -1139,6 +1185,13 @@ Module StateSpaceTactics (Export name : NameType).
       compare_next; auto.
   Qed.
 
+  Lemma func_space_inversion_None : forall I (o : name) f (σ : state name) σ',
+      func_space I o f ⊢ σ →{None} Some σ' ->
+      False.
+  Proof.
+    intros. inversion H.
+  Qed.
+
   Ltac step_inversion_1 :=
   match goal with
   | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
@@ -1151,8 +1204,16 @@ Module StateSpaceTactics (Export name : NameType).
       [ | unfold space_domain; left; right; simpl; solve_set; fail]
   | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
       apply hide_inversion in Hstep
-  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
+  | [ Hstep : _ ⊢ _ →{ _ } Some _ |- _ ] =>
       apply delay_space_inversion in Hstep
+  | [ Hstep : _ ⊢ _ →{None} Some _ |- _ ] =>
+      apply func_space_inversion_None in Hstep; inversion Hstep
+  | [ Hstep : _ ⊢ _ →{None} Some _ |- _ ] =>
+      apply union_inversion in Hstep; destruct Hstep as [Hstep | Hstep]
+  | [ Hstep : _ ⊢ _ →{None} Some _ |- _ ] =>
+      apply hide_inversion_None in Hstep; destruct Hstep as [Hstep | [? Hstep]]
+  | [ Hstep : flop _ _ _ _ _ _ ⊢ _ →{ None } Some _ |- _ ] => inversion Hstep; subst; clear Hstep
+
   end.
   Ltac step_inversion_eq :=
   repeat step_inversion_1;
@@ -1168,6 +1229,16 @@ Module StateSpaceTactics (Export name : NameType).
       eapply func_space_output_unstable in Hstep; eauto;
         [ | simpl; solve_set; fail ]
   end.
+
+  Ltac step_inversion_neq :=
+  repeat step_inversion_1;
+  match goal with
+  | [ Hstep : _ ⊢ _ →{ Some _ } Some ?σ' |- context[?σ' ?y] ] =>
+      apply (func_space_output_neq _ _ _ _ _ _ y) in Hstep;
+      [ | simpl; solve_set; fail | simpl; solve_set; fail];
+      rewrite Hstep
+  end.
+
 End StateSpaceTactics.
 
 Section MG_to_SS.

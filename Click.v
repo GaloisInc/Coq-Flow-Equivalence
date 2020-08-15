@@ -560,7 +560,12 @@ Module WFStage (Export EO : EvenOddType).
     }
   Qed.
   Lemma dom_latch_stage_with_env : forall l,
-    space_domain (latch_stage_with_env l) == space_domain (latch_stage l).
+    space_domain (latch_stage_with_env l) ==
+       from_list [req (latch_input l); ack (latch_output l)
+                 ; ack (latch_input l); req (latch_output l); latch_clk l
+                 ; latch_state0 l; latch_not_state0 l; latch_old_clk l
+                 ; latch_hidden l; @ctrl_reset_n _ _ scheme; @dp_reset_n _ _ scheme
+                 ].
   Proof.
     intros l'.
     unfold space_domain.
@@ -568,29 +573,14 @@ Module WFStage (Export EO : EvenOddType).
     rewrite latch_stage_with_env_output.
     rewrite latch_stage_with_env_internal.
     (* monoid *)
-    { split; intros x Hx; decompose_set_structure; solve_set. }
+    { split; intros x Hx;
+        rewrite latch_stage_input, latch_stage_output in *;
+        unfold space_internal in *; simpl in *;
+        decompose_set_structure; solve_set.
+    }
   Qed.
 
 
-  Inductive val_is_bit : value -> Prop :=
-  | val_bit0 : val_is_bit Bit0
-  | val_bit1 : val_is_bit Bit1.
-  Lemma val_is_bit_neg_neg : forall v, val_is_bit v -> neg_value (neg_value v) = v.
-  Proof.
-    intros v Hv; inversion Hv; subst; auto.
-  Qed.
-  Lemma val_is_bit_neq : forall v1 v2, val_is_bit v1 -> val_is_bit v2 -> v1 <> v2 -> neg_value v1 = v2.
-  Proof.
-    intros v1 v2 Hv1 Hv2 Hneq;
-      inversion Hv1; inversion Hv2; subst; auto;
-        find_contradiction.
-  Qed.
-  Lemma val_is_bit_neg_inversion : forall v1 v2, val_is_bit v2 ->
-                                                 v1 = neg_value v2 ->
-                                                 neg_value v1 = v2.
-  Proof.
-    intros v1 v2 Hv2 Heq; subst. rewrite val_is_bit_neg_neg; auto.
-  Qed.
 
   Hint Constructors val_is_bit : click.
   Inductive wf_handshake (h : handshake) (σ : state name) : Prop :=
@@ -700,20 +690,26 @@ Module WFStage (Export EO : EvenOddType).
     end.
 
 
+  Ltac solve_space_domain :=
+  match goal with
+  | [ |- ?x ∈ space_domain (latch_stage_with_env ?l) ] =>
+        rewrite dom_latch_stage_with_env; solve_set
+  | [ |- ?x ∈ space_domain ?S ] => unfold space_domain; simpl; solve_set
+  end.
+
   Ltac solve_val_is_bit :=
   auto;
   repeat match goal with
 
   | [ H : wf_stage_state ?l ?σ |- val_is_bit (?σ ?x) ] =>
-    apply (wf_all_bits H);
-    unfold space_domain; simpl; solve_set
+    apply (wf_all_bits H); solve_space_domain
 
   | [ |- context[ latch_to_token_flag ?l ] ] => destruct l; simpl
 
   | [ Hwf1 : forall x, x ∈ ?X -> val_is_bit (?σ x) |- context[?σ ?y] ] =>
     let Hwf1' := fresh "Hwf1" in
     assert (Hwf1' : val_is_bit (σ y))
-      by (apply Hwf1; simpl; try unfold space_domain; solve_set);
+      by (apply Hwf1; simpl; solve_space_domain);
     clear Hwf1;
     auto
 
@@ -731,26 +727,6 @@ Module WFStage (Export EO : EvenOddType).
   Import ClickTactics.
 
 
-Ltac rewrite_wf_scoped :=
-match goal with
-| [ Hstep : ?S ⊢ ?σ →{ ?e } Some ?σ',
-    Hinternal : ?x ∉ space_internal ?S |- context[?σ' ?x] ] =>
-    let Hwf := fresh "Hwf" in
-    assert (Hwf : well_formed S) by auto;
-    let Hneq := fresh "Hneq" in
-    assert (Hneq : forall v, e <> Some (Event x v))
-      by (intro; inversion 1; subst; find_contradiction);
-    rewrite (wf_scoped _ _ Hwf _ _ _ Hstep _ Hneq Hinternal)
-end.
-
-Ltac step_inversion_neq :=
-  repeat step_inversion_1;
-  match goal with
-  | [ Hstep : _ ⊢ _ →{ Some _ } Some ?σ' |- context[?σ' ?y] ] =>
-      apply (func_space_output_neq _ _ _ _ _ _ y) in Hstep;
-      [ | simpl; solve_set; fail | simpl; solve_set; fail];
-      rewrite Hstep
-  end.
 
   Lemma step_wf_state_lemma : forall l σ e σ',
     wf_stage_state l σ ->
@@ -841,14 +817,117 @@ Ltac step_inversion_neq :=
 
   Qed.
 
+Ltac solve_wf_1 := match goal with
+| [ |- well_formed (latch_stage_with_env _) ] => apply latch_stage_well_formed
+| [ |- well_formed _ ] => apply func_wf; solve_set
+
+| [ |- well_formed _ ] => apply wf_union;
+                [ try unfold space_domain; simpl; solve_set
+                | try unfold space_domain; simpl; solve_set
+                | | ]
+| [ |- well_formed _ ] => apply hide_wf
+| [ |- well_formed _ ] => apply delay_space_wf
+| [ |- well_formed _ ] => apply flop_wf; 
+    try match goal with
+    [ |- context[latch_to_token_flag ?l] ] => destruct l
+    end;
+    repeat constructor; solve_set
+end.
+Ltac solve_wf := repeat solve_wf_1.
+
+Ltac rewrite_wf_scoped :=
+match goal with
+| [ Hstep : ?S ⊢ ?σ →{ ?e } Some ?σ' |- context[?σ' ?x] ] =>
+    let Hwf := fresh "Hwf" in
+    assert (Hwf : well_formed S) by solve_wf;
+    let Hneq := fresh "Hneq" in
+    assert (Hneq : forall v, e <> Some (Event x v))
+      by (intro; inversion 1; subst; find_contradiction);
+    let Hinternal := fresh "Hinternal" in
+    assert (Hinternal : x ∉ space_internal S)
+      by (simpl; solve_set);
+    rewrite (wf_scoped _ _ Hwf _ _ _ Hstep _ Hneq Hinternal)
+end.
+
+
+Ltac step_inversion_None :=
+             repeat match goal with
+             | [ Hstep : _ ⊢ _ →{None} Some _ |- _ ] => step_inversion_1
+             | [ Hstep : _ ⊢ _ →{Some _ } Some _ |- _ ] => step_inversion_neq; solve_val_is_bit; fail
+             | [ |- context[update] ] => unfold update; compare_next; try solve_val_is_bit
+             | [ Hstep : _ ⊢ _ →{Some (Event ?y _)} Some ?σ' |- context[?σ' ?x] ] =>
+               repeat step_inversion_1;
+               compare x y;
+               [ match goal with
+                 | [ Hstep' : ?S ⊢ _ →{_} _ |- _ ] =>
+                   let Hwf := fresh "Hwf" in
+                   assert (Hwf : well_formed S) by solve_wf;
+                   rewrite (wf_update _ _ Hwf _ _ _ _ Hstep');
+                   step_inversion_eq; subst; try constructor; solve_val_is_bit
+                 end
+               | rewrite_wf_scoped; solve_val_is_bit
+               ]
+             end.
 
   Lemma step_wf_state_eps : forall l σ σ',
     wf_stage_state l σ ->
     latch_stage_with_env l ⊢ σ →{None} Some σ' ->
     wf_stage_state l σ'.
   Proof.
-    
-  Admitted.
+    intros l σ σ' [Hwf1 Hwf2 Hwf3 Hwf4] Hstep.
+    set (Hdisjoint := scheme_all_disjoint l).
+    constructor.
+
+    + intros x Hx. 
+
+      destruct (x ∈? space_internal (latch_stage_with_env l)).
+      2:{ rewrite_wf_scoped. solve_val_is_bit. }
+      1:{ step_inversion_None.
+            ++ repeat step_inversion_1.
+               assert (all_disjoint
+                       [match latch_to_token_flag l with
+                        | Token => dp_reset_n (odd:=odd)
+                        | NonToken => latch_hidden l
+                        end;
+                        match latch_to_token_flag l with
+                        | Token => latch_hidden l
+                        | NonToken => dp_reset_n (odd:=odd)
+                        end;
+                        latch_clk l; latch_old_clk l; latch_not_state0 l; latch_state0 l]).
+               { repeat constructor; destruct l; simpl; solve_set. }
+
+               compare x (latch_state0 l).
+               { erewrite wf_update; [ | | eauto]; [ | solve_wf].
+                 eapply flop_output_is_bit; [ | | eauto]; [ auto | solve_val_is_bit].
+               }
+               compare x (latch_old_clk l).
+               { apply flop_old_clk in Hstep; auto; try solve_val_is_bit.
+                 eapply flop_output_is_bit; [ | | eauto]; [auto | solve_val_is_bit].
+               }
+               { rewrite_wf_scoped. solve_val_is_bit. }
+          }
+
+    + assert (Hequiv : σ' (req (latch_input l)) = σ' (ack (latch_input l))
+                    \/ σ' (req (latch_input l)) = neg_value (σ' (ack (latch_input l))));
+      [ | destruct Hequiv; [left | right]; auto].
+      step_inversion_None;
+        try (repeat step_inversion_1; repeat rewrite_wf_scoped;
+             inversion Hwf2; auto; fail).
+      ++ repeat compare_next. inversion Hwf2; auto.
+    + assert (Hequiv : σ' (req (latch_output l)) = σ' (ack (latch_output l))
+                    \/ σ' (req (latch_output l)) = neg_value (σ' (ack (latch_output l))));
+      [ | destruct Hequiv; [left | right]; auto].
+      step_inversion_None;
+        try (repeat step_inversion_1; repeat rewrite_wf_scoped;
+             inversion Hwf3; auto; fail).
+      ++ repeat compare_next. inversion Hwf3; auto.
+    + step_inversion_None; repeat step_inversion_1. 
+      { erewrite wf_update; [ | | eauto ]; [ | solve_wf].
+        step_inversion_eq; subst; auto.
+      }
+      { rewrite_wf_scoped; auto. }
+  Qed.
+      
   Lemma step_wf_state : forall l tr σ,
     latch_stage_with_env l ⊢ σR l →*{tr} Some σ ->
     wf_stage_state l σ.
