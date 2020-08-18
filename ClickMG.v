@@ -766,9 +766,9 @@ Qed.
 
   | lack_lreq_marked σ :
     σ (ack (latch_input l)) = σ (req (latch_input l)) -> prop_marked left_ack_left_req σ
+  | rreq_rack_marked σ :
+    σ (req (latch_output l)) = neg_value (σ (ack (latch_output l))) -> prop_marked right_req_right_ack σ
   .
-
-
 
 
   Lemma step_implies_prop_marked : forall σ t σ',
@@ -782,13 +782,18 @@ Qed.
     { (* left_ack_left_req *)
       constructor.
       step_inversion_eq.
-      simpl in Hstep.
-      assert (Hack : val_is_bit (σ (ack (latch_input l)))).
-      { About wf_all_bits. apply wf_all_bits with (l := l); auto.
-        unfold space_domain. simpl; solve_set. }
-      assert (Hreq : val_is_bit (σ (req (latch_input l)))).
-      { apply wf_all_bits with (l := l); auto. unfold space_domain; simpl; solve_set. }
-      inversion Hack; my_subst; inversion Hreq; my_subst; auto.
+      simpl in Hstep. Search neg_value val_is_bit.
+Import ClickTactics.
+      rewrite <- val_is_bit_neg_neg; [ | solve_val_is_bit].
+      rewrite Hstep.
+      rewrite val_is_bit_neg_neg; [ | solve_val_is_bit].
+      auto.
+    }
+
+    4:{ (* right_req_right_ack *)
+      constructor.
+      step_inversion_eq.
+      simpl in Hstep. auto.
     }
   Admitted.
 
@@ -820,18 +825,29 @@ Print prop_marked.
         { simpl; solve_set. }
       }
       step_inversion_eq.
-    contradict Hstep. simpl.
-    assert (Hreq' : val_is_bit (σ (req (latch_input l)))).
-    { apply wf_all_bits with (l := l); auto. unfold space_domain; simpl; solve_set. }
-    assert (Hack' : val_is_bit (σ (ack (latch_input l)))).
-    { apply wf_all_bits with (l := l); auto. unfold space_domain; simpl; solve_set. }
+      contradict Hstep. simpl.
+      assert (Hreq' : val_is_bit (σ (req (latch_input l)))) by solve_val_is_bit.
 
-    rewrite <- Hreq, <- Hack.
-    rewrite H.
+      rewrite <- Hreq, <- Hack, H.
 
-    inversion Hreq'; my_subst; clear Hreq';
-    inversion Hack'; my_subst; clear Hack';
-    rewrite Hreq; simpl; discriminate.
+      inversion Hreq'; my_subst; simpl; simpl in Hreq; clear Hreq';
+        rewrite Hreq; discriminate.
+
+    * (* t = right_ack *)
+      assert (Hreq : σ0 (req (latch_output l)) = σ (req (latch_output l))).
+      { eapply wf_scoped; [ | eauto | |]; auto.
+        { intro v; inversion 1; subst. rewrite H2 in Hdisjoint. find_contradiction. }
+        { simpl; solve_set. }
+      }
+      assert (Hack : σ0 (ack (latch_output l)) = neg_value (σ (ack (latch_output l)))).
+      { eapply wf_update; [ | eauto]. auto. }
+      step_inversion_eq. simpl in Hstep. contradict Hstep.
+
+      rewrite <- Hreq, <- Hack, H.
+
+      assert (Hack' : val_is_bit (σ (ack (latch_output l)))) by solve_val_is_bit.
+      inversion Hack'; my_subst; simpl; simpl in Hack;
+        rewrite Hack; discriminate.
     
   Admitted.
 
@@ -847,20 +863,30 @@ Print prop_marked.
     intros σ σ' t Hstep t1 t2 p Ht1 Ht2 Hmarked.
     dependent destruction Hmarked.
     * constructor.
-About wf_scoped.
       erewrite <- (wf_scoped _ _ (latch_stage_well_formed l) σ _ σ0); eauto.
       3:{ simpl. solve_set. }
-      2:{ intros v. inversion 1; subst. 
-          Print stage_naming_scheme.
-          contradict H2.
-          admit (* true *).
+      2:{ intros v.
+          destruct t; auto; unfold transition_event; simpl; inversion 1; find_contradiction.
       }
       erewrite <- (wf_scoped _ _ (latch_stage_well_formed l) σ _ σ0); eauto.
       2:{ simpl. solve_set. }
-      1:{ intros v. inversion 1; subst. 
-          contradict H2.
-          admit (* true *).
+      1:{ intros v.
+          destruct t; auto; unfold transition_event; simpl; inversion 1; find_contradiction.
       }
+
+    * constructor.
+      erewrite <- (wf_scoped _ _ (latch_stage_well_formed l) σ _ σ0); eauto.
+      3:{ simpl. solve_set. }
+      2:{ intros v.
+          destruct t; auto; unfold transition_event; simpl; inversion 1; find_contradiction.
+      }
+      erewrite <- (wf_scoped _ _ (latch_stage_well_formed l) σ _ σ0); eauto.
+      2:{ simpl. solve_set. }
+      1:{ intros v.
+          destruct t; auto; unfold transition_event; simpl; inversion 1; find_contradiction.
+      }
+
+
   Admitted.
 
 
@@ -934,6 +960,7 @@ Print state_relate_marking.
     wf_stage_state l σ ->
     latch_stage_with_env l ⊢ σ →{Some (Event x v)} Some σ' ->
     val_is_bit v.
+  Proof.
   Admitted.
 
 
