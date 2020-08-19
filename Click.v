@@ -158,6 +158,9 @@ Section Stage.
     | Num 1, Num _, Num _, Num _ => Num 0
     | _    ,_    , _    , _     => X
     end.
+(*  tok_clk_defn := (req i /\ state0 /\ ack o)
+                 \/ (not (req i) /\ not state0 /\ not (ack o))
+*)
   Definition tok_clk_defn σ :=
     match σ ctrl_reset_n, σ (req i) , σ state0 , σ (ack o) with
     | Num 0, _    , _    , _     => Num 0
@@ -166,6 +169,18 @@ Section Stage.
     | Num 1, Num _, Num _, Num _ => Num 0
     | _    , _    , _    , _     => X
     end.
+(*
+  Definition clk_defn f :=
+    match σ ctrl_reset_n with
+    | Bit0 => Bit0
+    | Bit1 => let r := σ (req i) in
+              let a := σ (ack o) in
+              let s := σ state0  in
+              value_or (value_and 
+    | _    => X
+    end.
+    value_and (σ
+*)
 
   Inductive token_flag := Token | NonToken.
 
@@ -591,6 +606,23 @@ Module WFStage (Export EO : EvenOddType).
     ; wf_latch_input  : wf_handshake (latch_input l)  σ
     ; wf_latch_output : wf_handshake (latch_output l) σ
     ; wf_ctrl_reset_n : σ (@ctrl_reset_n even odd _) = Bit1
+    ; wf_flop_stable  : ~ stable (latch_flop_component l) σ ->
+                              stable (latch_clk_component l) σ
+                           /\ stable (latch_left_ack_component l) σ
+                           /\ stable (latch_right_req_component l) σ
+    ; wf_clk_stable   : ~ stable (latch_clk_component l) σ ->
+                              stable (latch_flop_component l) σ
+                           /\ stable (latch_left_ack_component l) σ
+                           /\ stable (latch_right_req_component l) σ
+    ; wf_left_ack_stable  : ~ stable (latch_left_ack_component l) σ ->
+                              stable (latch_clk_component l) σ
+                           /\ stable (latch_flop_component l) σ
+
+    ; wf_right_req_stable : ~ stable (latch_right_req_component l) σ ->
+                              stable (latch_clk_component l) σ
+                           /\ stable (latch_flop_component l) σ
+
+
     }.
 
   Lemma step_wf_state_σR : forall l,
@@ -637,7 +669,24 @@ Module WFStage (Export EO : EvenOddType).
         repeat (compare_next; try constructor);
           destruct l; try constructor.
       }
-  Qed.
+
+      { intros Hstable; contradict Hstable.
+        constructor.
+        { repeat apply hide_wf; try solve_set.
+          apply wf_union;
+            [unfold space_domain; solve_set | unfold space_domain; solve_set |
+            | apply func_wf; solve_set ].
+          apply wf_union;
+            [unfold space_domain; solve_set | unfold space_domain; solve_set |
+            | apply func_wf; solve_set ].
+          apply flop_wf. destruct l; simpl; repeat constructor; solve_set.
+       }
+       admit (* TODO *).
+    }
+    { intros Hstable; contradict Hstable. admit (* TOOD *). }
+    { intros Hstable; contradict Hstable. admit (* TOOD *). }
+    { intros Hstable; contradict Hstable. admit (* TOOD *). }
+  Admitted.
 
 
   Lemma latch_stage_well_formed : forall l, well_formed (latch_stage_with_env l).
@@ -713,8 +762,10 @@ Module WFStage (Export EO : EvenOddType).
     clear Hwf1;
     auto
 
-  | [ H : val_is_bit (?σ ?x) |- val_is_bit (?f (?σ ?x)) ] =>
-    inversion H; subst;
+  | [ |- val_is_bit (?f (?σ ?x)) ] =>
+    let Hbit := fresh "Hbit" in
+    assert (Hbit : val_is_bit (σ x)) by solve_val_is_bit;
+    inversion Hbit; subst;
     auto with click
 
   | [ H : ?S ⊢ ?σ →{Some (Event ?x ?v)} Some ?σ' |- val_is_bit ?v ] =>
@@ -750,6 +801,10 @@ Module WFStage (Export EO : EvenOddType).
       | try solve_wf_handshake
       | try solve_wf_handshake
       | try solve_val_is_bit
+      | admit
+      | admit
+      | admit
+      | admit (*TODO*)
       ]);
       try (step_inversion_neq; auto; solve_val_is_bit; fail).
 
@@ -815,7 +870,7 @@ Module WFStage (Export EO : EvenOddType).
           inversion req_bit; inversion ack_bit; inversion state0_bit; simpl;
           constructor.
 
-  Qed.
+  Admitted.
 
 Ltac solve_wf_1 := match goal with
 | [ |- well_formed (latch_stage_with_env _) ] => apply latch_stage_well_formed
@@ -926,7 +981,12 @@ Ltac step_inversion_None :=
         step_inversion_eq; subst; auto.
       }
       { rewrite_wf_scoped; auto. }
-  Qed.
+
+    + admit.
+    + admit.
+    + admit.
+    + admit.
+  Admitted.
       
   Lemma step_wf_state : forall l tr σ,
     latch_stage_with_env l ⊢ σR l →*{tr} Some σ ->

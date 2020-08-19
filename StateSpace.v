@@ -306,17 +306,19 @@ Section FuncStateSpace.
                       option (event name value) ->
                       option (state name) ->
                       Prop :=
-  | func_input_stable i (pf_i : i ∈ I) v :
+  | func_input_stable i (pf_i : i ∈ I) v σ' :
     func_stable σ ->
 (*    σ i <> v -> *) (* Question: what happens if an event occurs that doesn't change the value of the variable? Is it allowed? Is it a no-op? *)
+    (forall y, σ' y = (update σ i v) y) ->
     func_step σ (Some (Event i v))
-                (Some (update σ i v))
+                (Some σ')
 
-  | func_input_unstable i (pf_i : i ∈ I) v :
+  | func_input_unstable i (pf_i : i ∈ I) v σ' :
     ~ (func_stable σ) ->
 (*    ~ (func_stable (update σ i v)) -> (* in a binary system, this is ok *)*)
     f σ = f (update σ i v) -> (* ok to update input in an unstable system if the output doesn't change *)
-    func_step σ (Some (Event i v)) (Some (update σ i v))
+    (forall y, σ' y = (update σ i v) y) ->
+    func_step σ (Some (Event i v)) (Some σ')
 
 
   (* if input updates in an unstable system causes output to change, go to error state*)
@@ -325,11 +327,12 @@ Section FuncStateSpace.
     f σ <> f (update σ i v) -> 
     func_step σ (Some (Event i v)) None
 
-  | func_output v :
+  | func_output v σ' :
     ~ (func_stable σ) ->
     v = f σ ->
+    (forall y, σ' y = (update σ x v) y) ->
     func_step σ (Some (Event x v))
-                (Some (update σ x v))
+                (Some σ')
   .
     
   Program Definition func_space : StateSpace :=
@@ -356,26 +359,31 @@ Section FuncStateSpace.
       decompose_set_structure.
     + intros σ y v σ' Hstep.
       inversion Hstep; try (subst; solve_set).
-      rewrite <- H. simpl. solve_set.
+      rewrite <- H. simpl. solve_set
 
     + intros ? ? ? Hstep y y_neq_z y_not_internal.
+    + intros ? ? ? Hstep y y_neq_z y_not_internal.
 
-      inversion Hstep; try subst; unfold update.
-      ++ assert (i <> y).
+      inversion Hstep; try subst; unfold update in *.
+      ++ rewrite H2.
+         assert (i <> y).
          { intro. apply (y_neq_z v). subst; auto. }
          reduce_eqb; auto.
-      ++ assert (i <> y).
+      ++ rewrite H3. assert (i <> y).
          { intro. apply (y_neq_z v). subst; auto. }
          reduce_eqb; auto.
-      ++ compare x y; auto.
-         (* x = y *)
+      ++ rewrite H3. reduce_eqb. compare x y; auto.
+         { (* x = y *)
             rewrite Heq in y_neq_z.
             specialize (y_neq_z (f σ) eq_refl).
             find_contradiction.
+         }
 
     + intros ? y ? ? Hstep.
-      inversion Hstep; try subst; unfold update; simpl;
-        reduce_eqb; auto.
+      inversion Hstep; try subst; unfold update in *;
+        [rewrite H3 | rewrite H4 | rewrite H4]; simpl;
+        reduce_eqb; simpl; auto.
+      
   Qed.
 
   (** ** Decidability of stability for function spaces *)
@@ -1181,7 +1189,10 @@ Module StateSpaceTactics (Export name : NameType).
       σ' y = σ y.
   Proof.
     intros ? ? ? ? ? ? ? ? Hstep Hneq.
-    inversion Hstep; subst; unfold update;
+    inversion Hstep; subst;
+    match goal with
+    | [ H : forall y, ?σ' _ = _ |- σ' _ = _ ] => rewrite H; unfold update
+    end;
       compare_next; auto.
   Qed.
 
@@ -1405,7 +1416,7 @@ Section MG_to_SS.
       destruct (name_is_place_dec (place_name p)) as [[t1' [t2' [p' Heq']]] | Hneq'].
       2:{ specialize (Hneq' _ _ p); find_contradiction. }
       Search place_name place_eq.
-      apply stage_places_all_disjoint in Heq'.
+      apply places_all_disjoint in Heq'.
 Require Import Coq.Program.Equality.
       dependent destruction Heq'.
       compare_next; auto.
