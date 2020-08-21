@@ -97,7 +97,7 @@ Record well_formed (S : StateSpace) :=
   ; wf_scoped : forall σ e σ',
     S ⊢ σ →{e} Some σ' ->
     forall x, (forall v, e <> Some (Event x v)) ->
-              x ∉ space_internal S ->
+              x ∈ space_input S ∪ space_output S ->
               σ' x = σ x
   ; wf_update : forall σ x v σ',
     S ⊢ σ →{Some (Event x v)} Some σ' ->
@@ -177,6 +177,7 @@ Section RelateTrace.
         differ on internal wires *)
         eapply (wf_scoped _ Hwf1); eauto.
         { intros v; inversion 1. }
+        { unfold space_domain in *. decompose_set_structure; solve_set. }
       }
       congruence.
     * assert (Hσ2' : σ2' x = σ2 x).
@@ -184,6 +185,7 @@ Section RelateTrace.
         differ on internal wires *)
         eapply (wf_scoped _ Hwf2); eauto.
         { intros v; inversion 1. }
+        { unfold space_domain in *. decompose_set_structure; solve_set. }
       }
       congruence.
     * destruct e as [y v].
@@ -202,12 +204,14 @@ Section RelateTrace.
         assert (σ1' x = σ1 x).
         { (* σ1 and σ1' must only vary on interal wires and y *) 
           eapply (wf_scoped _ Hwf1); eauto.
-          intros v'; inversion 1; subst; find_contradiction.
+          { intros v'; inversion 1; subst; find_contradiction. }
+          { unfold space_domain in *. decompose_set_structure; solve_set. }
         }
         assert (σ2' x = σ2 x).
         { (* σ2 and σ2' must only vary on interal wires and y *)
           eapply (wf_scoped _ Hwf2); eauto.
-          intros v'; inversion 1; subst; find_contradiction.
+          { intros v'; inversion 1; subst; find_contradiction. }
+          { unfold space_domain in *. decompose_set_structure; solve_set. }
         }
         congruence.
   Qed.
@@ -301,6 +305,14 @@ Section FuncStateSpace.
   the stability of the state space. *)
   Let func_stable (σ : state name) := σ x = f σ.
   Hint Unfold func_stable.
+
+  Definition state_equiv_on (X : Ensemble name) (τ1 τ2 : option (state name)) :=
+      match τ1, τ2 with
+      | Some σ1, Some σ2 => forall x, x ∈ X -> σ1 x = σ2 x
+      | None, None => True
+      | _, _ => False
+      end.
+
   
   Inductive func_step (σ : state name) :
                       option (event name value) ->
@@ -309,7 +321,7 @@ Section FuncStateSpace.
   | func_input_stable i (pf_i : i ∈ I) v σ' :
     func_stable σ ->
 (*    σ i <> v -> *) (* Question: what happens if an event occurs that doesn't change the value of the variable? Is it allowed? Is it a no-op? *)
-    (forall y, σ' y = (update σ i v) y) ->
+    state_equiv_on (I ∪ singleton x) (Some σ') (Some (update σ i v)) ->
     func_step σ (Some (Event i v))
                 (Some σ')
 
@@ -317,7 +329,7 @@ Section FuncStateSpace.
     ~ (func_stable σ) ->
 (*    ~ (func_stable (update σ i v)) -> (* in a binary system, this is ok *)*)
     f σ = f (update σ i v) -> (* ok to update input in an unstable system if the output doesn't change *)
-    (forall y, σ' y = (update σ i v) y) ->
+    state_equiv_on (I ∪ singleton x) (Some σ') (Some (update σ i v)) ->
     func_step σ (Some (Event i v)) (Some σ')
 
 
@@ -330,7 +342,7 @@ Section FuncStateSpace.
   | func_output v σ' :
     ~ (func_stable σ) ->
     v = f σ ->
-    (forall y, σ' y = (update σ x v) y) ->
+    state_equiv_on (I ∪ singleton x) (Some σ') (Some (update σ x v)) ->
     func_step σ (Some (Event x v))
                 (Some σ')
   .
@@ -365,14 +377,16 @@ Section FuncStateSpace.
     + intros ? ? ? Hstep y y_neq_z y_not_internal.
 
       inversion Hstep; try subst; unfold update in *.
-      ++ rewrite H2.
+      ++ rewrite H2; [ | solve_set].
          assert (i <> y).
          { intro. apply (y_neq_z v). subst; auto. }
          reduce_eqb; auto.
-      ++ rewrite H3. assert (i <> y).
+      ++ rewrite H3; [ | solve_set].
+         assert (i <> y).
          { intro. apply (y_neq_z v). subst; auto. }
          reduce_eqb; auto.
-      ++ rewrite H3. reduce_eqb. compare x y; auto.
+      ++ rewrite H3; [ | solve_set].
+         compare x y; auto.
          { (* x = y *)
             rewrite Heq in y_neq_z.
             specialize (y_neq_z (f σ) eq_refl).
@@ -381,8 +395,9 @@ Section FuncStateSpace.
 
     + intros ? y ? ? Hstep.
       inversion Hstep; try subst; unfold update in *;
-        [rewrite H3 | rewrite H4 | rewrite H4]; simpl;
-        reduce_eqb; simpl; auto.
+        [rewrite H3 | rewrite H4 | rewrite H4];
+        try (simpl; reduce_eqb; simpl; auto; fail);
+        try solve_set.
       
   Qed.
 
@@ -407,7 +422,8 @@ Section FuncStateSpace.
 
       inversion Hstable.
       assert (Hstep : func_space ⊢ σ →{Some (Event x (f σ))} Some (update σ x (f σ))).
-      { apply func_output; auto. }
+      { apply func_output; auto.
+        intros y Hy. unfold update. compare_next; auto. }
       specialize (stable_step0 _ _ Hstep).
       inversion stable_step0; subst.
       simpl in *. find_contradiction.
@@ -460,13 +476,15 @@ Section UnionStateSpace.
 
   Context `{in_dec _ (space_domain S1)} `{in_dec _ (space_domain S2)}.
 
-  Definition state_equiv_on (X : Ensemble name) (τ1 τ2 : option (state name)) :=
-      match τ1, τ2 with
-      | Some σ1, Some σ2 => forall x, x ∈ X -> σ1 x = σ2 x
-      | None, None => True
-      | _, _ => False
-      end.
 
+  Inductive union_state : option (state name) -> option (state name) -> option (state name) -> Prop :=
+  | union_None1 τ : union_state None τ None
+  | union_None2 τ : union_state τ None None
+  | union_Some : forall σ1 σ2 σ,
+    (forall y, y ∉ space_internal S2 -> σ y = σ1 y) ->
+    (forall y, y ∉ space_internal S1 -> σ y = σ2 y) ->
+    union_state (Some σ1) (Some σ2) (Some σ)
+  .
 
   Inductive union_step (σ : state name)
                      : option (event name value) ->
@@ -488,7 +506,6 @@ Section UnionStateSpace.
     union_input_event e ->
     S1 ⊢ σ →{e} τ ->
     S2 ⊢ σ →{e} τ ->
-    (* e must be consistent with both e1 and e2 *)
     union_step σ e τ
     .
 
@@ -560,20 +577,36 @@ Section UnionStateSpace.
         solve_set.
 
   - intros ? ? ? Hstep x Hx x_not_internal.
-    decompose_set_structure.
-    inversion Hstep; subst.
-    + specialize (wf_scoped0 _ _ _ H4).
-      apply wf_scoped0; auto.
-    + specialize (wf_scoped1 _ _ _ H4).
-      apply wf_scoped1; auto.
-    + specialize (wf_scoped1 _ _ _ H5).
-      apply wf_scoped1; auto.
+    decompose_set_structure;
+      inversion Hstep; subst;
+      try match goal with
+      | [ H : ?x ∈ space_input ?S
+        , Hstep : ?S ⊢ ?σ →{e} Some ?σ'
+        , Hscoped : forall σ e σ', ?S ⊢ σ →{e} Some σ' ->
+                    forall x, (forall v, e <> Some (Event x v)) ->
+                    x ∈ space_input ?S ∪ space_output ?S -> σ' x = σ x
+        |- ?σ' ?x = ?σ ?x ] => apply (Hscoped _ _ _ Hstep); [ auto | solve_set ]; fail
+      | [ H : ?x ∈ space_output ?S
+        , Hstep : ?S ⊢ ?σ →{e} Some ?σ'
+        , Hscoped : forall σ e σ', ?S ⊢ σ →{e} Some σ' ->
+                    forall x, (forall v, e <> Some (Event x v)) ->
+                    x ∈ space_input ?S ∪ space_output ?S -> σ' x = σ x
+        |- ?σ' ?x = ?σ ?x ] => apply (Hscoped _ _ _ Hstep); [ auto | solve_set ]; fail
+
+      | [ H : ?x ∈ space_input ?S
+        , Hstep : state_equiv_on (space_domain ?S) (Some ?σ) (Some ?σ')
+        |- ?σ' x = σ x ] => rewrite Hstep; unfold space_domain; solve_set; fail
+      | [ H : ?x ∈ space_output ?S
+        , Hstep : state_equiv_on (space_domain ?S) (Some ?σ) (Some ?σ')
+        |- ?σ' x = σ x ] => rewrite Hstep; unfold space_domain; solve_set; fail
+
+      end.
 
   - intros ? ? ? ? Hstep.
     inversion Hstep; subst.
     + eapply wf_update0; eauto.
     + eapply wf_update1; eauto.
-    + eapply wf_update0; eauto.
+    + erewrite wf_update0; eauto.
   Qed.
 
 
@@ -706,13 +739,31 @@ Section HideStateSpace.
       decompose_set_structure.
       solve_set.
     - intros ? ? ? Hstep y Hy y_not_internal.
-      decompose_set_structure.
-      inversion Hstep; subst.
-      + specialize (wf_scoped0 _ _ _ H1).
-        apply wf_scoped0; auto.
-        intro. inversion 1; subst. find_contradiction.
-      + specialize (wf_scoped0 _ _ _ H1).
-        apply wf_scoped0; auto.
+      decompose_set_structure;
+      inversion Hstep; subst;
+      repeat match goal with
+      | [ H : ?x ∈ space_input ?S
+        , Hstep : ?S ⊢ ?σ →{?e} Some ?σ'
+        , Hscoped : forall σ e σ', ?S ⊢ σ →{e} Some σ' ->
+                    forall x, (forall v, e <> Some (Event x v)) ->
+                    x ∈ space_input ?S ∪ space_output ?S -> σ' x = σ x
+        |- ?σ' ?x = ?σ ?x ] => apply (Hscoped _ _ _ Hstep);
+           [ auto; intro; inversion 1; subst; find_contradiction | solve_set ]
+      | [ H : ?x ∈ space_output ?S
+        , Hstep : ?S ⊢ ?σ →{?e} Some ?σ'
+        , Hscoped : forall σ e σ', ?S ⊢ σ →{e} Some σ' ->
+                    forall x, (forall v, e <> Some (Event x v)) ->
+                    x ∈ space_input ?S ∪ space_output ?S -> σ' x = σ x
+        |- ?σ' ?x = ?σ ?x ] => apply (Hscoped _ _ _ Hstep);
+           [ auto; intro; inversion 1; subst; find_contradiction | solve_set ]
+
+      | [ Hinput : ?x ∈ ?A
+        , Houtput : ?x ∈ ?B
+        , Hwf : forall x, x ∉ ?A ∩ ?B |- _ ] => contradiction (Hwf x); solve_set
+
+      end.
+
+
     - intros ? ? ? ? Hstep.
       inversion Hstep; subst; auto.
       eapply wf_update0; eauto.
@@ -763,7 +814,7 @@ Section Flop.
   | Flop_input i v σ' :
     flop_stable σ \/ Q_output σ = Q_output (update σ i v) ->
     i ∈ flop_input ->
-    σ' = update σ i v ->
+    state_equiv_on (from_list [set;reset;clk;D;Q;old_clk]) (Some σ') (Some (update σ i v)) ->
     flop_step σ (Some (Event i v)) (Some σ')
 
     (* other inputs lead to the error state *)
@@ -777,7 +828,7 @@ Section Flop.
   | Flop_set σ' :
     σ set = Num 0 ->
     σ Q  <> Num 1 ->
-    σ' = update σ Q (Num 1) ->
+    state_equiv_on (from_list [set;reset;clk;D;Q;old_clk]) (Some σ') (Some (update σ Q (Num 1))) ->
     flop_step σ (Some (Event Q (Num 1))) (Some σ')
 
     (* if the reset line is high, lower Q *)
@@ -785,7 +836,7 @@ Section Flop.
     σ set   = Num 1 ->
     σ reset = Num 0 ->
     σ Q    <> Num 0 ->
-    σ' = update σ Q (Num 0) ->
+    state_equiv_on (from_list [set;reset;clk;D;Q;old_clk]) (Some σ') (Some (update σ Q (Num 0))) ->
     flop_step σ (Some (Event Q (Num 0))) (Some σ')
 
     (* if the clock has fallen (i.e. input changed and clk is no longer 1), do
@@ -793,7 +844,8 @@ Section Flop.
   | Flop_clk_fall σ' :
     σ clk <> Num 1 ->
     σ clk <> σ old_clk ->
-    σ' = update σ old_clk (σ clk) ->
+    state_equiv_on (from_list [set;reset;clk;D;Q;old_clk]) (Some σ')
+                                                           (Some (update σ old_clk (σ clk))) ->
     flop_step σ None (Some σ')
 
     (* if the clock has risen (i.e. input changed and clk is now equal to 1),
@@ -805,7 +857,9 @@ Section Flop.
     σ old_clk <> Num 1 ->
 
     v = σ D ->
-    σ' = update (update σ Q v) old_clk (σ clk) ->
+    state_equiv_on (from_list [set;reset;clk;D;Q;old_clk])
+                   (Some σ')
+                   (Some (update (update σ Q v) old_clk (σ clk))) ->
 
     flop_step σ (Some (Event Q v)) (Some σ')
   .
@@ -833,36 +887,24 @@ Section Flop.
       + intros ? ? ? ? Hstep.
         inversion Hstep; try subst; try solve_set.
       + intros ? ? ? Hstep y Hy H_not_internal.
-        decompose_set_structure.
-        inversion Hstep; try subst.
-        ++ unfold update. specialize (Hy v).
-           assert (i <> y). { inversion 1; subst. apply Hy. auto. }
-           reduce_eqb; auto.
-           
-        ++ unfold update.
-           assert (y <> Q). { specialize (Hy (Num 1)).
-                              inversion 1; subst. apply Hy. auto. }
-           reduce_eqb. auto.
-        ++ unfold update.
-           compare_next; auto.
-           rewrite <- Heq in Hy.
-           specialize (Hy (Num 0)).
-           contradict Hy; auto.
-        ++ unfold update.
-           compare_next; auto.
-        ++ unfold update.
-           compare_next; auto.
-           compare_next; auto.
-           specialize (Hy (σ D)).
-           contradict Hy; rewrite <- Heq; auto.
-
+        decompose_set_structure;
+        inversion Hstep; try subst;
+        repeat match goal with
+        | [ H : forall v0, Some (Event ?x ?v) <> Some (Event ?x v0)
+          |- _ ] => contradiction (H v); auto
+        | [ H : state_equiv_on _ (Some ?σ') _
+          |- ?σ' _ = _ ] =>
+          rewrite H; [ unfold update; repeat compare_next; auto | solve_set]
+        end.
     + intros ? ? ? ? Hstep.
       inversion Hstep; try subst; unfold update; reduce_eqb; auto.
-      ++ rewrite H4. unfold update. reduce_eqb; auto.
-      ++ rewrite H5. unfold update. reduce_eqb; auto.
-      ++ rewrite H7. unfold update.
-         repeat my_subst. reduce_eqb.
-         compare_next; auto.
+      ++ rewrite H4; [ | unfold flop_input in *; decompose_set_structure; solve_set].
+          unfold update. reduce_eqb; auto.
+      ++ rewrite H4; [ | solve_set]. unfold update. reduce_eqb; auto.
+      ++ rewrite H5; [ | solve_set]. unfold update.
+         repeat my_subst. reduce_eqb; auto.
+      ++ rewrite H7; [ | solve_set]. unfold update.
+         repeat my_subst. compare_next; auto.
   Qed.
 
   Lemma flop_output_is_bit : forall σ v σ',
@@ -887,9 +929,9 @@ Section Flop.
     intros ? ? ? ? ? Hstep ? ?.
     inversion Hstep as [? ? ? ? Hi | | | | |]; try subst; unfold update;
       try match goal with
-      | [ H : σ' = _ |- _ ] => rewrite H; try unfold update; repeat (compare_next; auto)
+      | [ H : state_equiv_on _ (Some ?σ') _ |- _ ] =>
+        rewrite H; [try unfold update; repeat (compare_next; auto) | solve_set]
       end.
-    * compare_next; auto.
   Qed.
     
 
@@ -966,9 +1008,11 @@ Section Delay.
                                      delay_step σ (Some (Event x v)) None
   | delay_input_stable : forall v, σ y = σ x -> delay_step σ (Some (Event x v)) (Some (update σ x v))
   (* output only transitions when the guard is true *)
-  | delay_output : σ y <> σ x ->
+  | delay_output σ' : σ y <> σ x ->
                    guard σ = true ->
-                   delay_step σ (Some (Event y (σ x))) (Some (update σ y (σ x)))
+                   state_equiv_on (sensitivities ∪ from_list [x;y]) (Some σ')
+                                                                    (Some (update σ y (σ x))) ->
+                   delay_step σ (Some (Event y (σ x))) (Some σ')
   .
 
   Definition delay : StateSpace :=
@@ -991,6 +1035,7 @@ Section DelaySpace.
   (** The guard should only depend on the variables in the sensitivites set *)
   Variable guard : state name -> Prop.
 
+
   Inductive delay_space_step (σ : state name) :
                       option (event name value) ->
                       option (state name) ->
@@ -998,12 +1043,14 @@ Section DelaySpace.
   (* input steps are always valid *)
   | delay_space_input : forall x v τ,
     S ⊢ σ →{Some (Event x v)} τ ->
+    state_equiv_on sensitivities (Some σ) τ ->
     x ∈ space_input S ->
     delay_space_step σ (Some (Event x v)) τ
 
   (* epsilon steps are always valid *)
   | delay_space_internal : forall τ,
     S ⊢ σ →{None} τ ->
+    state_equiv_on sensitivities (Some σ) τ ->
     delay_space_step σ None τ
 
   (* output steps can only happen if the guard is true *)
@@ -1011,6 +1058,7 @@ Section DelaySpace.
     guard σ ->
     S ⊢ σ →{Some (Event x v)} τ ->
     x ∈ space_output S ->
+    state_equiv_on sensitivities (Some σ) τ ->
     delay_space_step σ (Some (Event x v)) τ
   .
 
@@ -1050,6 +1098,7 @@ Arguments flop {name name_eq_dec}.
 Arguments well_formed {name}.
 Arguments delay {name name_eq_dec}.
 Arguments delay_space {name}.
+Arguments state_equiv_on {name}.
 
 Notation "C ⊢ σ →{ e } τ" := (space_step _ C σ e τ) (no associativity, at level 70).
  Notation "C ⊢ σ →*{ t } τ" := (space_steps _ C σ t τ) (no associativity, at level 70).
@@ -1110,6 +1159,8 @@ Module StateSpaceTactics (Export name : NameType).
   Instance output_in_dec : forall l, in_dec (space_output (latch_stage_with_env l)).
   Admitted.
 *)
+About state_equiv_on.
+
 
   Lemma union_internal_inversion_right : forall (S1 S2 : StateSpace name) σ x v σ',
       well_formed S1 ->
@@ -1118,8 +1169,7 @@ Module StateSpaceTactics (Export name : NameType).
       space_domain S1 ⊥ space_internal S2 ->
       (S1 ∥ S2) ⊢ σ →{ Some (Event x v)} Some σ' ->
       x ∉ space_domain S2 ->
-      forall y, y ∈ space_internal S2 ->
-                σ' y = σ y.
+      state_equiv_on (space_internal S2) (Some σ') (Some σ).
   Proof.
     intros ? ? ? ? ? ? Hwf1 Hwf2 Hdisj1 Hdisj2 Hstep Hx y Hy.
     inversion Hstep as [ ? ? H_event_in Hstep' Hequiv
@@ -1185,13 +1235,13 @@ Module StateSpaceTactics (Export name : NameType).
   Lemma func_space_output_neq : forall I (o : name) f σ v σ' y,
       o ∉ I ->
       func_space I o f ⊢ σ →{Some (Event o v)} Some σ' ->
-      y <> o ->
+      y ∈ I ->
       σ' y = σ y.
   Proof.
     intros ? ? ? ? ? ? ? ? Hstep Hneq.
     inversion Hstep; subst;
     match goal with
-    | [ H : forall y, ?σ' _ = _ |- σ' _ = _ ] => rewrite H; unfold update
+    | [ H : state_equiv_on _ (Some ?σ') _ |- ?σ' _ = _ ] => rewrite H; [unfold update | try solve_set]
     end;
       compare_next; auto.
   Qed.
@@ -1324,6 +1374,8 @@ Section MG_to_SS.
     end.
 
   (* NOTE: this may not be the right relation for all marked graphs--get example from Peter *)
+  Let transition_set : Ensemble name := fmap transition_name (fun (t : transition) => True).
+
   Inductive MG_SS_step
     : state name -> option (event name value) -> option (state name) -> Prop :=
 
@@ -1331,7 +1383,9 @@ Section MG_to_SS.
     x = transition_name t ->
     is_enabled MG t (state_to_marking σ) ->
     v = transition_update_value t (σ x) ->
-    σ' = update (fire_in_state t σ) x v ->
+    state_equiv_on (transition_set ∪ places_set)
+                   (Some σ') 
+                   (Some (update (fire_in_state t σ) x v)) ->
     MG_SS_step σ (Some (Event x v)) (Some σ')
 
   | input_not_enabled σ x v t :
@@ -1384,13 +1438,29 @@ Section MG_to_SS.
       destruct (name_is_place_dec x) as [[t1 [t2 [p Hp]]] | ].
       { (*contradiction *)
         contradict Hexternal. subst.
-        simpl. econstructor; eauto.
+        simpl. inversion 1 as [? [t' [Ht' Hp']] | x [? [? Hp']]]; subst;
+          apply transition_place_name_disjoint in Hp'; auto.
       }
       compare x (transition_name t); auto.
-      contradiction (He (transition_update_value t (σ (transition_name t)))); auto.
+      { contradiction (He (transition_update_value t (σ (transition_name t)))); auto. }
+      { assert (Hx : exists t', x = transition_name t').
+        { inversion Hexternal as [? Hex | ? Hex]; subst;
+           inversion Hex as [t' [Ht Hx]]; subst;
+           eexists; split; auto; constructor.
+        }
+        destruct Hx as [t' Ht']; subst.
+        rewrite H5. 2:{ left. exists t'; split; auto; constructor. }
+        unfold update. compare_next. unfold fire_in_state.
+        destruct (name_is_place_dec (transition_name t'))
+          as [[t1 [t2 [p Hp]]] | ]; auto.
+        { contradict Hp. apply transition_place_name_disjoint. }
+      }
+        
 
     * intros ? ? ? ? Hstep.
       inversion Hstep; subst.
+      rewrite H6.
+      2:{ left. exists t; split; auto; constructor. }
       unfold update; simpl.
       reduce_eqb. auto.
   Qed.
@@ -1408,6 +1478,8 @@ Section MG_to_SS.
     induction Hstep; intros σ Hτ t1 t2 p Hwf; inversion Hτ; subst; auto.
     * specialize (IHHstep σ' eq_refl t1 t2 p Hwf).
       inversion H; subst.
+      rewrite H7.
+      2:{ right. eexists. eexists. exists p. reflexivity. }
       unfold update. compare_next.
       { Search transition_name place_name.
         apply transition_place_name_disjoint in Heq; contradiction.
@@ -1453,7 +1525,6 @@ Section Structural_SS.
     | Hide x S'    => hide x (interp_S S')
     end.
 
-  
 
   Ltac reflect_S_constr S :=
   match S with

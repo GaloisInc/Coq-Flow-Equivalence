@@ -64,7 +64,9 @@ Section TokenMG.
      left_req. *)
 
   (* CLK+ -> L.ack *)
+  (* REDUNDANT
   | clk_rise_left_ack : stage_place clk_rise left_ack
+  *)
   
   (* CLK+ -> R.req *)
   | clk_rise_right_req : stage_place clk_rise right_req
@@ -77,7 +79,9 @@ Section TokenMG.
   
   (* CLK+ -> CLK- *)
   | clock_fall : stage_place clk_rise clk_fall
+  (* REDUNDANT
   | clock_rise : stage_place clk_fall clk_rise
+  *)
   
   (* left_req -> CLK+ *)
   (* right_ack -> CLK+ *)
@@ -99,27 +103,27 @@ Section TokenMG.
     | Token, NonToken => fun t1 t2 p => match p with
                                       | left_req_clk_rise => 1
                                       | right_ack_clk_rise => 1
-                                      | clock_rise => 1
+(*                                      | clock_rise => 1*)
                                       | _ => 0
                                       end
     (* Traditional token stage *)
     | NonToken, Token => fun t1 t2 p => match p with
                                         | left_ack_left_req => 1
                                         | right_req_right_ack => 1
-                                        | clock_rise => 1
+(*                                        | clock_rise => 1*)
                                         | _ => 0
                                         end
     (* Token with left token stage *)
     | Token, Token    => fun t1 t2 p => match p with
                                       | left_req_clk_rise => 1
                                       | right_req_right_ack => 1
-                                      | clock_rise => 1
+(*                                      | clock_rise => 1*)
                                       | _ => 0
                                       end
     | NonToken, NonToken => fun t1 t2 p => match p with
                                            | left_ack_left_req => 1
                                            | right_ack_clk_rise => 1
-                                           | clock_rise => 1
+(*                                           | clock_rise => 1*)
                                            | _ => 0
                                       end
     end.
@@ -180,11 +184,11 @@ Section TokenMG_to_SS.
         [ left; do 3 eexists; reflexivity | ].
     compare_place_name x left_ack_left_req. Print stage_place.
     compare_place_name x clk_fall_left_ack.
-    compare_place_name x clk_rise_left_ack.
+(*    compare_place_name x clk_rise_left_ack.*)
     compare_place_name x clk_rise_right_req.
     compare_place_name x right_req_right_ack.
     compare_place_name x clock_fall.
-    compare_place_name x clock_rise.
+(*    compare_place_name x clock_rise.*)
     compare_place_name x left_req_clk_rise.
     compare_place_name x right_ack_clk_rise.
     right. intros t1 t2 p; destruct p; auto.
@@ -786,9 +790,10 @@ Print stage_place.
 
   | lack_lreq_marked σ :
     σ (ack (latch_input l)) = σ (req (latch_input l)) -> prop_marked left_ack_left_req σ
+
   | rreq_rack_marked σ :
     σ (req (latch_output l)) = neg_value (σ (ack (latch_output l))) ->
-    prop_marked right_req_right_ack σ
+    prop_marked right_req_right_ack σ (* right_req -> right_ack *)
 
   | clk_fall_left_ack_marked σ :
     σ (latch_clk l) = Bit0 ->
@@ -800,18 +805,33 @@ Print stage_place.
   | clk_fall_left_ack_state0_marked σ :
     σ (latch_clk l) = Bit0 ->
     σ (latch_old_clk l) = Bit1 ->
-(*
-    σ (ack (latch_input l)) = match latch_to_token_flag l with
-                              | Token => neg_value (σ (latch_state0 l))
-                              | NonToken => σ (latch_state0 l)
-                              end ->
-*)
-
     prop_marked clk_fall_left_ack σ
+
+
+  | clk_rise_right_req_marked σ :
+    σ (latch_clk l) = Bit1 ->
+    σ (latch_old_clk l) = Bit0 ->
+    prop_marked clk_rise_right_req σ
+
+  | clk_rise_right_req_marked_state0 σ :
+    σ (req (latch_output l)) <> σ (latch_state0 l) ->
+    prop_marked clk_rise_right_req σ
 
   .
 
 Import ClickTactics.
+
+      
+Lemma val_is_bit_neq_neg : forall v1 v2,
+    val_is_bit v1 \/ val_is_bit v2 ->
+    neg_value v1 = v2 ->
+    v1 <> v2.
+Proof.
+  intros v1 v2 [H | H] Heq; inversion H; subst; try (inversion 1; fail);
+    destruct v1 as [[|[|n]]|]; try find_contradiction.
+Qed.
+
+
 
   Lemma step_implies_prop_marked : forall σ t σ',
     wf_stage_state l σ ->
@@ -849,15 +869,34 @@ Import ClickTactics.
       destruct l; simpl; auto; rewrite val_is_bit_neg_neg; [auto| solve_val_is_bit].
     }
 
-    { (* clk_rise_left_ack *) admit. }
+    { (* clk_rise_right_req *) 
+      replace (transition_event l right_req σ)
+        with  (Event (req (latch_output l)) (neg_value (σ (req (latch_output l)))))
+        in    Hstep
+        by    auto.
+      apply clk_rise_right_req_marked_state0.
+      assert (Hstate0 : σ' (latch_state0 l) = σ (latch_state0 l))
+        by (step_inversion_neq; auto).
+      assert (Hreq : σ' (req (latch_output l)) = neg_value (σ (req (latch_output l))))
+        by (rewrite_step_inversion; auto).
 
-    { (* clk_rise_right_req *) admit. }
+      assert (Hstable : ~ stable (latch_right_req_component l) σ).
+      { repeat step_inversion_1.
+        intros [_ Hstable].
+        specialize (Hstable _ _ Hstep).
+        inversion Hstable; subst. contradict pf. solve_set.
+      }
+      intros Heq.
+      contradict Hstable.
+        Search stable func_space.
+      apply func_stable_equiv; auto. solve_set.
+   }
 
-    { (* right_req_right_ack *)
+   { (* right_req_right_ack *)
       constructor.
       step_inversion_eq.
       simpl in Hstep. auto.
-    }
+   }
   Admitted.
 
   (* Helper lemmas for relate_implies_marked below *)
@@ -869,12 +908,17 @@ Import ClickTactics.
   Admitted.
 
   Lemma flop_not_stable : forall σ,
-    σ (latch_clk l) = Bit0 ->
+(*    σ (latch_clk l) = Bit0 ->*)
+    wf_stage_state l σ ->
+    σ (latch_state0 l) <> σ (latch_not_state0 l) ->
     σ (latch_clk l) <> σ (latch_old_clk l) ->
     ~ stable (latch_flop_component l) σ.
   Proof.
     set (Hdisjoint := scheme_all_disjoint l).
-    intros σ Hclk Hold.
+    intros σ Hwf Hstate0 Hold.
+    assert (Hclk : val_is_bit (σ (latch_clk l))) by solve_val_is_bit.
+    inversion Hclk as [H0 | H1].
+    {
       assert (Hstep' : exists τ, latch_flop_component l ⊢ σ →{None} τ).
       { eexists. Print hide_step.
         apply Hide_Neq; [ | inversion 1].
@@ -883,16 +927,84 @@ Import ClickTactics.
         apply union_step_1; [ inversion 1 | |].
         apply union_step_1; [ inversion 1 | |].
         apply Flop_clk_fall; auto.
-        { rewrite Hclk; inversion 1. }
+        { rewrite <- H0; inversion 1. }
         { intros x Hx. unfold space_domain in *; simpl in *.
           unfold update. compare_next; auto. contradict Hx; solve_set. }
         { intros x Hx. unfold space_domain in *; simpl in *.
           unfold update. compare_next; auto. contradict Hx; solve_set. }
       }
-    destruct Hstep' as [τ Hstep'].
-    intros [_ Hstable].
-    specialize (Hstable None τ Hstep').
-    contradict Hstable. inversion 1.
+      destruct Hstep' as [τ Hstep'].
+      intros [_ Hstable].
+      specialize (Hstable None τ Hstep').
+      contradict Hstable. inversion 1.
+    }
+    { assert (σ (@dp_reset_n even odd _) = Bit1).
+      { Print wf_stage_state. eapply wf_dp_reset_n; eauto. }
+      assert (σ (latch_hidden l) = Bit1).
+      { apply wf_hidden; auto. }
+
+      assert (Hstep' : exists τ,
+        latch_flop_component l ⊢ σ →{Some (Event (latch_state0 l) (neg_value (σ (latch_state0 l))))}
+                                      τ).
+      { eexists.
+        apply Hide_Neq. 2:{ inversion 1; subst. contradict pf; solve_set. }
+        apply Hide_Neq. 2:{ inversion 1; subst. contradict pf; solve_set. }
+        apply union_step_1. 1:{ inversion 1; subst. contradict pf. unfold space_domain; solve_set. }
+        apply union_communicate.
+        { apply driven_by_1; constructor; solve_set. }
+        2:{ apply func_input_stable; [solve_set | | ].
+            Search neg_value. symmetry.
+            apply val_is_bit_neq; auto; try solve_val_is_bit.
+            intro. shelve.
+        }
+        
+        { apply Flop_clk_rise; [ destruct l; simpl; auto
+                               | destruct l; simpl; auto
+                               | auto
+                               | auto
+                               | |].
+          { intros Heq. rewrite Heq in Hold.
+            apply Hold. auto.
+          }
+          { apply val_is_bit_neq; auto; solve_val_is_bit. }
+        }
+        { intros x Hx. unfold space_domain in Hx; simpl in Hx.
+          decompose_set_structure.
+          unfold update. repeat compare_next; auto.
+        }
+    Unshelve.
+        { unfold update. 
+          compare_next. compare_next; auto.
+repeat compare_next; auto.
+
+
+          { unfold update. apply functional_extensionality; intros x.
+            compare_next; auto. compare_next; auto.
+            compare_next.
+            (* clk = 1, old_clk = 0, state0 = 1
+
+
+Print wf_stage_state.
+            2:{ (* TODO: add wf_dp_reset_n *) admit. }
+            { (* latch_hidden *)
+
+            compare (σ (latch_not_state0 l))
+                    (σ (latch_state0 l)).
+
+            { About func_input_unstable. apply func_input_unstable; [solve_set | | |].
+              { rewrite Heq.
+                inversion Hstate0; inversion 1. }
+              { unfold update. reduce_eqb.
+
+              symmetry.
+              apply val_is_bit_neq.
+
+
+
+Print func_step.
+
+            apply func_input_stable; [ solve_set | |shelve].
+            { (* if they are equal, then FLOP is not stable *)
   Qed.
 
 
@@ -1014,6 +1126,20 @@ Print prop_marked.
         rewrite H, H0.
         inversion 1.
       }
+
+  * (* t = right_req (1) *)
+    replace (transition_event l right_req σ)
+          with (Event (req (latch_output l)) (neg_value (σ (req (latch_output l)))))
+          in Hstep
+          by auto.
+    replace (σ0 (latch_clk l)) with (σ (latch_clk l)) in *
+      by (step_inversion_neq; auto).
+    replace (σ0 (latch_old_clk l)) with (σ (latch_old_clk l)) in *
+      by (step_inversion_neq; auto).
+    assert (~ stable (latch_flop_component l) σ).
+    { Search stable latch_flop_component.
+      
+    step_inversion_eq.
 
   Admitted.
 
@@ -1154,6 +1280,7 @@ Print prop_marked.
       exists tr.
       econstructor; eauto.
   Qed.
+
 
   Lemma relate_implies_marked : forall σ m,
     state_relate_marking l σ m ->

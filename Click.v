@@ -606,6 +606,9 @@ Module WFStage (Export EO : EvenOddType).
     ; wf_latch_input  : wf_handshake (latch_input l)  σ
     ; wf_latch_output : wf_handshake (latch_output l) σ
     ; wf_ctrl_reset_n : σ (@ctrl_reset_n even odd _) = Bit1
+    ; wf_dp_reset_n : σ (@dp_reset_n even odd _) = Bit1
+    ; wf_hidden : σ (latch_hidden l) = Bit1
+(*
     ; wf_flop_stable  : ~ stable (latch_flop_component l) σ ->
                               stable (latch_clk_component l) σ
                            /\ stable (latch_left_ack_component l) σ
@@ -614,13 +617,12 @@ Module WFStage (Export EO : EvenOddType).
                               stable (latch_flop_component l) σ
                            /\ stable (latch_left_ack_component l) σ
                            /\ stable (latch_right_req_component l) σ
+*)
     ; wf_left_ack_stable  : ~ stable (latch_left_ack_component l) σ ->
-                              stable (latch_clk_component l) σ
-                           /\ stable (latch_flop_component l) σ
+                              stable (latch_flop_component l) σ
 
     ; wf_right_req_stable : ~ stable (latch_right_req_component l) σ ->
-                              stable (latch_clk_component l) σ
-                           /\ stable (latch_flop_component l) σ
+                              stable (latch_flop_component l) σ
 
 
     }.
@@ -670,22 +672,9 @@ Module WFStage (Export EO : EvenOddType).
           destruct l; try constructor.
       }
 
-      { intros Hstable; contradict Hstable.
-        constructor.
-        { repeat apply hide_wf; try solve_set.
-          apply wf_union;
-            [unfold space_domain; solve_set | unfold space_domain; solve_set |
-            | apply func_wf; solve_set ].
-          apply wf_union;
-            [unfold space_domain; solve_set | unfold space_domain; solve_set |
-            | apply func_wf; solve_set ].
-          apply flop_wf. destruct l; simpl; repeat constructor; solve_set.
-       }
-       admit (* TODO *).
-    }
-    { intros Hstable; contradict Hstable. admit (* TOOD *). }
-    { intros Hstable; contradict Hstable. admit (* TOOD *). }
-    { intros Hstable; contradict Hstable. admit (* TOOD *). }
+
+      { admit (*TODO *). }
+      { admit (*TODO *). }
   Admitted.
 
 
@@ -752,7 +741,7 @@ Module WFStage (Export EO : EvenOddType).
 
   | [ H : wf_stage_state ?l ?σ |- val_is_bit (?σ ?x) ] =>
     apply (wf_all_bits H); solve_space_domain
-
+x
   | [ |- context[ latch_to_token_flag ?l ] ] => destruct l; simpl
 
   | [ Hwf1 : forall x, x ∈ ?X -> val_is_bit (?σ x) |- context[?σ ?y] ] =>
@@ -791,6 +780,7 @@ Module WFStage (Export EO : EvenOddType).
     rewrite latch_stage_with_env_input, latch_stage_with_env_output in Hx.
     rewrite latch_stage_input, latch_stage_output in Hx.
 
+(*
     decompose_set_structure;
     (constructor;
       [ intros y Hy;
@@ -803,11 +793,9 @@ Module WFStage (Export EO : EvenOddType).
       | try solve_val_is_bit
       | admit
       | admit
-      | admit
       | admit (*TODO*)
       ]);
       try (step_inversion_neq; auto; solve_val_is_bit; fail).
-
 
     * (* wf_handshake latch_input *)
       assert (v_bit : val_is_bit v).
@@ -869,6 +857,7 @@ Module WFStage (Export EO : EvenOddType).
         + rewrite Hwf4. simpl.
           inversion req_bit; inversion ack_bit; inversion state0_bit; simpl;
           constructor.
+*)
 
   Admitted.
 
@@ -976,14 +965,15 @@ Ltac step_inversion_None :=
         try (repeat step_inversion_1; repeat rewrite_wf_scoped;
              inversion Hwf3; auto; fail).
       ++ repeat compare_next. inversion Hwf3; auto.
+
+
     + step_inversion_None; repeat step_inversion_1. 
       { erewrite wf_update; [ | | eauto ]; [ | solve_wf].
         step_inversion_eq; subst; auto.
       }
       { rewrite_wf_scoped; auto. }
 
-    + admit.
-    + admit.
+
     + admit.
     + admit.
   Admitted.
