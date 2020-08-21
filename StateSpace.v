@@ -1139,6 +1139,16 @@ Module StateSpaceTactics (Export name : NameType).
     }
   Qed.
 
+  Lemma union_inversion_lr : forall (S1 S2 : StateSpace name) σ x v σ',
+    (S1 ∥ S2) ⊢ σ →{Some (Event x v)} Some σ' ->
+    x ∈ space_domain S1 ∩ space_domain S2 ->
+    S1 ⊢ σ →{Some (Event x v)} Some σ' /\ S2 ⊢ σ →{Some (Event x v)} Some σ'.
+  Proof.
+    intros ? ? ? ? ? ? Hstep Hdom.
+    split; [eapply union_inversion_left | eapply union_inversion_right];
+      eauto; decompose_set_structure.
+  Qed.
+
   Lemma union_inversion : forall (S1 S2 : StateSpace name) e σ σ',
     (S1 ∥ S2) ⊢ σ →{e} Some σ' ->
     S1 ⊢ σ →{e} Some σ' \/ S2 ⊢ σ →{e} Some σ'.
@@ -1253,8 +1263,14 @@ About state_equiv_on.
     intros. inversion H.
   Qed.
 
+About union_inversion_lr.
   Ltac step_inversion_1 :=
   match goal with
+  | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
+      apply union_inversion_lr in Hstep;
+          (* the left;right is that we should only succeedd here if x ∈ output(S1) *)
+      [ let Hstep' := fresh "Hstep" in destruct Hstep as [Hstep Hstep']
+      | unfold space_domain; simpl; solve_set; fail]
   | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
       apply union_inversion_left in Hstep;
           (* the left;right is that we should only succeedd here if x ∈ output(S1) *)

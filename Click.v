@@ -667,11 +667,9 @@ Module WFStage (Export EO : EvenOddType).
           apply handshake_out_of_sync.
           rewrite Hack, Hreq; auto.
       }
-      { unfold σR; reduce_eqb.
-        repeat (compare_next; try constructor);
-          destruct l; try constructor.
-      }
-
+      { unfold σR; repeat compare_next; constructor. }
+      { unfold σR. repeat compare_next; try constructor. }
+      { unfold σR. repeat compare_next; try constructor. }
 
       { admit (*TODO *). }
       { admit (*TODO *). }
@@ -888,16 +886,23 @@ match goal with
     assert (Hneq : forall v, e <> Some (Event x v))
       by (intro; inversion 1; subst; find_contradiction);
     let Hinternal := fresh "Hinternal" in
-    assert (Hinternal : x ∉ space_internal S)
-      by (simpl; solve_set);
+    assert (Hinternal : x ∈ space_input S ∪ space_output S)
+      by (simpl; unfold space_domain in *;
+             try (decompose_set_structure; solve_set); fail);
     rewrite (wf_scoped _ _ Hwf _ _ _ Hstep _ Hneq Hinternal)
 end.
 
 
 Ltac step_inversion_None :=
-             repeat match goal with
+             try match goal with
              | [ Hstep : _ ⊢ _ →{None} Some _ |- _ ] => step_inversion_1
-             | [ Hstep : _ ⊢ _ →{Some _ } Some _ |- _ ] => step_inversion_neq; solve_val_is_bit; fail
+             end;
+             try match goal with
+             | [ Hstep : _ ⊢ _ →{Some (Event ?y ?v) } Some ?σ' |- context[ ?σ' ?x ] ] =>
+               compare x y;
+               repeat step_inversion_1
+
+(*
              | [ |- context[update] ] => unfold update; compare_next; try solve_val_is_bit
              | [ Hstep : _ ⊢ _ →{Some (Event ?y _)} Some ?σ' |- context[?σ' ?x] ] =>
                repeat step_inversion_1;
@@ -910,9 +915,23 @@ Ltac step_inversion_None :=
                    step_inversion_eq; subst; try constructor; solve_val_is_bit
                  end
                | rewrite_wf_scoped; solve_val_is_bit
-               ]
+               ]*)
              end.
 
+Ltac rewrite_state_equiv :=
+  match goal with
+  | [ H : state_equiv_on _ (Some ?σ') (Some _) |- context[?σ'] ] =>
+      rewrite H; [ | solve_set]
+  end.
+
+Lemma latch_stage_with_env_internal' : forall l,
+       space_internal (latch_stage_with_env l)
+    == from_list [latch_state0 l; latch_not_state0 l
+                 ; latch_old_clk l; latch_hidden l
+                 ; @ctrl_reset_n even odd _; @dp_reset_n even odd _].
+Proof.
+    intros. simpl. split; intros x Hx; decompose_set_structure; solve_set.
+Qed.
   Lemma step_wf_state_eps : forall l σ σ',
     wf_stage_state l σ ->
     latch_stage_with_env l ⊢ σ →{None} Some σ' ->
@@ -921,12 +940,88 @@ Ltac step_inversion_None :=
     intros l σ σ' [Hwf1 Hwf2 Hwf3 Hwf4] Hstep.
     set (Hdisjoint := scheme_all_disjoint l).
     constructor.
+    { intros x Hdom. rewrite dom_latch_stage_with_env in Hdom.
 
-    + intros x Hx. 
+      do 3 step_inversion_1.
+      2:{ compare x (latch_state0 l).
+          { repeat step_inversion_1. 
+            replace (σ' (latch_state0 l)) with x0.
+            2:{ apply wf_update in Hstep2; auto.
+                apply flop_wf. destruct l; repeat constructor; try solve_set.
+              }
+            apply flop_output_is_bit in Hstep2; auto.
+            { destruct l; repeat constructor; solve_set. }
+            solve_val_is_bit.
+         }
+         { repeat step_inversion_1. Print well_formed.
+           
+           apply func_space_output_inversion in Hstep1.
+         
+
+solve_val_is_bit.
+apply func_space_output_inversion in Hstep2.
+
+do 11 (try step_inversion_1).
+        
+
+repeat step_inversion_1.
+        
+      unfold
+      
+
+      step_inversion_None.
+
+      rewrite H2. 2:{ solve_set.
+      rewrite_state_equiv.
 
       destruct (x ∈? space_internal (latch_stage_with_env l)).
       2:{ rewrite_wf_scoped. solve_val_is_bit. }
-      1:{ step_inversion_None.
+      1:{ rewrite latch_stage_with_env_internal' in *. 
+          decompose_set_structure.
+          step_inversion_None.
+          rewrite H2. 2:{ solve_set. }
+          unfold update. compare_next.
+
+step_inversion_1. 2:{ step_inversion_1. }
+          step_inversion_1. 1:{ step_inversion_1. }
+          step_inversion_1. 2:{ repeat step_inversion_1. 
+            compare x (latch_state0 l).
+            2:{
+
+  erewrite (wf_scoped _ _ _ _ _ _ Hstep).
+    3:{ simpl. solve_set.
+
+match goal with
+| [ Hstep : ?S ⊢ ?σ →{ ?e } Some ?σ' |- context[?σ' ?x] ] =>
+    match S with
+    | context[x] => 
+    erewrite (wf_scoped _ _ _ _ _ _ Hstep)
+    end
+end.
+
+    let Hwf := fresh "Hwf" in
+    assert (Hwf : well_formed S) by solve_wf;
+    let Hneq := fresh "Hneq" in
+    assert (Hneq : forall v, e <> Some (Event x v))
+      by (intro; inversion 1; subst; find_contradiction);
+    let Hinternal := fresh "Hinternal" in
+    assert (Hinternal : x ∈ space_input S ∪ space_output S) end.
+simpl. solve_set.
+      by (simpl; unfold space_domain in *;
+             try (decompose_set_structure; solve_set); fail);
+    rewrite (wf_scoped _ _ Hwf _ _ _ Hstep _ Hneq Hinternal)
+
+
+rewrite_wf_scoped.
+
+apply union_inversion_lr in Hstep.
+          (* the left;right is that we should only succeedd here if x ∈ output(S1) *)
+      [ | unfold space_domain; simpl; solve_set; fail]
+  
+step_inversion_1. step_inversion_neq.
+
+step_inversion_None.
+repeat step_inversion_1. step_inversion_None.
             ++ repeat step_inversion_1.
                assert (all_disjoint
                        [match latch_to_token_flag l with
