@@ -1550,6 +1550,71 @@ Section HideStateSpace.
       inversion Hstep; subst; auto.
       eapply wf_update0; eauto.
   Qed.
+
+
+  Context `{S_functional : functional_step_relation S}.
+  Definition hide_step_fun (σ : state name) (e : option (event name value)) :=
+    match e with
+    | None => (* either an epsilong transition from S, or an x transition from S *)
+      (fun_step S σ None) ∪ (fun τ => exists v, fun_step S σ (Some (Event x v)) τ)
+    | Some (Event y v) =>
+      if x =? y
+      then ∅
+      else fun_step S σ (Some (Event y v))
+    end.
+
+  Print functional_step_relation.
+  Lemma hide_fun_step_in : forall σ e τ,
+    hide ⊢ σ →{e} τ ->
+    τ ∈ hide_step_fun σ e.
+  Proof.
+    intros σ e τ Hstep.
+    destruct Hstep as [v τ Hstep | e τ Hstep He].
+    * right. exists v.
+      apply fun_step_in; auto.
+    * destruct e as [[y v] | ].
+      + simpl. compare_next.
+        { contradict He. constructor. solve_set. }
+        apply fun_step_in; auto.
+      + left. apply fun_step_in; auto.
+  Qed.
+
+  Lemma hide_fun_in_step : forall σ e τ,
+    τ ∈ hide_step_fun σ e ->
+    hide ⊢ σ →{e} τ.
+  Proof.
+    intros σ e τ Hτ. unfold hide_step_fun in Hτ.
+    destruct e as [[y v] | ].
+    * compare_next.
+      { rewrite Heq in Hτ. reduce_eqb. }
+      { apply Hide_Neq.
+        { apply fun_in_step; auto. }
+        { inversion 1; subst.
+          decompose_set_structure. }
+      }
+    * decompose_set_structure.
+      { apply Hide_Neq.
+        { apply fun_in_step; auto. }
+        { inversion 1. }
+      }
+      { destruct H as [v Hτ].
+        eapply Hide_Eq.
+        apply fun_in_step; eauto.
+      }
+  Qed.
+
+
+  Instance hide_functional : functional_step_relation hide :=
+  {| fun_step := hide_step_fun
+   ; fun_step_in := hide_fun_step_in
+   ; fun_in_step := hide_fun_in_step
+   |}.
+  Proof.
+    * simpl. unfold hide_input. destruct S_functional; auto.
+    * simpl. unfold hide_output. destruct S_functional; typeclasses eauto.
+    * simpl. unfold hide_internal. destruct S_functional; typeclasses eauto.
+  Defined.
+
 End HideStateSpace.
 
 
@@ -1730,6 +1795,138 @@ when set and reset lines are X:
     stable flop σ ->
     flop_stable σ.
 *)
+
+Print flop_step.
+Print flop_stable.
+  Print eqb. Locate "=?".
+
+  Definition flop_step_fun (σ : state name) (e : option (event name value)) :=
+    match e with
+    | None => (* must be flop_clk_fall *)
+      if σ clk =? Num 1
+      then ∅
+      else if σ clk =? σ old_clk
+      then ∅
+      else singleton (Some (update σ old_clk (σ clk)))
+    | Some (Event x v) =>
+
+      if x ∈? flop_input
+      (* Flop_input *)
+      then if (* flop_stable *) ((σ Q =? Q_output σ) && (σ clk =? σ old_clk))%bool
+           then singleton (Some (update σ x v))
+           else if (* still safe *) Q_output σ =? Q_output (update σ x v)
+           then singleton (Some (update σ x v))
+           else singleton None
+      else if x =? Q
+      then if ((σ set =? Num 0) (* Flop_set *)
+            && negb (σ Q =? Num 1)
+            && (v =? Num 1))%bool
+           then singleton (Some (update σ Q (Num 1)))
+           else if ((σ set =? Num 1) (* Flop_set *)
+                 && (σ reset =? Num 0) (* Flop_reset *)
+                 && negb (σ Q =? Num 0)
+                 && (v =? Num 0))%bool
+                then singleton (Some (update σ Q (Num 0)))
+           else if ((σ set =? Num 1) (* Flop_set *)
+                 && (σ reset =? Num 1) (* Flop_reset *)
+                 && (σ clk =? Num 1) (* Flop_clk_rise *)
+                 && negb (σ old_clk =? Num 1)
+                 && (v =? σ D))%bool
+           then singleton (Some (update (update σ Q v) old_clk (Num 1)))
+           else ∅
+       else ∅
+   end.
+
+
+  Lemma flop_fun_step_in : forall σ e τ,
+    flop ⊢ σ →{e} τ ->
+    τ ∈ flop_step_fun σ e.
+  Proof.
+    intros σ e τ Hstep.
+    destruct Hstep.
+    * unfold flop_step_fun; subst.
+      Search (_ ∈? _).
+      destruct (i ∈? flop_input); [ | find_contradiction].
+      destruct H as [Hstable | Hchange].
+      + unfold flop_stable in Hstable.
+        destruct Hstable.
+        compare_next. simpl.
+        solve_set.
+      + repeat compare_next; simpl; solve_set.
+    * unfold flop_step_fun.
+      destruct (i ∈? flop_input); [ | find_contradiction].
+      repeat compare_next; simpl; try solve_set.
+      { (* contradiction *) contradict H. unfold flop_stable. auto. }
+    * unfold flop_step_fun.
+      destruct (Q ∈? flop_input) as [HQ | HQ];
+        [ unfold flop_input in HQ; decompose_set_structure | ].
+      repeat (compare_next; simpl; try solve_set).
+    * subst.  unfold flop_step_fun.
+      destruct (Q ∈? flop_input) as [HQ | HQ];
+        [ unfold flop_input in HQ; decompose_set_structure | ].
+      repeat (compare_next; simpl; try solve_set).
+    * subst.  unfold flop_step_fun.
+      destruct (Q ∈? flop_input) as [HQ | HQ];
+        [ unfold flop_input in HQ; decompose_set_structure | ].
+      repeat (compare_next; simpl; try solve_set).
+    * subst.  unfold flop_step_fun.
+      destruct (Q ∈? flop_input) as [HQ | HQ];
+        [ unfold flop_input in HQ; decompose_set_structure | ].
+      repeat (compare_next; simpl; try solve_set).
+  Qed.
+
+  Lemma flop_fun_in_step : forall σ e τ,
+    τ ∈ flop_step_fun σ e ->
+    flop ⊢ σ →{e} τ.
+  Proof.
+    intros σ e τ Hstep.
+    unfold flop_step_fun in Hstep.
+    destruct e as [[x v] | ].
+    2:{ compare_next; [rewrite Heq in Hstep; reduce_eqb | ].
+        compare_next; [rewrite Heq in Hstep; reduce_eqb | ].
+        decompose_set_structure.
+        apply Flop_clk_fall; auto.
+    }
+    destruct (x ∈? flop_input).
+    { repeat (compare_next;
+        try match goal with
+            | [ H : ?x = ?y 
+            , H' : context[ ?x =? ?y ] |- _ ] =>
+            rewrite H in H'; reduce_eqb; simpl in H'
+            end);
+        simpl in *;
+        decompose_set_structure;
+        try (apply Flop_input; auto; unfold flop_stable; auto; fail);
+        try (apply Flop_input_err; auto; unfold flop_stable; inversion 1; find_contradiction).
+    }
+    compare x Q.
+
+    repeat (compare_next;
+        try match goal with
+            | [ H : ?x = ?y 
+            , H' : context[ ?x =? ?y ] |- _ ] =>
+            rewrite H in H'; reduce_eqb; simpl in H'
+            end);
+      simpl in *;
+      decompose_set_structure;
+    
+    match goal with
+    | [ H : σ set = Num 0 |- _ ] => apply Flop_set; auto
+    | [ H : σ reset = Num 0 |- _ ] => apply Flop_reset; auto
+    | [ |- _ ] => apply Flop_clk_rise; auto; repeat my_subst; auto
+    end.
+    { (* easy *) rewrite Heq. inversion 1. }
+  Qed.
+
+  
+  Instance flop_functional : functional_step_relation flop :=
+  {| fun_step := flop_step_fun
+   ; fun_step_in := flop_fun_step_in
+   ; fun_in_step := flop_fun_in_step
+   |}.
+
+
+
 
 
 End Flop.
