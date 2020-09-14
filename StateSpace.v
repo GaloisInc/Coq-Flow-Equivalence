@@ -1238,6 +1238,31 @@ About state_equiv_on.
       { constructor. }
   Qed.
 
+Ltac compare_next_in_list_dec :=
+  match goal with
+  | [ Hstep : ?S ⊢ _ →{Some (Event ?x _)} _
+    |- context[ in_list_dec ?x (enumerate (space_domain ?S) _) ] ]=>
+    let Hin := fresh "Hin" in
+    assert (Hin : x ∈ space_domain S)
+      by (apply wf_space in Hstep;
+           [unfold space_domain; solve_set | auto]);
+    rewrite as_list_equiv in Hin;
+    to_in_list_dec;
+    rewrite Hin;
+    clear Hin;
+    simpl
+  | [ Hevent : ~ event_in ?X (Some (Event ?x _))
+    |- context[ in_list_dec ?x (enumerate ?X _) ] ] =>
+    let Hin := fresh "Hin" in
+    assert (Hin : x ∉ X)
+      by (intro; contradict Hevent; constructor; auto);
+    rewrite as_list_equiv in Hin;
+    to_in_list_dec;
+    rewrite Hin;
+    clear Hin;
+    simpl
+  end.
+
   Lemma union_implies_union_step_fun : forall σ e τ,
     union ⊢ σ →{e} τ -> τ ∈ union_step_fun σ e.
   Proof.
@@ -1246,15 +1271,14 @@ About state_equiv_on.
       repeat match goal with
       | [ H : S1 ⊢ _ →{_} _ |- _ ] => rename H into Hstep1
       | [ H : S2 ⊢ _ →{_} _ |- _ ] => rename H into Hstep2
+      end;
+      try match goal with
+      | [ H : state_equiv_on (space_domain _) (Some _) ?τ |- _ ] =>
+        let σ' := fresh "σ'" in
+        destruct τ as [ σ' | ]; [ | find_contradiction]
       end.
 
     * unfold union_step_fun.
-
-      assert (Hτ : exists σ', τ = Some σ').
-      { destruct τ as [ σ'' | ]; [exists σ''; auto | ].
-        find_contradiction.
-      }
-      destruct Hτ as [ σ' Hσ' ]; subst.
 
       destruct e as [[x v] | ].
       2:{ left.
@@ -1264,25 +1288,10 @@ About state_equiv_on.
             rewrite <- as_list_equiv; auto.
           }
       }
-      { assert (Hx1 : x ∈ space_domain S1).
-        { apply wf_space in Hstep1; auto.
-          unfold space_domain; solve_set.
-        }
-        rewrite as_list_equiv in Hx1.
-        to_in_list_dec.
-        rewrite Hx1.
-
-        assert (Hx2 : x ∉ space_domain S2).
-        { intros Hx2.
-          match goal with
-          | [ Hevent : ~ event_in (space_domain S2) (Some (Event x v)) |- _ ] => contradict Hevent
-          end.
-          constructor. auto.
-        }
-        rewrite as_list_equiv in Hx2.
-        to_in_list_dec.
-        rewrite Hx2.
-        simpl.
+      { 
+    
+        compare_next_in_list_dec.
+        compare_next_in_list_dec.
         split.
         { apply fun_step_in; auto. }
         { apply state_equiv_on_implies_list.
@@ -1292,13 +1301,6 @@ About state_equiv_on.
 
 
     * unfold union_step_fun.
-
-      assert (Hτ : exists σ', τ = Some σ').
-      { destruct τ as [ σ'' | ]; [exists σ''; auto | ].
-        find_contradiction.
-      }
-      destruct Hτ as [ σ' Hσ' ]; subst.
-
       destruct e as [[x v] | ].
       2:{ right.
           split.
@@ -1307,33 +1309,15 @@ About state_equiv_on.
             rewrite <- as_list_equiv; auto.
           }
       }
-      { assert (Hx2 : x ∈ space_domain S2).
-        { apply wf_space in Hstep2; auto.
-          unfold space_domain; solve_set.
-        }
-        rewrite as_list_equiv in Hx2.
-        to_in_list_dec.
-        rewrite Hx2.
-
-        assert (Hx1 : x ∉ space_domain S1).
-        { intros Hx1.
-          match goal with
-          | [ Hevent : ~ event_in (space_domain S1) (Some (Event x v)) |- _ ] => contradict Hevent
-          end.
-          constructor. auto.
-        }
-        rewrite as_list_equiv in Hx1.
-        to_in_list_dec.
-        rewrite Hx1.
-        simpl.
-        split.
-        { apply fun_step_in; auto. }
-        { apply state_equiv_on_implies_list.
-          rewrite <- as_list_equiv; auto.
-        }
+      compare_next_in_list_dec.
+      compare_next_in_list_dec.
+      split.
+      { apply fun_step_in; auto. }
+      { apply state_equiv_on_implies_list.
+        rewrite <- as_list_equiv; auto.
       }
 
-    * rename H3 into Hstep2.
+    * (*rename H3 into Hstep2.*)
 
       destruct e as [[x v] | ]; simpl.
       2:{ (* contradiction *)
@@ -1342,23 +1326,9 @@ About state_equiv_on.
           | [ H : event_in _ None |- _ ] => inversion H; fail
           end.
       }
-
-      assert (Hx1 : x ∈ space_domain S1).
-      { apply wf_space in Hstep1; auto.
-        unfold space_domain; solve_set.
-      }
-      assert (Hx2 : x ∈ space_domain S2).
-      { apply wf_space in Hstep2; auto.
-        unfold space_domain; solve_set.
-      }
-
-      rewrite as_list_equiv in Hx1;
-      rewrite as_list_equiv in Hx2;
-      to_in_list_dec;
-      rewrite Hx1, Hx2; simpl;
-      apply fun_step_in in Hstep1;
-      apply fun_step_in in Hstep2;
-      try solve_set.
+      compare_next_in_list_dec.
+      compare_next_in_list_dec.
+      split; apply fun_step_in; auto.
   Qed.
 
   Lemma in_join_domain_implies_union_input_event : forall x v,
