@@ -599,6 +599,7 @@ Module WFStage (Export EO : EvenOddType).
     ; wf_ctrl_reset_n : σ (@ctrl_reset_n even odd _) = Bit1
     }.
 
+
   Lemma step_wf_state_σR : forall l,
     wf_stage_state l (σR l).
   Proof.
@@ -722,6 +723,51 @@ Module WFStage (Export EO : EvenOddType).
   End ClickTactics.
   Import ClickTactics.
 
+  Existing Instance singleton_enumerable.
+  Existing Instance empty_enumerable.
+  Existing Instance from_list_enumerable.
+  Instance stage_functional : forall l, functional_step_relation _ (latch_stage_with_env l).
+  Proof.
+    intros l.
+    set (Hdisjoint := scheme_all_disjoint l).
+    unfold latch_stage_with_env.
+    repeat match goal with
+    | [ |- functional_step_relation _ _ ] => apply union_functional
+    | [ |- functional_step_relation _ _ ] => apply func_functional
+    | [ |- functional_step_relation _ _ ] => apply hide_functional
+    | [ |- functional_step_relation _ _ ] => apply flop_functional;
+        repeat constructor; try solve_set;
+                            try (destruct l; solve_set)
+    | [ |- eq_dec _ ] => typeclasses eauto
+    | [ |- in_dec _ ] => typeclasses eauto
+    | [ |- StateSpace.enumerable _ ] => typeclasses eauto
+    end.
+  Defined.
+  Instance stage_functional_correct : forall l,
+    functional_step_relation_correct _ (latch_stage_with_env l).
+  Proof.
+    intros l.
+    set (Hdisjoint := scheme_all_disjoint l).
+    unfold latch_stage_with_env.
+    repeat match goal with
+    | [ |- functional_step_relation_correct _ _ ] => apply union_functional_correct
+    | [ |- functional_step_relation_correct _ _ ] => apply func_functional_correct
+    | [ |- functional_step_relation_correct _ _ ] => apply hide_functional_correct
+    | [ |- functional_step_relation_correct _ _ ] => apply flop_functional_correct
+
+    | [ |- well_formed _] => apply wf_union; auto; try unfold space_domain
+    | [ |- well_formed _ ] => apply hide_wf; auto; simpl; try solve_set
+    | [ |- well_formed _ ] => apply func_wf; solve_set
+    | [ |- well_formed _ ] => apply flop_wf; repeat constructor; try solve_set;
+                                try (destruct l; solve_set)
+    | [ |- in_dec _ ] => simpl; auto 30 with sets; fail
+    | [ |- _ ⊥ _ ] => try unfold space_domain; simpl; solve_set
+    | [ |- _ ∈ _ ] => solve_set
+    | [ |- _ ∉ _ ] => solve_set
+    | [ |- _ ⊥ _ ] => constructor; intros x Hx; simpl in *; decompose_set_structure; fail
+    end.
+    { repeat constructor; destruct l; solve_set. }
+  Qed.
 
   Lemma step_wf_state_lemma : forall l σ e σ',
     wf_stage_state l σ ->
@@ -734,6 +780,7 @@ Module WFStage (Export EO : EvenOddType).
     { eapply wf_space; eauto. }
     rewrite latch_stage_with_env_input, latch_stage_with_env_output in Hx.
     rewrite latch_stage_input, latch_stage_output in Hx.
+.
 
     decompose_set_structure;
     (constructor;
@@ -747,8 +794,7 @@ Module WFStage (Export EO : EvenOddType).
       | try solve_val_is_bit
       ]).
 
-    *
-      destruct (y ∈? space_internal (latch_stage_with_env l)) as [Hinternal | Hinternal].
+    * destruct (y ∈? space_internal (latch_stage_with_env l)) as [Hinternal | Hinternal].
       2:{
         rewrite (wf_scoped _ _ (latch_stage_well_formed l) _ _ _ Hstep);
         [

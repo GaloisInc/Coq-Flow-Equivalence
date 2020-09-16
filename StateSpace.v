@@ -137,10 +137,6 @@ Class enumerable {A} (X : Ensemble A) :=
     reflexivity.
   Defined.
 
-Print filter.
-Print in_list_dec.
-
-
   Lemma intersection_emptyset : forall {X} (A : Ensemble X),
     ∅ ∩ A == ∅.
   Proof.
@@ -324,13 +320,16 @@ Ltac to_in_list_dec :=
 
 Class functional_step_relation (S : StateSpace) :=
   { fun_step : state name -> option (event name value) -> Ensemble (option (state name))
-  ; fun_step_in : forall σ e τ,
-    S ⊢ σ →{e} τ -> τ ∈ fun_step σ e
-  ; fun_in_step : forall σ e τ,
-    τ ∈ fun_step σ e -> S ⊢ σ →{e} τ
   ; input_list : enumerable (space_input S)
   ; output_list : enumerable (space_output S)
   ; internal_list : enumerable (space_internal S)
+  }.
+Arguments fun_step S {functional_step_relation}.
+Class functional_step_relation_correct (S : StateSpace) `{functional_step_relation S} :=
+  { fun_step_in : forall σ e τ,
+    S ⊢ σ →{e} τ -> τ ∈ fun_step S σ e
+  ; fun_in_step : forall σ e τ,
+    τ ∈ fun_step S σ e -> S ⊢ σ →{e} τ
   }.
 Arguments fun_step S {rel} : rename.
 Arguments input_list S {rel} : rename.
@@ -338,7 +337,7 @@ Arguments output_list S {rel} : rename.
 Arguments internal_list S {rel} : rename.
 
 
-Instance functional_step_relation_enumerable_domain S `{functional_step_relation S}
+Instance functional_step_relation_enumerable_domain S `{H : functional_step_relation S}
     : enumerable (space_domain S).
 Proof.
     destruct H. unfold space_domain. typeclasses eauto.
@@ -732,8 +731,7 @@ Definition ERROR {A} : option (option A) := None.
 
   Variable EnumerableI : enumerable I.
 
-Print functional_step_relation.
-  Program Instance func_step_functional : functional_step_relation func_space :=
+  Program Instance func_functional : functional_step_relation func_space :=
     {| fun_step := fun σ e =>
         match func_step_fun σ e with
         | None => ∅
@@ -744,14 +742,17 @@ Print functional_step_relation.
      ; output_list := singleton_enumerable x
      ; internal_list := empty_enumerable
     |}.
-  Next Obligation.
-    apply func_step_equiv in H.
-    rewrite H.
-    solve_set.
-  Qed.
-  Next Obligation.
-    apply func_step_equiv.
-    destruct (func_step_fun σ e); decompose_set_structure.
+  Instance func_functional_correct : functional_step_relation_correct func_space.
+  Proof.
+    constructor.
+    * intros σ e τ Hstep. simpl.
+      apply func_step_equiv in Hstep.
+      rewrite Hstep.
+      solve_set.
+    * intros σ e τ Hstep. 
+      apply func_step_equiv.
+      simpl in Hstep.
+      destruct (func_step_fun σ e); decompose_set_structure.
   Qed.
 
 End FuncStateSpace.
@@ -951,27 +952,17 @@ Section UnionStateSpace.
            auto with sets.
   Qed.
 
-  Print union_step.
 
   Definition event_in_b (X : Ensemble name) `{in_dec _ X} (e : option (event name value)) :=
     match e with
     | None => false
     | Some (Event x v) => if x ∈? X then true else false
     end.
-Print functional_step_relation.
 
 
   Context `{S1_functional : functional_step_relation S1}
           `{S2_functional : functional_step_relation S2}
           `{S_enumerable : enumerable _ (space_domain S1 ∩ space_domain S2)}.
-(*
-  Context `{S1_input_dec : in_dec _ (space_input S1)}.
-  Context `{S2_input_dec : in_dec _ (space_input S2)}.
-  Context `{S1_output_dec : in_dec _ (space_output S1)}.
-  Context `{S2_output_dec : in_dec _ (space_output S2)}.
-  Context `{S1_internal_dec : in_dec _ (space_internal S1)}.
-  Context `{S2_intneral_dec : in_dec _ (space_internal S2)}.
-*)
   Context `{S1_wf : well_formed S1} `{S2_wf : well_formed S2}.
 
 
@@ -981,7 +972,6 @@ Print functional_step_relation.
     | x  :: l' => if σ1 x =? σ2 x then states_equiv_on l' σ1 σ2
                   else false
     end.
-About enumerable.
   Arguments enumerate {A} X.
 
   Definition join_option_state (τ1 τ2 : option (option (state name))) : option (option (state name)) :=
@@ -1212,8 +1202,29 @@ Ltac solve_event_in :=
       else (* singleton None *) ∅
     end.
 
-Require Export Setoid.
-About state_equiv_on.
+  Instance union_functional : functional_step_relation union :=
+  {| fun_step := union_step_fun |}.
+  { set (enum_in_1 := input_list S1).
+    set (enum_in_2 := input_list S2).
+    set (enum_out_1 := output_list S1).
+    set (enum_out_2 := output_list S2).
+    typeclasses eauto.
+  }
+  { set (enum_out_1 := output_list S1).
+    set (enum_out_2 := output_list S2).
+    typeclasses eauto.
+  }
+  { set (enum_int_1 := internal_list S1).
+    set (enum_int_2 := internal_list S2).
+    typeclasses eauto.
+  }
+  Defined.
+
+  Context `{S1_functional_correct : @functional_step_relation_correct S1 S1_functional}
+          `{S2_functional_correct : @functional_step_relation_correct S2 S2_functional}.
+
+
+  Require Export Setoid.
   Add Parametric Morphism : state_equiv_on
     with signature (Same_set name) ==> (@eq (option (state name)))
                                    ==> (@eq (option (state name))) ==> iff
@@ -1221,8 +1232,7 @@ About state_equiv_on.
   Proof.
     intros X Y HXY τ τ'.
     split; intros Hequiv.
-    * Print state_equiv_on. 
-      destruct τ as [σ | ]; destruct τ' as [σ' | ]; try inversion Hequiv.
+    * destruct τ as [σ | ]; destruct τ' as [σ' | ]; try inversion Hequiv.
       { simpl in *.
         intros x Hx.
         rewrite <- HXY in Hx.
@@ -1385,8 +1395,7 @@ Ltac compare_next_in_list_dec :=
         + apply union_step_1.
           { inversion 1. }
           { apply fun_in_step; auto. }
-          { Search state_equiv_on.
-            rewrite as_list_equiv.
+          { rewrite as_list_equiv.
             apply equiv_on_list_implies_state_equiv_on; auto.
           }
             
@@ -1409,7 +1418,6 @@ Ltac compare_next_in_list_dec :=
       rewrite <- as_list_equiv in Hx2;
       simpl in Hstep.
       + decompose_set_structure.
-        Print union_step.
         apply union_communicate; try (apply fun_in_step; auto; fail).
         { apply in_join_domain_implies_union_input_event; auto. }
 
@@ -1442,20 +1450,13 @@ Ltac compare_next_in_list_dec :=
     union ⊢ σ →{e} τ.
   Admitted.
 *)
-
-
-  Instance union_functional : functional_step_relation union :=
-  {| fun_step := union_step_fun |}.
-  3:{ destruct S1_functional, S2_functional.
-      typeclasses eauto.
-    }
-  3:{ destruct S1_functional, S2_functional.
-      typeclasses eauto. }
-  3:{ destruct S1_functional, S2_functional.
-      typeclasses eauto. }
-  { apply union_implies_union_step_fun. }
-  { apply union_step_fun_implies_union. }
-  Defined.
+  Existing Instance union_functional.
+  Instance union_functional_correct : functional_step_relation_correct union.
+  Proof.
+    split.
+    * apply union_implies_union_step_fun.
+    * apply union_step_fun_implies_union.
+  Qed.
 
 
 End UnionStateSpace.
@@ -1480,6 +1481,8 @@ Section UnionStateSpaceRefinement.
     inversion Hrelate; subst.
     * (* σ0' = σT ???*)
   Abort.
+
+
       
 End UnionStateSpaceRefinement.
 
@@ -1553,6 +1556,7 @@ Section HideStateSpace.
 
 
   Context `{S_functional : functional_step_relation S}.
+  Context `{S_functional_correct : @functional_step_relation_correct S S_functional}.
   Definition hide_step_fun (σ : state name) (e : option (event name value)) :=
     match e with
     | None => (* either an epsilong transition from S, or an x transition from S *)
@@ -1563,7 +1567,6 @@ Section HideStateSpace.
       else fun_step S σ (Some (Event y v))
     end.
 
-  Print functional_step_relation.
   Lemma hide_fun_step_in : forall σ e τ,
     hide ⊢ σ →{e} τ ->
     τ ∈ hide_step_fun σ e.
@@ -1605,15 +1608,19 @@ Section HideStateSpace.
 
 
   Instance hide_functional : functional_step_relation hide :=
-  {| fun_step := hide_step_fun
-   ; fun_step_in := hide_fun_step_in
+  {| fun_step := hide_step_fun |}.
+    * simpl. unfold hide_input. apply input_list; auto.
+    * simpl. unfold hide_output.
+      set (Houtput := output_list S).
+      typeclasses eauto.
+    * simpl. unfold hide_internal.
+      set (Houtput := internal_list S).
+      typeclasses eauto.
+  Defined.
+  Instance hide_functional_correct : functional_step_relation_correct hide :=
+   {| fun_step_in := hide_fun_step_in
    ; fun_in_step := hide_fun_in_step
    |}.
-  Proof.
-    * simpl. unfold hide_input. destruct S_functional; auto.
-    * simpl. unfold hide_output. destruct S_functional; typeclasses eauto.
-    * simpl. unfold hide_internal. destruct S_functional; typeclasses eauto.
-  Defined.
 
 End HideStateSpace.
 
@@ -1796,9 +1803,6 @@ when set and reset lines are X:
     flop_stable σ.
 *)
 
-Print flop_step.
-Print flop_stable.
-  Print eqb. Locate "=?".
 
   Definition flop_step_fun (σ : state name) (e : option (event name value)) :=
     match e with
@@ -1845,7 +1849,6 @@ Print flop_stable.
     intros σ e τ Hstep.
     destruct Hstep.
     * unfold flop_step_fun; subst.
-      Search (_ ∈? _).
       destruct (i ∈? flop_input); [ | find_contradiction].
       destruct H as [Hstable | Hchange].
       + unfold flop_stable in Hstable.
@@ -1920,13 +1923,11 @@ Print flop_stable.
 
   
   Instance flop_functional : functional_step_relation flop :=
-  {| fun_step := flop_step_fun
-   ; fun_step_in := flop_fun_step_in
+  {| fun_step := flop_step_fun |}.
+  Instance flop_functional_correct : functional_step_relation_correct flop :=
+  {| fun_step_in := flop_fun_step_in
    ; fun_in_step := flop_fun_in_step
    |}.
-
-
-
 
 
 End Flop.
@@ -1978,6 +1979,8 @@ Module Type NameType.
 End NameType.
 
 Module StateSpaceTactics (Export name : NameType).
+
+
   Lemma union_inversion_left : forall (S1 S2 : StateSpace name) σ x v σ',
     (S1 ∥ S2) ⊢ σ →{Some (Event x v)} Some σ' ->
     x ∈ space_domain S1 ->
@@ -2231,10 +2234,16 @@ Section MG_to_SS.
 
     * intros ? ? ? ? Hstep.
       inversion Hstep; subst; simpl.
-      destruct (t ∈? input_transition).
-      + left. econstructor; eauto.
-      + right. econstructor; split; eauto.
-        unfold output_transition. solve_set.
+      { destruct (t ∈? input_transition).
+        + left. econstructor; eauto.
+        + right. econstructor; split; eauto.
+          unfold output_transition. solve_set.
+       }
+      { destruct (t ∈? input_transition).
+        + left. econstructor; eauto.
+        + right. econstructor; split; eauto.
+          unfold output_transition. solve_set.
+       }
     * intros ? ? ? Hstep ? He Hexternal.
       inversion Hstep; subst.
       unfold update. unfold fire_in_state.
