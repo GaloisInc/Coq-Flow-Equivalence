@@ -61,7 +61,6 @@ Section LatchSequence.
   | X  : value.
   Definition Bit0 := Num 0.
   Definition Bit1 := Num 1.
-  
 
   Definition Rise l : event latch bool := Event l true.
   Definition Fall l : event latch bool := Event l false.
@@ -104,6 +103,25 @@ Section LatchSequence.
     end.
 
 
+  Inductive val_is_bit : value -> Prop :=
+  | val_bit0 : val_is_bit Bit0
+  | val_bit1 : val_is_bit Bit1.
+  Lemma val_is_bit_neg_neg : forall v, val_is_bit v -> neg_value (neg_value v) = v.
+  Proof.
+    intros v Hv; inversion Hv; subst; auto.
+  Qed.
+  Lemma val_is_bit_neq : forall v1 v2, val_is_bit v1 -> val_is_bit v2 -> v1 <> v2 -> neg_value v1 = v2.
+  Proof.
+    intros v1 v2 Hv1 Hv2 Hneq;
+      inversion Hv1; inversion Hv2; subst; auto;
+        find_contradiction.
+  Qed.
+  Lemma val_is_bit_neg_inversion : forall v1 v2, val_is_bit v2 ->
+                                                 v1 = neg_value v2 ->
+                                                 neg_value v1 = v2.
+  Proof.
+    intros v1 v2 Hv2 Heq; subst. rewrite val_is_bit_neg_neg; auto.
+  Qed.
 
 
 

@@ -120,6 +120,7 @@ Module EnsembleNotation.
   Notation "X ⊆ Y" := (Included _ X Y) (at level 80) : ensemble_scope.
   Notation "X == Y" := (Same_set _ X Y) (at level 90) : ensemble_scope.
   Notation "∅" := (Empty_set _) : ensemble_scope.
+  Notation "⊤" := (fun _ => True) : ensemble_scope.
   Definition singleton {X} (x : X) : Ensemble X := Singleton X x.
   Notation "x ∉ X" := (~(In _ X x)) (at level 70) : ensemble_scope.
 
