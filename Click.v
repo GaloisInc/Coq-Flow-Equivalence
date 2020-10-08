@@ -40,7 +40,7 @@ Variable run_fresh : forall {A}, Fresh A -> A.
 Section Utils.
   (** [forward x y] is the state space that updates [y] (the output) to have the
   same value as [x] (the input). *)
-  Definition forward (x y : name) := func_space (singleton x) y (fun σ => σ x).
+  Definition forward (x y : name) := func_space (x::nil) y (fun σ => σ x).
   (** [output x (Some v)] is the state space that updates [x] (the output) to
   have the value [v].
 
@@ -48,13 +48,13 @@ Section Utils.
 value never changes. When composed with a state space where [x] is an input,
 this turns [x] from an input to an output in the union space. *)
   Definition output x (v : option value) :=
-    func_space ∅ x (fun σ => match v with
+    func_space nil x (fun σ => match v with
                          | None => σ x
                          | Some v' => v'
                          end).
 
   (** An inverter *)
-  Definition NOT x y := func_space (singleton x) y (fun σ => neg_value (σ x)).
+  Definition NOT x y := func_space (x::nil) y (fun σ => neg_value (σ x)).
 
 
   (** The empty state space with no wires and no transitions *)
@@ -185,7 +185,7 @@ Section Stage.
   Inductive token_flag := Token | NonToken.
 
   Definition clk_component f := 
-    func_space (from_list [state0;req i;ack o;ctrl_reset_n]) clk (match f with
+    func_space (state0::req i::ack o::ctrl_reset_n::nil) clk (match f with
                                                                   | NonToken => clk_defn
                                                                   | Token    => tok_clk_defn
                                                                   end).
@@ -228,12 +228,12 @@ Section Stage.
                             | NonToken => forward state0 (ack i)
                             end.*)
     delay_space
-    (func_space (singleton state0) (ack i) (fun σ => match f with
+    (func_space (state0::nil) (ack i) (fun σ => match f with
                                                     | Token => neg_value (σ state0)
                                                     | NonToken => σ state0
                                                     end))
-    (singleton clk)
-    (fun σ => σ clk = Bit0).
+    (clk::nil)
+    (fun σ => σ clk =? Bit0).
 
   Definition stage_with_reset (f : token_flag) :=
     clk_component f ∥ flop_component f ∥ forward state0 (req o) ∥ ack_i_output f.
@@ -740,7 +740,7 @@ Module WFStage (Export EO : EvenOddType).
 
   | [ H : wf_stage_state ?l ?σ |- val_is_bit (?σ ?x) ] =>
     apply (wf_all_bits H); solve_space_domain
-x
+
   | [ |- context[ latch_to_token_flag ?l ] ] => destruct l; simpl
 
   | [ Hwf1 : forall x, x ∈ ?X -> val_is_bit (?σ x) |- context[?σ ?y] ] =>
@@ -777,6 +777,7 @@ x
     | [ |- functional_step_relation _ _ ] => apply union_functional
     | [ |- functional_step_relation _ _ ] => apply func_functional
     | [ |- functional_step_relation _ _ ] => apply hide_functional
+    | [ |- functional_step_relation _ _ ] => apply delay_space_functional
     | [ |- functional_step_relation _ _ ] => apply flop_functional;
         repeat constructor; try solve_set;
                             try (destruct l; solve_set)
@@ -796,13 +797,16 @@ x
     | [ |- functional_step_relation_correct _ _ ] => apply func_functional_correct
     | [ |- functional_step_relation_correct _ _ ] => apply hide_functional_correct
     | [ |- functional_step_relation_correct _ _ ] => apply flop_functional_correct
+    | [ |- functional_step_relation_correct _ _ ] => apply delay_space_functional_correct
 
     | [ |- well_formed _] => apply wf_union; auto; try unfold space_domain
     | [ |- well_formed _ ] => apply hide_wf; auto; simpl; try solve_set
     | [ |- well_formed _ ] => apply func_wf; solve_set
+    | [ |- well_formed _ ] => apply delay_space_wf
     | [ |- well_formed _ ] => apply flop_wf; repeat constructor; try solve_set;
                                 try (destruct l; solve_set)
-    | [ |- in_dec _ ] => simpl; auto 30 with sets; fail
+    | [ |- in_dec _ ] => typeclasses eauto
+    | [ |- eq_dec _ ] => typeclasses eauto
     | [ |- _ ⊥ _ ] => try unfold space_domain; simpl; solve_set
     | [ |- _ ∈ _ ] => solve_set
     | [ |- _ ∉ _ ] => solve_set
@@ -823,7 +827,7 @@ x
     { eapply wf_space; eauto. }
     rewrite latch_stage_with_env_input, latch_stage_with_env_output in Hx.
     rewrite latch_stage_input, latch_stage_output in Hx.
-.
+
 
 (*
     decompose_set_structure;
