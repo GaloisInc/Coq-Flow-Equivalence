@@ -816,6 +816,19 @@ Module WFStage (Export EO : EvenOddType).
   Qed.
 
 
+Definition decide_event_in (e : option (event name value)) (X : Ensemble name) `{in_dec _ X}
+    : { event_in _ X e } + {~ (event_in _ X e)}.
+Proof.
+  destruct e as [[x v] | ].
+  { destruct (x ∈? X) as [Hx | Hx].
+    { left. constructor. auto. }
+    { right. inversion 1; subst. contradict Hx; auto. }
+  }
+  { right. inversion 1. }
+Defined.
+About decide_event_in.
+Arguments decide_event_in e X {H}.
+
   Lemma step_wf_state_lemma : forall l σ e σ',
     wf_stage_state l σ ->
     latch_stage_with_env l ⊢ σ →{Some e} Some σ' ->
@@ -827,6 +840,166 @@ Module WFStage (Export EO : EvenOddType).
     { eapply wf_space; eauto. }
     rewrite latch_stage_with_env_input, latch_stage_with_env_output in Hx.
     rewrite latch_stage_input, latch_stage_output in Hx.
+    constructor.
+    {
+
+
+Ltac unfold_outer_StateSpace S :=
+  match goal with
+  (* union *)
+  [ |- _ ] => let S1 := fresh "S1" in
+              let S2 := fresh "S2" in
+              evar (S1 : StateSpace name);
+              evar (S2 : StateSpace name);
+              replace S with (S1 ∥ S2) in *;
+              unfold S1, S2 in *;
+              clear S1 S2;
+              [ | reflexivity]
+  end.
+
+  Ltac find_event_contradiction := match goal with
+  | [ He : event_in _ _ None |- _ ] => inversion He; fail
+  | [ He : event_in _ _ (Some (Event _ _)) |- _ ] => 
+    let He' := fresh "He" in
+    inversion He as [? He']; subst; clear He;
+    contradict He'; try unfold space_domain; simpl; solve_set; fail
+  | [ He : ~ event_in _ _ (Some (Event _ _)) |- _ ] => 
+    contradict He; constructor; try unfold space_domain; simpl; solve_set; fail
+  end.
+
+  unfold_outer_StateSpace (latch_stage_with_env l).
+  decompose_set_structure (* from Hx *).
+  Ltac decide_events_of Hstep :=
+  match type of Hstep with
+  | (?S1 ∥ ?S2) ⊢ _ →{?e} _ =>
+    let He1 := fresh "He1" in 
+    let He2 := fresh "He2" in 
+    destruct (decide_event_in e (space_domain S1)) as [He1 | He1];
+      try find_event_contradiction;
+    destruct (decide_event_in e (space_domain S2)) as [He2 | He2];
+      try find_event_contradiction
+  end.
+  Ltac step_inversion :=
+  match goal with
+  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{?e} _
+    , He1 : event_in _ (space_domain ?S1) ?e
+    , He2 : ~ event_in _ (space_domain ?S2) ?e
+    |- _ ] =>
+    apply union_inversion_left in Hstep;
+      [ | unfold space_domain; simpl; solve_set ]
+  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{?e} _
+    , He1 : ~ event_in _ (space_domain ?S1) ?e
+    , He2 : event_in _ (space_domain ?S2) ?e
+    |- _ ] =>
+    apply union_inversion_right in Hstep;
+      [ | unfold space_domain; simpl; solve_set ]
+
+  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{?e} _
+    , He1 : event_in _ (space_domain ?S1) ?e
+    , He2 : event_in _ (space_domain ?S2) ?e
+    |- _ ] =>
+    apply union_inversion_lr in Hstep;
+      [ | unfold space_domain; simpl; solve_set ]
+
+  end.
+
+  decide_events_of Hstep.
+  step_inversion.
+
+  decide_events_of Hstep.
+  step_inversion.
+
+  decide_events_of Hstep.
+  step_inversion.
+
+  step_inversion.
+
+
+apply union_inversion_lr in Hstep.
+2:{ unfold space_domain; simpl; solve_set. }
+
+clear Hstep.
+
+  match goal with
+  | [ H : (?S1 ∥ ?S2) ⊢ _ →{?e} _ |- _ ] =>
+    let He1 := fresh "He1" in 
+    let He2 := fresh "He2" in 
+    destruct (decide_event_in e (space_domain S1)) as [He1 | He1];
+      try find_event_contradiction;
+    destruct (decide_event_in e (space_domain S2)) as [He2 | He2];
+      try find_event_contradiction
+
+  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{?e} _
+    , He1 : event_in _ (space_domain ?S1) ?e
+    , He2 : ~ event_in _ (space_domain ?S2) ?e
+    |- _ ] =>
+    apply union_inversion_left in Hstep;
+      [ clear Hstep | unfold space_domain; simpl; solve_set ]
+  end.
+  match goal with
+  | [ H : (?S1 ∥ ?S2) ⊢ _ →{?e} _ |- _ ] =>
+    let He1 := fresh "He1" in 
+    let He2 := fresh "He2" in 
+    destruct (decide_event_in e (space_domain S1)) as [He1 | He1];
+      try find_event_contradiction;
+    destruct (decide_event_in e (space_domain S2)) as [He2 | He2];
+      try find_event_contradiction
+
+  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{?e} _
+    , He1 : event_in _ (space_domain ?S1) ?e
+    , He2 : ~ event_in _ (space_domain ?S2) ?e
+    |- _ ] =>
+    apply union_inversion_left in Hstep;
+      [ | unfold space_domain; simpl; solve_set ]
+  end.
+
+
+
+    
+  
+
+    2:{ contradict He1. constructor. unfold space_domain; simpl; solve_set.
+    2:{
+    inversion He2 as [? He']; subst; clear He2;
+    contradict He'; unfold space_domain; simpl; solve_set; fail.
+    find_event_contradiction.
+
+    contradict He2. inversion 1; subst. contradict pf. unfold space_domain. simpl. solve_set.
+  repeat match goal with
+  | [ He : event_in _ _ None |- _ ] => inversion He; fail
+  | [ He : event_in _ _ (Some (Event x v)) |- _ ] => 
+    let He' := fresh "He" in
+    inversion He as [? He']; subst; clear He;
+    try unfold space_domain in He'; simpl in He'
+  end.
+
+
+  | [ H : _ ∈ space_domain _ |- _ ] => unfold space_domain in H; simpl in H
+  | [ H : _ ∉ space_domain _ |- _ ] => unfold space_domain in H; simpl in H
+  end.
+
+  
+
+    destruct (decide_event_in (Some (Event x v)) (space_domain (left_env_component l ∥ latch_stage l))) as [He1 | He1];
+    destruct (decide_event_in (Some (Event x v)) (space_domain (right_env_component l))) as [He2 | He2].
+
+    inversion Hstep.
+
+
+  replace (latch_stage_with_env l) with (S1 ∥ S2); unfold S1, S2; clear S1 S2. 2:{ reflexivity. } clear S1; clear S2.
+  ereplace (latch_stage_with_env l) with _.
+
+  match goal with
+  | [ H : ?S ⊢ _ →{?e} Some _ |- _ ] =>
+    replace S with (_ ∥ _) in H
+  end.
+
+  match goal with
+  (* union *)
+  | [ H : ?S ⊢ _ →{?e} Some _ |- _ ] =>
+
+    destruct (decide_event_in e (space_domain S)) as [He | He]
+  end.
 
 
 (*
