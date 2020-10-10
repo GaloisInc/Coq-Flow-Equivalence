@@ -299,12 +299,12 @@ Module Type EOType.
   Existing Instance eq_dec_odd.
   Existing Instance latch_eq_dec.
 
+Module latch_nat_pair_Name <: NameType.
 
-Inductive click_name_type :=
+    Inductive click_name_type :=
     | just_nat : nat -> click_name_type
     | latch_and_nat : latch even odd -> nat -> click_name_type
     .
-  Module latch_nat_pair_Name : NameType.
     
   Lemma just_nat_inj : forall a1 a2, a1 <> a2 -> just_nat a1 <> just_nat a2.
   Proof.
@@ -345,17 +345,21 @@ Inductive click_name_type :=
       { apply latch_and_nat_inj. left. assumption. }
       { apply latch_and_nat_inj. right. assumption. }
     Defined.
-Print click_name_type_eq_dec.
 
 
-    Definition name := click_name_type.
-    Definition name_eq_dec := click_name_type_eq_dec.
+  Definition name := click_name_type.
+  Definition name_eq_dec := click_name_type_eq_dec.
   End latch_nat_pair_Name.
-  Import latch_nat_pair_Name.
+  Export latch_nat_pair_Name.
+  Module StateSpaceTacticsName := StateSpaceTactics(latch_nat_pair_Name).
+  Export StateSpaceTacticsName.
+  Module Structural := Structural_SS(latch_nat_pair_Name).
+  Export Structural.
 
 
   Module click := (Click latch_nat_pair_Name).
-  Import click.
+  Export click.
+  Export EnsembleNotation.
 
   Class naming_scheme :=
     { latch_input : latch even odd -> handshake
@@ -376,12 +380,33 @@ Print click_name_type_eq_dec.
         latch_state0 l; latch_not_state0 l]
 
     }.
-  Definition concrete_handshake l req ack :=
-  {| req := latch_and_nat l req
-   ; ack := latch_and_nat l ack |}.
-  Instance ConcreteScheme : naming_scheme :=
-  {| latch_input := fun l => (l, 
-  Context `{scheme : naming_scheme}.
+
+  Definition concrete_handshake l x y :=
+  {| req := latch_and_nat l x
+  ;  ack := latch_and_nat l y |}.
+
+Print naming_scheme.
+  Instance scheme : naming_scheme :=
+  {| latch_input := fun l => concrete_handshake l 0 1
+   ; latch_output := fun l => concrete_handshake l 2 3
+   ; latch_clk := fun l => latch_and_nat l 4
+   ; latch_state0 := fun l => latch_and_nat l 5
+   ; latch_old_clk := fun l => latch_and_nat l 6
+   ; latch_not_state0 := fun l => latch_and_nat l 7
+   ; latch_hidden := fun l => latch_and_nat l 8
+   ; ctrl_reset_n := just_nat 0
+   ; dp_reset_n := just_nat 1
+   |}.
+  { intros l.
+    repeat constructor;
+    to_in_list_dec;
+    simpl;
+    auto.
+  }
+  Defined.
+
+(*  Context `{scheme : naming_scheme}.*)
+
 End EOType.
 
 Module Desync (Export eoType : EOType).
@@ -574,17 +599,23 @@ Fixpoint sequence {N} `{Monad N} {A} (l : list (N A)) : N (list A) :=
 
 End Desync.
 
+(*
 Module Type EvenOddType.
   Parameter even odd : Set.
+
   Axiom scheme : naming_scheme even odd.
   Existing Instance scheme.
 End EvenOddType.
-Module WFStage (Export EO : EvenOddType).
+*)
+Module WFStage (Export EO : EOType).
 
   Definition left_env_component (l : latch even odd) :=
     NOT (ack (latch_input l)) (req (latch_input l)).
   Definition right_env_component (l : latch even odd) :=
     forward (req (latch_output l)) (ack (latch_output l)).
+
+  Module Desync := Desync(EO).
+  Import Desync.
 
 
 (*  any click circuit with output ho, input handshake hi:
@@ -651,7 +682,7 @@ Module WFStage (Export EO : EvenOddType).
        from_list [req (latch_input l); ack (latch_output l)
                  ; ack (latch_input l); req (latch_output l); latch_clk l
                  ; latch_state0 l; latch_not_state0 l; latch_old_clk l
-                 ; latch_hidden l; @ctrl_reset_n _ _ scheme; @dp_reset_n _ _ scheme
+                 ; latch_hidden l; ctrl_reset_n; dp_reset_n
                  ].
   Proof.
     intros l'.
@@ -677,8 +708,8 @@ Module WFStage (Export EO : EvenOddType).
     { wf_all_bits : forall x, x ∈ space_domain (latch_stage_with_env l) -> val_is_bit (σ x)
     ; wf_latch_input  : wf_handshake (latch_input l)  σ
     ; wf_latch_output : wf_handshake (latch_output l) σ
-    ; wf_ctrl_reset_n : σ (@ctrl_reset_n even odd _) = Bit1
-    ; wf_dp_reset_n : σ (@dp_reset_n even odd _) = Bit1
+    ; wf_ctrl_reset_n : σ ctrl_reset_n = Bit1
+    ; wf_dp_reset_n : σ dp_reset_n = Bit1
     ; wf_hidden : σ (latch_hidden l) = Bit1
 (*
     ; wf_flop_stable  : ~ stable (latch_flop_component l) σ ->
@@ -718,7 +749,7 @@ Module WFStage (Export EO : EvenOddType).
         { unfold σR; reduce_eqb.
           repeat (compare_next; auto).
         }
-        destruct l; simpl in Hreq.
+        destruct l.
         * (* Odd==not token latch *)
           apply handshake_out_of_sync.
           rewrite Hack, Hreq; auto.
@@ -732,7 +763,7 @@ Module WFStage (Export EO : EvenOddType).
         { unfold σR; reduce_eqb.
           repeat (compare_next; auto).
         }
-        destruct l; simpl in Hreq.
+        destruct l.
         * (* Odd==not token latch *)
           apply handshake_in_sync.
           rewrite Hack, Hreq; auto.
@@ -749,22 +780,38 @@ Module WFStage (Export EO : EvenOddType).
   Admitted.
 
 
+Ltac solve_space_set :=
+  match goal with
+  | [ |- ?x ∈ ?S ] => let H := fresh "H" in
+                      set_to_list H S; rewrite H; clear H;
+                      to_in_list_dec; unfold in_list_dec; reduce_eqb; auto;
+                      simpl; reduce_eqb; auto
+  | [ |- ?x ∉ ?S ] => let H := fresh "H" in
+                      set_to_list H S; rewrite H; clear H;
+                      to_in_list_dec; unfold in_list_dec; reduce_eqb; auto;
+                      simpl; reduce_eqb; auto
+  end.
+
   Lemma latch_stage_well_formed : forall l, well_formed (latch_stage_with_env l).
   Proof.
     intros l.
     set (Hdisjoint := scheme_all_disjoint l).
     unfold latch_stage_with_env, left_env_component, right_env_component, latch_stage,
            latch_stage_with_reset, latch_flop_component.
+    match goal with
+    | [ |- well_formed ?S ] => unfold_StateSpace S
+    end;
     repeat match goal with
-    | [ |- well_formed _] => apply wf_union; auto; try unfold space_domain
-    | [ |- well_formed _ ] => apply hide_wf; auto; simpl; try solve_set
-    | [ |- well_formed _ ] => apply func_wf; solve_set
-    | [ |- well_formed _ ] => apply delay_space_wf; typeclasses eauto
-    | [ |- in_dec _ ] => simpl; auto 30 with sets; fail
+    | [ |- well_formed (_ ∥ _)] => apply wf_union; auto; try unfold space_domain
+    | [ |- well_formed (hide _ _) ] => apply hide_wf; auto; try solve_space_set
+    | [ |- well_formed (func_space _ _ _) ] => apply func_wf; try (to_in_list_dec; auto; fail)
+    | [ |- well_formed (delay_space _ _ _) ] => apply delay_space_wf; typeclasses eauto
+    | [ |- in_dec _ ] => typeclasses eauto
     | [ |- _ ⊥ _ ] => constructor; intros x Hx; simpl in *; decompose_set_structure; fail
-    end.
+    end. 
 
     apply flop_wf.
+
     destruct l; simpl; repeat (constructor; try_solve_set).
   Qed.
   Hint Resolve latch_stage_well_formed.
@@ -835,7 +882,7 @@ Module WFStage (Export EO : EvenOddType).
     rewrite_step_inversion
   end; fail.
   End ClickTactics.
-  Import ClickTactics.
+  Export ClickTactics.
 
   Existing Instance singleton_enumerable.
   Existing Instance empty_enumerable.
@@ -1191,63 +1238,7 @@ Ltac combine_state_equiv_on :=
   constructor.
   + intros y Hy.
 
-
-Inductive SetStructure :=
-  | SetEmpty : SetStructure
-  | SetSingleton : name -> SetStructure
-  | SetList : list name -> SetStructure
-  | SetUnion : SetStructure  -> SetStructure -> SetStructure
-  | SetIntersection : SetStructure -> SetStructure -> SetStructure
-  | SetDifference : SetStructure -> SetStructure -> SetStructure
-  | SetSpaceDomain : ISpace -> SetStructure
-.
-Ltac reflect_to_SetStructure S :=
-  match S with
-  | ∅ => constr:(SetEmpty)
-  | singleton ?x => constr:(SetSingleton x)
-  | ?S1 ∪ ?S2 => let l1 := reflect_to_SetStructure S1 in
-                  let l2 := reflect_to_SetStructure S2 in
-                  constr:(SetUnion l1 l2)
-  | space_domain ?S0 => let S0' := reflect_ISpace S0 in
-                        constr:(SetSpaceDomain S0')
-  | ?S1 ∖ ?S2 =>  let l1 := reflect_to_SetStructure S1 in
-                  let l2 := reflect_to_SetStructure S2 in
-                  constr:(SetDifference l1 l2)
-  | ?S1 ∩ ?S2 =>  let l1 := reflect_to_SetStructure S1 in
-                  let l2 := reflect_to_SetStructure S2 in
-                  constr:(SetIntersection l1 l2)
-  | from_list ?l0 => constr:(SetList l0)
-  end.
-Fixpoint interpret_SetStructure S :=
-  match S with
-  | SetEmpty => ∅
-  | SetSingleton x => singleton x
-  | SetList l => from_list l
-  | SetUnion S1 S2 => interpret_SetStructure S1 ∪ interpret_SetStructure S2
-  | SetIntersection S1 S2 => (interpret_SetStructure S1)
-                           ∩ (interpret_SetStructure S2)
-  | SetDifference S1 S2 => (interpret_SetStructure S1)
-                         ∖ (interpret_SetStructure S2)
-  | SetSpaceDomain S0 => space_domain (interp_ISpace S0)
-  end.
-
-
-Fixpoint SetStructure_to_list S :=
-  match S with
-  | SetEmpty => nil
-  | SetSingleton x => x::nil
-  | SetList l => l
-  | SetUnion S1 S2 => SetStructure_to_list S1 ++ SetStructure_to_list S2
-  | SetIntersection S1 S2 => list_intersection _ (SetStructure_to_list S1)
-                                               (SetStructure_to_list S2)
-  | SetDifference S1 S2 => list_setminus  _ (SetStructure_to_list S1)
-                                          (SetStructure_to_list S2)
-  | SetSpaceDomain S0 => ISpace_dom S0
-  end.
-    
-Lemma SetStructure_to_list_correct : forall S,
-  interpret_SetStructure S == from_list (SetStructure_to_list S).
-Admitted.
+HHHHHHHHHHHHHHHHHHHHHHHHHHHHH
   
   
   Add Parametric Morphism : (state_equiv_on)
@@ -1261,13 +1252,6 @@ Admitted.
     * intros y Hy; rewrite -> Heq in Hy; auto.
   Qed.
 
-  Ltac set_to_list HS S :=
-    let S0 := reflect_to_SetStructure S in
-    let l0 := eval simpl in (SetStructure_to_list S0) in
-    assert (HS : S == from_list l0);
-    [ transitivity (interpret_SetStructure S0);
-      [ reflexivity | rewrite SetStructure_to_list_correct; reflexivity]
-    | ].
 set_to_list HS ((from_list [ack (latch_input l)]
                ∪ singleton (req (latch_input l)))
               ∪ (from_list

@@ -434,16 +434,7 @@ Print filter.
     induction l; auto.
   Qed.
 
-
-    Fixpoint list_remove {A} (x : A) lX :=
-    match lX with
-    | nil => nil
-    | x' :: lX' => if x =? x' then 
-    Fixpoint list_setminus lX lY :=
-    match lY with
-    | nil => lX
-    | y::lY' => list_setminus (remove y lX) lY'
-    end.
+    Definition list_setminus lX lY :=
       better_filter (fun x => negb (in_list_dec x lY)) lX.
     Lemma list_setminus_equiv :
       X ∖ Y == from_list (list_setminus (enumerate X) (enumerate Y)).
@@ -2384,6 +2375,7 @@ Module Type NameType.
   Existing Instance name_eq_dec.
   Export EnsembleNotation.
   Open Scope ensemble_scope.
+
 End NameType.
 
 Module StateSpaceTactics (Export name : NameType).
@@ -2878,74 +2870,6 @@ Print StateSpace.
   Admitted.
 
 
-Ltac unfold_StateSpace_1 S :=
-  match S with
-
-  | func_space ?I0 ?x ?f => idtac
-  | ?S1 ∥ ?S2            => idtac
-  | flop ?set ?reset ?clk ?old_clk ?D ?Q => idtac
-  | delay_space ?S0 ?sens ?guard      => idtac
-
-  (* func *)
-  | _ => let I := fresh "I" in
-         let o := fresh "o" in
-         let f := fresh "f" in
-         evar (I : list name);
-         evar (o : name);
-         evar (f : state name -> value);
-         replace S with (func_space I o f) in *;
-         unfold I, o, f in *;
-         clear I o f;
-         [ | reflexivity]
-                
-  (* union *)
-  | _ => let S1 := fresh "S1" in
-         let S2 := fresh "S2" in
-         evar (S1 : StateSpace name);
-         evar (S2 : StateSpace name);
-         replace S with (S1 ∥ S2) in *;
-         unfold S1, S2 in *;
-         [ | reflexivity];
-         clear S1 S2
-  (* hide *)
-  | _ => let x0 := fresh "x0" in
-         let S0 := fresh "S0" in
-         evar (x0 : name);
-         evar (S0 : StateSpace name);
-         replace S with (hide x0 S0) in *;
-         unfold x0, S0 in *;
-         [ | reflexivity];
-         clear x0 S0
-
-  (* flop *)
-  | _ => let set := fresh "set" in
-         let reset := fresh "reset" in
-         let clk := fresh "clk" in
-         let old_clk := fresh "old_clk" in
-         let D := fresh "D" in
-         let Q := fresh "Q" in
-         evar (set : name); evar (reset : name);
-         evar (clk : name); evar (old_clk : name);
-         evar (D : name); evar (Q : name);
-         replace S with (flop set reset clk old_clk D Q) in *;
-         unfold set, reset, clk, old_clk, D, Q in *;
-         clear set reset clk old_clk D Q;
-         [ | reflexivity]
-
-  (* delay space *)
-  | _ => let S0 := fresh "S0" in
-         let sens := fresh "sens" in
-         let guard := fresh "guard" in
-         evar (S0 : StateSpace name);
-         evar (sens : list name);
-         evar (guard : state name -> bool);
-         replace S with (delay_space S0 sens guard) in *;
-         unfold S0, sens, guard in *;
-         [ | reflexivity];
-         clear S0 sens guard
-
-  end.
-
 Ltac maybe_do flag tac :=
   match flag with
   | false => idtac
@@ -3166,6 +3090,92 @@ Print ISpace. Print flop_step.
     space_internal (interp_ISpace S) == from_list (ISpace_internal S).
   Proof.
   Admitted.
+
+
+ (* Set reflection, with  *)
+
+Inductive SetStructure :=
+  | SetEmpty : SetStructure
+  | SetSingleton : name -> SetStructure
+  | SetList : list name -> SetStructure
+  | SetUnion : SetStructure  -> SetStructure -> SetStructure
+  | SetIntersection : SetStructure -> SetStructure -> SetStructure
+  | SetDifference : SetStructure -> SetStructure -> SetStructure
+  | SetSpaceDomain : ISpace -> SetStructure
+  | SetSpaceInput : ISpace -> SetStructure
+  | SetSpaceOutput : ISpace -> SetStructure
+  | SetSpaceInternal : ISpace -> SetStructure
+.
+Ltac reflect_to_SetStructure S :=
+  match S with
+  | ∅ => constr:(SetEmpty)
+  | singleton ?x => constr:(SetSingleton x)
+  | ?S1 ∪ ?S2 => let l1 := reflect_to_SetStructure S1 in
+                  let l2 := reflect_to_SetStructure S2 in
+                  constr:(SetUnion l1 l2)
+  | space_domain ?S0 => let S0' := reflect_ISpace S0 in
+                        constr:(SetSpaceDomain S0')
+  | space_input ?S0 => let S0' := reflect_ISpace S0 in
+                        constr:(SetSpaceInternal S0')
+  | space_output ?S0 => let S0' := reflect_ISpace S0 in
+                        constr:(SetSpaceOutput S0')
+  | space_internal ?S0 => let S0' := reflect_ISpace S0 in
+                        constr:(SetSpaceInternal S0')
+
+  | ?S1 ∖ ?S2 =>  let l1 := reflect_to_SetStructure S1 in
+                  let l2 := reflect_to_SetStructure S2 in
+                  constr:(SetDifference l1 l2)
+  | ?S1 ∩ ?S2 =>  let l1 := reflect_to_SetStructure S1 in
+                  let l2 := reflect_to_SetStructure S2 in
+                  constr:(SetIntersection l1 l2)
+  | from_list ?l0 => constr:(SetList l0)
+  end.
+Fixpoint interpret_SetStructure S :=
+  match S with
+  | SetEmpty => ∅
+  | SetSingleton x => singleton x
+  | SetList l => from_list l
+  | SetUnion S1 S2 => interpret_SetStructure S1 ∪ interpret_SetStructure S2
+  | SetIntersection S1 S2 => (interpret_SetStructure S1)
+                           ∩ (interpret_SetStructure S2)
+  | SetDifference S1 S2 => (interpret_SetStructure S1)
+                         ∖ (interpret_SetStructure S2)
+  | SetSpaceDomain S0 => space_domain (interp_ISpace S0)
+  | SetSpaceInput S0 => space_input (interp_ISpace S0)
+  | SetSpaceOutput S0 => space_output (interp_ISpace S0)
+  | SetSpaceInternal S0 => space_internal (interp_ISpace S0)
+  end.
+
+
+Fixpoint SetStructure_to_list S :=
+  match S with
+  | SetEmpty => nil
+  | SetSingleton x => x::nil
+  | SetList l => l
+  | SetUnion S1 S2 => SetStructure_to_list S1 ++ SetStructure_to_list S2
+  | SetIntersection S1 S2 => list_intersection _ (SetStructure_to_list S1)
+                                               (SetStructure_to_list S2)
+  | SetDifference S1 S2 => list_setminus  _ (SetStructure_to_list S1)
+                                          (SetStructure_to_list S2)
+  | SetSpaceDomain S0 => ISpace_dom S0
+  | SetSpaceInput S0 => ISpace_input S0
+  | SetSpaceOutput S0 => ISpace_output S0
+  | SetSpaceInternal S0 => ISpace_internal S0
+  end.
+    
+Lemma SetStructure_to_list_correct : forall S,
+  interpret_SetStructure S == from_list (SetStructure_to_list S).
+Proof.
+Admitted.
+
+  Ltac set_to_list HS S :=
+    let S0 := reflect_to_SetStructure S in
+    let l0 := eval simpl in (SetStructure_to_list S0) in
+    assert (HS : S == from_list l0);
+    [ transitivity (interpret_SetStructure S0);
+      [ reflexivity | rewrite SetStructure_to_list_correct; reflexivity]
+    | ].
+
 
 
   (* NO, this doesn't work because of the non-determinism introduced by Union/Eps transitions... *)
