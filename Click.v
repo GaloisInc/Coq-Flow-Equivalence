@@ -10,8 +10,10 @@ Open Scope list_scope.
 Require Import Omega.
 
 
-
+Print NameType.
 Module Click (Export name : NameType).
+
+
 Existing Instance name_eq_dec.
 Set Implicit Arguments.
 
@@ -287,12 +289,73 @@ End Stage.
 (** * Desynchronize a circuit (see Circuit.v) and produce the set of intertwined
 Click controllers that will drive the local clocks. *)
 
+End Click.
 
-Section Desync.
-
-  Variable even odd : Set.
-  Context `{eq_dec_even : eq_dec even} `{eq_dec_odd : eq_dec odd}.
+Module Type EOType.
+  Parameter even odd : Set.
+  Parameter eq_dec_even : eq_dec even.
+  Parameter eq_dec_odd : eq_dec odd.
+  Existing Instance eq_dec_even.
+  Existing Instance eq_dec_odd.
   Existing Instance latch_eq_dec.
+
+
+Inductive click_name_type :=
+    | just_nat : nat -> click_name_type
+    | latch_and_nat : latch even odd -> nat -> click_name_type
+    .
+  Module latch_nat_pair_Name : NameType.
+    
+  Lemma just_nat_inj : forall a1 a2, a1 <> a2 -> just_nat a1 <> just_nat a2.
+  Proof.
+    intros. inversion 1. subst. contradiction.
+  Qed.
+  Lemma just_nat_and_latch_neq : forall a l x,
+    just_nat a <> latch_and_nat l x.
+  Proof. intros. inversion 1. Qed.
+  Lemma latch_and_nat_inj : forall a1 a2 l1 l2, l1 <> l2 \/ a1 <> a2 ->
+    latch_and_nat l1 a1 <> latch_and_nat l2 a2.
+  Proof.
+    intros. inversion 1. subst. 
+    destruct H; contradiction.
+  Qed.
+
+
+    Definition click_name_type_eq_dec : eq_dec click_name_type.
+    Proof.
+      constructor.
+      intros a b.
+      refine (match a, b with
+              | just_nat a1, just_nat a2 =>
+                if Dec a1 a2 then left _ else right _
+              | just_nat _, latch_and_nat _ _ => right _
+              | latch_and_nat _ _, just_nat _ => right _
+              | latch_and_nat l1 x1, latch_and_nat l2 x2 =>
+                if Dec x1 x2
+                then if Dec l1 l2
+                     then left _
+                     else right _
+                else right _
+              end).
+      { f_equal. assumption. }
+      { apply just_nat_inj; assumption. }
+      { apply just_nat_and_latch_neq. }
+      { apply not_eq_sym. apply just_nat_and_latch_neq. }
+      { f_equal; assumption. }
+      { apply latch_and_nat_inj. left. assumption. }
+      { apply latch_and_nat_inj. right. assumption. }
+    Defined.
+Print click_name_type_eq_dec.
+
+
+    Definition name := click_name_type.
+    Definition name_eq_dec := click_name_type_eq_dec.
+  End latch_nat_pair_Name.
+  Import latch_nat_pair_Name.
+
+
+  Module click := (Click latch_nat_pair_Name).
+  Import click.
 
   Class naming_scheme :=
     { latch_input : latch even odd -> handshake
@@ -313,7 +376,16 @@ Section Desync.
         latch_state0 l; latch_not_state0 l]
 
     }.
+  Definition concrete_handshake l req ack :=
+  {| req := latch_and_nat l req
+   ; ack := latch_and_nat l ack |}.
+  Instance ConcreteScheme : naming_scheme :=
+  {| latch_input := fun l => (l, 
   Context `{scheme : naming_scheme}.
+End EOType.
+
+Module Desync (Export eoType : EOType).
+
 
   Variable c : circuit even odd.
 
@@ -829,6 +901,145 @@ Defined.
 About decide_event_in.
 Arguments decide_event_in e X {H}.
 
+  Module Structural := Structural_SS(name).
+  Import Structural.
+
+
+Lemma func_space_inversion : forall I o f σ e σ',
+  o ∉ from_list I ->
+  func_space I o f ⊢ σ →{e} Some σ' ->
+  match e with
+  | None => False
+  | Some (Event y v) => state_equiv_on (from_list I ∪ singleton o) (Some (update σ y v)) (Some σ')
+                    /\ (y = o -> v = f σ)
+  end.
+Proof.
+  intros ? ? ? ? ? ? Hwf Hstep.
+  inversion Hstep; subst.
+  * split; auto.
+    intros Heq; subst.
+    contradict pf_i. auto.
+  * split; auto.
+    intros Heq; subst. contradict pf_i; auto.
+  * split; auto.
+Qed.
+
+Definition latch_stage_with_env_ISpace (l : latch even odd) : ISpace.
+Proof.
+  set (S := latch_stage_with_env l).
+  let S' := eval unfold latch_stage_with_env,
+                        left_env_component, latch_stage, right_env_component,
+                        latch_stage_with_reset,
+                        latch_clk_component, latch_flop_component,
+                        latch_left_ack_component, latch_right_req_component,
+                        clk_component, flop_component, ack_i_output,
+                        output, forward, NOT
+    in (latch_stage_with_env l) in
+  let S'' := reflect_ISpace S' in
+  exact S''.
+Defined.
+Print latch_stage_with_env_ISpace.  
+
+
+Ltac space_domain_to_list Hdom S :=
+  let l := fresh "l" in
+  evar (l : list name);
+  assert (Hdom : space_domain S == from_list l);
+  [ unfold_StateSpace S;
+    match goal with
+    | [ |- space_domain ?S == _ ] => let S' := reflect_ISpace S in
+                                     transitivity (space_domain (interp_ISpace S'));
+                                     [ reflexivity | ]
+    end;
+    rewrite space_domain_ISpace;
+    unfold l;
+    reflexivity
+  | simpl in l;
+    unfold l in Hdom;
+    clear l
+    ].
+
+
+Ltac decide_in_list_dec Hdec x l :=
+  let b := fresh "b" in
+  evar (b : bool);
+  assert (Hdec : in_list_dec x l = b);
+  [ simpl;
+    try match goal with
+    | [ |- context[ latch_to_token_flag ?latch ] ] => destruct latch; simpl
+    end;
+    repeat compare_next;
+    unfold b;
+    reflexivity
+  | unfold b in Hdec; clear b
+  ].
+
+Arguments event_in {name val}.
+Arguments Event_In {name val}.
+Lemma in_implies_event_in : forall (x : name) X (v : value),
+  x ∈ X ->
+  event_in X (Some (Event x v)).
+Proof.
+  intros. econstructor. auto.
+Qed.
+Lemma not_in_implies_event_not_in : forall (x : name) X (v : value),
+  x ∉ X ->
+  ~ event_in X (Some (Event x v)).
+Proof.
+  intros. inversion 1; subst. contradiction.
+Qed.
+  Ltac find_event_contradiction := match goal with
+  | [ He : event_in _ _ None |- _ ] => inversion He; fail
+  | [ He : event_in _ _ (Some (Event _ _)) |- _ ] => 
+    let He' := fresh "He" in
+    inversion He as [? He']; subst; clear He;
+    contradict He'; try unfold space_domain; simpl; solve_set; fail
+  | [ He : ~ event_in _ _ (Some (Event _ _)) |- _ ] => 
+    contradict He; constructor; try unfold space_domain; simpl; solve_set; fail
+  end.
+
+Ltac decide_event_in_domain e S :=
+  match e with
+  | None => assert (~ (@event_in name value (space_domain S) None))
+              by inversion 1
+  | Some (Event ?x?v) =>
+      let Hdom := fresh "Hdom" in
+      let Hdec := fresh "Hdec" in
+      space_domain_to_list Hdom S;
+      match type of Hdom with
+      | (space_domain _ == from_list ?l) =>
+        decide_in_list_dec Hdec x l;
+        from_in_list_dec;
+        rewrite <- Hdom in Hdec
+      end;
+      match type of Hdec with
+      | _ ∈ _ => apply (in_implies_event_in _ _ v) in Hdec
+      | _ ∉ _ => apply (@not_in_implies_event_not_in _ _ v) in Hdec
+      end;
+      clear Hdom
+  end.
+
+  Ltac decide_events_of Hstep :=
+  match type of Hstep with
+  | ?S ⊢ _ →{?e} Some _ => unfold_StateSpace_1 S in Hstep
+  end;
+  match type of Hstep with
+  | (?S1 ∥ ?S2) ⊢ _ →{?e} Some _ =>
+    decide_event_in_domain e S1;
+    decide_event_in_domain e S2
+
+(*
+  | (?S1 ∥ ?S2) ⊢ _ →{?e} _ =>
+    let He1 := fresh "He1" in 
+    let He2 := fresh "He2" in 
+    destruct (decide_event_in e (space_domain S1)) as [He1 | He1];
+      try find_event_contradiction;
+    destruct (decide_event_in e (space_domain S2)) as [He2 | He2];
+      try find_event_contradiction
+*)
+  end.
+
+
   Lemma step_wf_state_lemma : forall l σ e σ',
     wf_stage_state l σ ->
     latch_stage_with_env l ⊢ σ →{Some e} Some σ' ->
@@ -840,122 +1051,420 @@ Arguments decide_event_in e X {H}.
     { eapply wf_space; eauto. }
     rewrite latch_stage_with_env_input, latch_stage_with_env_output in Hx.
     rewrite latch_stage_input, latch_stage_output in Hx.
-    constructor.
-    {
+
+(*    space_domain_to_list (latch_stage_with_env l).*)
 
 
-Ltac unfold_outer_StateSpace S :=
-  match goal with
-  (* union *)
-  [ |- _ ] => let S1 := fresh "S1" in
-              let S2 := fresh "S2" in
-              evar (S1 : StateSpace name);
-              evar (S2 : StateSpace name);
-              replace S with (S1 ∥ S2) in *;
-              unfold S1, S2 in *;
-              clear S1 S2;
-              [ | reflexivity]
-  end.
 
-  Ltac find_event_contradiction := match goal with
-  | [ He : event_in _ _ None |- _ ] => inversion He; fail
-  | [ He : event_in _ _ (Some (Event _ _)) |- _ ] => 
-    let He' := fresh "He" in
-    inversion He as [? He']; subst; clear He;
-    contradict He'; try unfold space_domain; simpl; solve_set; fail
-  | [ He : ~ event_in _ _ (Some (Event _ _)) |- _ ] => 
-    contradict He; constructor; try unfold space_domain; simpl; solve_set; fail
-  end.
 
-  unfold_outer_StateSpace (latch_stage_with_env l).
   decompose_set_structure (* from Hx *).
-  Ltac decide_events_of Hstep :=
+
+  
+
+  Ltac step_inversion Hstep :=
   match type of Hstep with
+  | ?S ⊢ _ →{_} _ =>
+    unfold_StateSpace_1 S in Hstep
+  end;
+  match type of Hstep with
+  (* Union *)
   | (?S1 ∥ ?S2) ⊢ _ →{?e} _ =>
-    let He1 := fresh "He1" in 
-    let He2 := fresh "He2" in 
-    destruct (decide_event_in e (space_domain S1)) as [He1 | He1];
-      try find_event_contradiction;
-    destruct (decide_event_in e (space_domain S2)) as [He2 | He2];
-      try find_event_contradiction
+
+    match goal with
+    | [ He1 : event_in (space_domain S1) ?e
+      , He2 : ~ event_in (space_domain S2) ?e
+      |- _ ] =>
+      apply union_inversion_left_only in Hstep; auto;
+      let Hequiv := fresh "Hequiv" in
+      destruct Hstep as [Hstep Hequiv]
+
+    | [ He1 : ~ event_in (space_domain S1) ?e
+      , He2 : event_in (space_domain S2) ?e
+      |- _ ] =>
+      apply union_inversion_right_only in Hstep; auto;
+      let Hequiv := fresh "Hequiv" in
+      destruct Hstep as [Hstep Hequiv]
+
+    | [ He1 : event_in (space_domain S1) ?e
+      , He2 : event_in (space_domain S2) ?e
+      |- _ ] =>
+      let Hstep1 := fresh "Hstep1" in
+      let Hstep2 := fresh "Hstep2" in
+      apply union_inversion_lr in Hstep;
+        [ destruct Hstep as [Hstep1 Hstep2]
+        | unfold space_domain; simpl; solve_set ]
+    end
+
+  (* Hide *)
+  | hide ?x0 ?S0 ⊢ _ →{Some _} _ => apply hide_inversion in Hstep
+  | hide ?x0 ?S0 ⊢ _ →{None} _ => apply hide_inversion_None in Hstep;
+              let v := fresh "v" in
+              destruct Hstep as [Hstep | [v Hstep]]
+
+  (* func_space *)
+  | func_space ?I ?o ?f ⊢ _ →{_} _ =>
+    apply func_space_inversion in Hstep;
+    [ | to_in_list_dec; simpl; repeat compare_next; auto; fail];
+    match type of Hstep with
+    | False => contradiction
+    | _ /\ _ => let Hequiv := fresh "Hequiv" in
+                let Heq := fresh "Heq" in
+                destruct Hstep as [Hequiv Heq];
+                try match type of Heq with
+                | ?x = ?x -> _ => specialize (Heq eq_refl)
+                | ?x = ?y -> _ => clear Heq (* too much?? *)
+                end
+    end
   end.
-  Ltac step_inversion :=
-  match goal with
-  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{?e} _
-    , He1 : event_in _ (space_domain ?S1) ?e
-    , He2 : ~ event_in _ (space_domain ?S2) ?e
-    |- _ ] =>
-    apply union_inversion_left in Hstep;
-      [ | unfold space_domain; simpl; solve_set ]
-  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{?e} _
-    , He1 : ~ event_in _ (space_domain ?S1) ?e
-    , He2 : event_in _ (space_domain ?S2) ?e
-    |- _ ] =>
-    apply union_inversion_right in Hstep;
-      [ | unfold space_domain; simpl; solve_set ]
 
-  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{?e} _
-    , He1 : event_in _ (space_domain ?S1) ?e
-    , He2 : event_in _ (space_domain ?S2) ?e
-    |- _ ] =>
-    apply union_inversion_lr in Hstep;
-      [ | unfold space_domain; simpl; solve_set ]
-
-  end.
-
-  decide_events_of Hstep.
-  step_inversion.
-
-  decide_events_of Hstep.
-  step_inversion.
-
-  decide_events_of Hstep.
-  step_inversion.
-
-  step_inversion.
+  *
+  (* TODO: make all this happen automatically via decide_events_in tactic *)
 
 
-apply union_inversion_lr in Hstep.
-2:{ unfold space_domain; simpl; solve_set. }
 
-clear Hstep.
-
-  match goal with
-  | [ H : (?S1 ∥ ?S2) ⊢ _ →{?e} _ |- _ ] =>
-    let He1 := fresh "He1" in 
-    let He2 := fresh "He2" in 
-    destruct (decide_event_in e (space_domain S1)) as [He1 | He1];
-      try find_event_contradiction;
-    destruct (decide_event_in e (space_domain S2)) as [He2 | He2];
-      try find_event_contradiction
-
-  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{?e} _
-    , He1 : event_in _ (space_domain ?S1) ?e
-    , He2 : ~ event_in _ (space_domain ?S2) ?e
-    |- _ ] =>
-    apply union_inversion_left in Hstep;
-      [ clear Hstep | unfold space_domain; simpl; solve_set ]
-  end.
-  match goal with
-  | [ H : (?S1 ∥ ?S2) ⊢ _ →{?e} _ |- _ ] =>
-    let He1 := fresh "He1" in 
-    let He2 := fresh "He2" in 
-    destruct (decide_event_in e (space_domain S1)) as [He1 | He1];
-      try find_event_contradiction;
-    destruct (decide_event_in e (space_domain S2)) as [He2 | He2];
-      try find_event_contradiction
-
-  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{?e} _
-    , He1 : event_in _ (space_domain ?S1) ?e
-    , He2 : ~ event_in _ (space_domain ?S2) ?e
-    |- _ ] =>
-    apply union_inversion_left in Hstep;
-      [ | unfold space_domain; simpl; solve_set ]
+  Ltac step_inversion_1 := match goal with
+  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{_} _ |- _ ] =>
+    decide_events_of Hstep;
+    step_inversion Hstep;
+    repeat match goal with
+    | [ He : event_in _ _ |- _ ] => clear He
+    | [ He : ~ event_in _ _ |- _ ] => clear He
+    end
+  | [ Hstep : hide _ _ ⊢ _ →{_} _ |- _ ] =>
+    step_inversion Hstep
+  | [ Hstep : func_space ?I ?o ?f ⊢ _ →{_} _ |- _ ] =>
+    step_inversion Hstep
+  | [ Hstep : ?S ⊢ _ →{_} _ |- _ ] =>
+    unfold_StateSpace_1 S in Hstep
   end.
 
 
+  repeat step_inversion_1.
+
+
+  Lemma combine_state_equiv_on_domain : forall (S1 S2 : StateSpace name) σ σ',
+    state_equiv_on (space_domain S1) (Some σ) (Some σ') ->
+    state_equiv_on (space_domain S2) (Some σ) (Some σ') ->
+    state_equiv_on (space_domain (S1 ∥ S2)) (Some σ) (Some σ').
+  Proof.
+    intros S1 S2 σ σ' Hequiv1 Hequiv2.
+    intros x Hx.
+    Search space_domain union.
+    unfold space_domain in Hx; simpl in Hx.
+    decompose_set_structure;
+    try (rewrite <- Hequiv1; auto;
+           unfold space_domain; solve_set);
+    try (rewrite <- Hequiv2; auto;
+           unfold space_domain; solve_set).
+  Qed.
+  Lemma combine_state_equiv_on : forall (X1 X2 : Ensemble name) σ σ',
+    state_equiv_on X1 (Some σ) (Some σ') ->
+    state_equiv_on X2 (Some σ) (Some σ') ->
+    state_equiv_on (X1 ∪ X2) (Some σ) (Some σ').
+  Proof.
+    intros X1 X2 σ σ' H1 H2.
+    intros x Hx.
+    decompose_set_structure.
+  Qed.
 
     
+
+Ltac combine_state_equiv_on :=
+  match goal with
+  | [ H1 : state_equiv_on (space_domain ?S1) (Some ?σ) (Some ?σ')
+    , H2 : state_equiv_on (space_domain ?S2) (Some ?σ) (Some ?σ')
+    |- _ ] =>
+    let Hequiv := fresh "Hequiv" in
+    assert (Hequiv : state_equiv_on (space_domain (S1 ∥ S2)) (Some σ) (Some σ'));
+    [ apply combine_state_equiv_on_domain; auto
+    | clear H1 H2 ]
+  | [ H1 : state_equiv_on ?X1 (Some ?σ) (Some ?σ')
+    , H2 : state_equiv_on ?X2 (Some ?σ) (Some ?σ')
+    |- _ ] =>
+    let Hequiv := fresh "Hequiv" in
+    assert (Hequiv : state_equiv_on (X1 ∪ X2) (Some σ) (Some σ'));
+    [ apply combine_state_equiv_on; auto
+    | clear H1 H2 ]
+  end.
+  repeat combine_state_equiv_on.
+
+  constructor.
+  + intros y Hy.
+
+
+Inductive SetStructure :=
+  | SetEmpty : SetStructure
+  | SetSingleton : name -> SetStructure
+  | SetList : list name -> SetStructure
+  | SetUnion : SetStructure  -> SetStructure -> SetStructure
+  | SetIntersection : SetStructure -> SetStructure -> SetStructure
+  | SetDifference : SetStructure -> SetStructure -> SetStructure
+  | SetSpaceDomain : ISpace -> SetStructure
+.
+Ltac reflect_to_SetStructure S :=
+  match S with
+  | ∅ => constr:(SetEmpty)
+  | singleton ?x => constr:(SetSingleton x)
+  | ?S1 ∪ ?S2 => let l1 := reflect_to_SetStructure S1 in
+                  let l2 := reflect_to_SetStructure S2 in
+                  constr:(SetUnion l1 l2)
+  | space_domain ?S0 => let S0' := reflect_ISpace S0 in
+                        constr:(SetSpaceDomain S0')
+  | ?S1 ∖ ?S2 =>  let l1 := reflect_to_SetStructure S1 in
+                  let l2 := reflect_to_SetStructure S2 in
+                  constr:(SetDifference l1 l2)
+  | ?S1 ∩ ?S2 =>  let l1 := reflect_to_SetStructure S1 in
+                  let l2 := reflect_to_SetStructure S2 in
+                  constr:(SetIntersection l1 l2)
+  | from_list ?l0 => constr:(SetList l0)
+  end.
+Fixpoint interpret_SetStructure S :=
+  match S with
+  | SetEmpty => ∅
+  | SetSingleton x => singleton x
+  | SetList l => from_list l
+  | SetUnion S1 S2 => interpret_SetStructure S1 ∪ interpret_SetStructure S2
+  | SetIntersection S1 S2 => (interpret_SetStructure S1)
+                           ∩ (interpret_SetStructure S2)
+  | SetDifference S1 S2 => (interpret_SetStructure S1)
+                         ∖ (interpret_SetStructure S2)
+  | SetSpaceDomain S0 => space_domain (interp_ISpace S0)
+  end.
+
+
+Fixpoint SetStructure_to_list S :=
+  match S with
+  | SetEmpty => nil
+  | SetSingleton x => x::nil
+  | SetList l => l
+  | SetUnion S1 S2 => SetStructure_to_list S1 ++ SetStructure_to_list S2
+  | SetIntersection S1 S2 => list_intersection _ (SetStructure_to_list S1)
+                                               (SetStructure_to_list S2)
+  | SetDifference S1 S2 => list_setminus  _ (SetStructure_to_list S1)
+                                          (SetStructure_to_list S2)
+  | SetSpaceDomain S0 => ISpace_dom S0
+  end.
+    
+Lemma SetStructure_to_list_correct : forall S,
+  interpret_SetStructure S == from_list (SetStructure_to_list S).
+Admitted.
+  
+  
+  Add Parametric Morphism : (state_equiv_on)
+    with signature (Same_set name) ==> eq ==> eq ==> iff
+    as equiv_on_iff.
+  Proof.
+    intros X Y Heq τ1 τ2.
+    split; intros Hequiv;
+    destruct τ1; destruct τ2; auto.
+    * intros y Hy; rewrite <- Heq in Hy; auto.
+    * intros y Hy; rewrite -> Heq in Hy; auto.
+  Qed.
+
+  Ltac set_to_list HS S :=
+    let S0 := reflect_to_SetStructure S in
+    let l0 := eval simpl in (SetStructure_to_list S0) in
+    assert (HS : S == from_list l0);
+    [ transitivity (interpret_SetStructure S0);
+      [ reflexivity | rewrite SetStructure_to_list_correct; reflexivity]
+    | ].
+set_to_list HS ((from_list [ack (latch_input l)]
+               ∪ singleton (req (latch_input l)))
+              ∪ (from_list
+                   [latch_state0 l; req (latch_input l); 
+                   ack (latch_output l); ctrl_reset_n (odd:=odd)]
+                 ∪ singleton (latch_clk l))).
+
+  Ltac state_equiv_on_to_list :=
+  match goal with
+  | [ Hequiv : state_equiv_on (space_domain ?S) _ _ |- _ ] =>
+    unfold_StateSpace S in Hequiv;
+    match type of Hequiv with
+    | state_equiv_on (space_domain ?S0) _ _ =>
+      let S0' := reflect_ISpace S0 in
+      replace (space_domain S0)
+        with (space_domain (interp_ISpace S0'))
+        in Hequiv
+        by reflexivity;
+      rewrite space_domain_ISpace in Hequiv;
+      let l0 := eval simpl in (ISpace_dom S0') in
+      replace (from_list (ISpace_dom S0'))
+        with  (from_list l0)
+        in    Hequiv
+        by reflexivity
+
+    end
+
+  | [ Hequiv : state_equiv_on ?X _ _ |- _ ] =>
+    let HX := fresh "HX" in
+    set_to_list HX X;
+    rewrite HX in Hequiv;
+    clear HX
+
+  end.
+
+
+  state_equiv_on_to_list.
+  state_equiv_on_to_list.
+  match goal with
+  | [ Hequiv : state_equiv_on (from_list ?l) (Some _) (Some ?σ')
+    |- context[ ?σ' ?y ] ] =>
+    let Hy := fresh "Hy" in
+    destruct (y ∈? from_list l) as [Hy | Hy];
+    [ rewrite <- Hequiv;
+      try unfold update;
+      repeat compare_next; auto;
+      try solve_val_is_bit
+    | clear Hequiv ]
+  end.
+
+  assert (Hy' : y ∈ space_domain (latch_stage_with_env l) ∖
+              from_list [ack (latch_input l); req (latch_input l); 
+            latch_state0 l; req (latch_input l); ack (latch_output l);
+            ctrl_reset_n (odd:=odd); latch_clk l]).
+  { solve_set. }
+  clear Hy0.
+
+als;dkg;eioghe;ofijeiojf;oeh
+
+  (* TODO: trying to figure out a way to implement setmins better *)
+  (* get assumptions in conclusion *) Print all_disjoint.
+  repeat match goal with
+  | [ H : all_disjoint (?x :: _) |- _ ] =>
+    inversion H; subst; clear H
+  end.
+  to_in_list_dec.
+  repeat match goal with
+  | [ Hdec : in_list_dec ?x ?l = _ |- _ ] => simpl in Hdec
+  end.
+  repeat compare_next.
+Search all_disjoint.
+    dependent destruction Hdisjoint.
+  inversion Hdisjoint as [ | Hdisjoint'].
+  simpl in Hdisjoint.
+
+  unfold_StateSpace (latch_stage_with_env l) in Hy';
+  match type of Hy' with
+  | ?y ∈ ?S =>
+    let S0 := reflect_to_SetStructure S in
+    let l0' := eval simpl in (SetStructure_to_list S0) in
+    assert (HS' : S == from_list l0');
+    [ transitivity (interpret_SetStructure S0);
+      [ reflexivity | rewrite SetStructure_to_list_correct; reflexivity]
+    | rewrite HS' in Hy'; clear HS'
+    ]
+  end.
+  unfold list_setminus in Hy'.
+  simpl in Hy'.
+  to_in_list_dec.
+
+Print naming_scheme.
+
+  Lemma 
+  Ltac compare_concrete H x y :=
+    match constr:((x, y)) with
+    | (?z, ?z) => rewrite (eqb_eq _ z) in H; auto
+    | (?z1, ?z2) => rewrite (eqb_neq _ z1 z2) in H;
+      [
+      | intro; find_contradiction;
+      (* in case there is a latch_to_token_flag in there *)
+        try match z1 with
+        | match latch_to_token_flag ?l0 with
+          | Token => _
+          | NonToken => _
+          end =>
+          destruct l0; simpl in *;
+          find_contradiction;
+          fail
+        end;
+        try match z2 with
+        | match latch_to_token_flag ?l0 with
+          | Token => _
+          | NonToken => _
+          end =>
+          destruct l0; simpl in *;
+          find_contradiction;
+          fail
+        end;
+        fail
+      ]
+    end.
+
+  compare_concrete Hy' (req (latch_input l)) (ack (latch_input l)).
+  
+  do 20 match goal with
+  | [ H : context[ ?z' =? ?z ] |- _ ] => compare_concrete H z' z; simpl in H
+  end.
+  do 10 match goal with
+  | [ H : context[ ?z' =? ?z ] |- _ ] => compare_concrete H z' z; simpl in H
+  end.
+  do 10 match goal with
+  | [ H : context[ ?z' =? ?z ] |- _ ] => compare_concrete H z' z; simpl in H
+  end.
+  do 10 match goal with
+  | [ H : context[ ?z' =? ?z ] |- _ ] => compare_concrete H z' z; simpl in H
+  end.
+  do 10 match goal with
+  | [ H : context[ ?z' =? ?z ] |- _ ] => compare_concrete H z' z; simpl in H
+  end.
+  do 2 match goal with
+  | [ H : context[ ?z' =? ?z ] |- _ ] => compare_concrete H z' z; simpl in H
+  end.
+
+
+
+    rewrite space_domain_ISpace in Hequiv1.
+    simpl in Hequiv1.
+    reflexivity.
+  
+  transitivity (space_domain (interp_ISpace 
+
+  match goal with
+  | [ H : ?y ∈ ?Y
+    ; state_equiv_on ?X1 (Some ?σ) (Some ?σ')
+    ; state_equiv_on ?X2 (Some ?σ) (Some ?σ')
+    |- context[ ?σ' ?y ] ] =>
+    assert (
+  end.
+(*    rewrite Hdom in Hy.*)
+    destruct (y ∈? (from_list
+                [latch_state0 l; req (latch_input l); 
+                ack (latch_output l); ctrl_reset_n (odd:=odd); latch_clk l]))
+      as [Hy' | Hy'].
+    { rewrite <- Hequiv; auto.
+      2:{ to_in_list_dec; simpl in Hy'.
+          repeat compare_next; solve_set.
+      }
+      unfold update.
+      compare_next; auto.
+      solve_val_is_bit.
+    }
+    destruct (y ∈? (from_list [ack (latch_input l); req (latch_input l)]))
+      as [Hy'' | Hy''].
+    { rewrite <- Hequiv0; auto.
+      2:{ to_in_list_dec; simpl in Hy''.
+          repeat compare_next; solve_set. }
+      unfold update.
+      compare_next; auto.
+      solve_val_is_bit.
+    }
+    repeat to_in_list_dec.
+    simpl in Hy', Hy''.
+    repeat compare_next.
+
+   space_domain_to_list Hdom (latch_stage_with_env l).
+   rewrite Hdom in Hy. clear Hdom.
+   to_in_list_dec.
+    simpl in Hy.
+    repeat compare_next.
+  
+rewrite_state_equiv_on. rewrite <- Hequiv0.
+      apply Hwf1.
+
+
+
+ unfold space_domain in *. simpl in *.
+    decompose_set_structure.
   
 
     2:{ contradict He1. constructor. unfold space_domain; simpl; solve_set.

@@ -293,11 +293,6 @@ Ltac to_in_list_dec :=
   | [ H : ?x ∉ ?X |- _] => apply in_list_dec_f in H
   | [ |- ?x ∉ ?X ] => apply in_list_dec_f
   end.
-  Lemma filter_false : forall {X} (l : list X),
-    filter (fun _ => false) l = nil.
-  Proof.
-    induction l; auto.
-  Qed.
 
 About enumerate.
 
@@ -426,8 +421,30 @@ Ltac deduce_in_domain S :=
   Section SetminusEnumerable.
     Variable X Y : Ensemble name.
     Context `{enumX : enumerable _ X} `{enumY : enumerable _ Y}.
-    Definition list_setminus lX lY :=
-      filter (fun x => negb (in_list_dec x lY)) lX.
+
+Print filter.
+    Fixpoint better_filter {A : Type} (f : A -> bool) (l : list A) :=
+      match l with
+      | nil => nil
+      | x :: l0 => (if f x then x::nil else nil) ++ better_filter f l0
+      end.
+  Lemma filter_false : forall {X} (l : list X),
+    better_filter (fun _ => false) l = nil.
+  Proof.
+    induction l; auto.
+  Qed.
+
+
+    Fixpoint list_remove {A} (x : A) lX :=
+    match lX with
+    | nil => nil
+    | x' :: lX' => if x =? x' then 
+    Fixpoint list_setminus lX lY :=
+    match lY with
+    | nil => lX
+    | y::lY' => list_setminus (remove y lX) lY'
+    end.
+      better_filter (fun x => negb (in_list_dec x lY)) lX.
     Lemma list_setminus_equiv :
       X ∖ Y == from_list (list_setminus (enumerate X) (enumerate Y)).
     Proof.
@@ -2150,7 +2167,7 @@ Section Celem.
   Let C_input := Couple _ x1 x2.
   Let C_output := singleton y.
   
-  Let y_output σ := 
+  Definition C_elem_output σ := 
     match σ x1, σ x2 with
     | Num 0, Num 0 => Num 0
     | Num 1, Num 1 => Num 1
@@ -2158,7 +2175,7 @@ Section Celem.
     | Num 1, Num 0 => σ y
     | _, _ => X
     end.
-  Definition C_elem : StateSpace := func_space [x1;x2] y y_output.
+  Definition C_elem : StateSpace := func_space [x1;x2] y C_elem_output.
 
 End Celem.
 
@@ -2385,6 +2402,26 @@ Module StateSpaceTactics (Export name : NameType).
     }
   Qed.
 
+  Lemma union_inversion_left_only : forall (S1 S2 : StateSpace name) σ e σ',
+    (S1 ∥ S2) ⊢ σ →{e} Some σ' ->
+    event_in _ (space_domain S1) e ->
+    ~ event_in _ (space_domain S2) e ->
+    S1 ⊢ σ →{e} Some σ'
+    /\ state_equiv_on (space_domain S2) (Some σ) (Some σ').
+  Proof.
+    intros ? ? ? ? ? Hstep H1 H2.
+    inversion Hstep; subst; split; auto; 
+      try contradiction.
+    contradict H2.
+    inversion H; subst; auto;
+    match goal with
+    [ H : event_in _ (_ ?S2) ?e |- event_in _ (space_domain ?S2) ?e ] =>
+      inversion H; subst;
+      constructor;
+      unfold space_domain; solve_set
+    end.
+  Qed.
+
   Lemma union_inversion_right : forall (S1 S2 : StateSpace name) σ x v σ',
       (S1 ∥ S2) ⊢ σ →{Some (Event x v)} Some σ' ->
       x ∈ space_domain S2 ->
@@ -2396,6 +2433,26 @@ Module StateSpaceTactics (Export name : NameType).
     { absurd (event_in _ (space_domain S2) (Some (Event x v))); auto.
       constructor; auto.
     }
+  Qed.
+
+  Lemma union_inversion_right_only : forall (S1 S2 : StateSpace name) σ e σ',
+    (S1 ∥ S2) ⊢ σ →{e} Some σ' ->
+    ~ event_in _ (space_domain S1) e ->
+    event_in _ (space_domain S2) e ->
+    S2 ⊢ σ →{e} Some σ'
+    /\ state_equiv_on (space_domain S1) (Some σ) (Some σ').
+  Proof.
+    intros ? ? ? ? ? Hstep H1 H2.
+    inversion Hstep; subst; split; auto; 
+      try contradiction.
+    contradict H1.
+    inversion H; subst; auto;
+    match goal with
+    [ H : event_in _ (_ ?S2) ?e |- event_in _ (space_domain ?S2) ?e ] =>
+      inversion H; subst;
+      constructor;
+      unfold space_domain; solve_set
+    end.
   Qed.
 
   Lemma union_inversion_lr : forall (S1 S2 : StateSpace name) σ x v σ',
@@ -2797,7 +2854,7 @@ Print StateSpace.
   | IUnion (S1 S2 : ISpace) : ISpace
   | IHide  (x : name) (S : ISpace) : ISpace
   | IFlop (set reset clk old_clk D Q : name) : 
-    all_disjoint [set;reset;clk;old_clk;D;Q] ->
+    (*all_disjoint [set;reset;clk;old_clk;D;Q] ->*)
     ISpace
   | IDelaySpace (S : ISpace)
                 (sensitivities : list name)
@@ -2811,7 +2868,7 @@ Print StateSpace.
     | IFunc I' x f  => func_space I' x f
     | IUnion S1 S2 => interp_ISpace S1 ∥ interp_ISpace S2
     | IHide x S0   => hide x (interp_ISpace S0)
-    | IFlop set reset clk old_clk D Q _ => flop set reset clk old_clk D Q
+    | IFlop set reset clk old_clk D Q => flop set reset clk old_clk D Q
     | IDelaySpace S0 sens guard => delay_space (interp_ISpace S0) sens guard
     end.
 
@@ -2821,18 +2878,181 @@ Print StateSpace.
   Admitted.
 
 
+Ltac unfold_StateSpace_1 S :=
+  match S with
 
-  Ltac unfold_space_names S :=
-    repeat match S with
-    | func_space _ _ _ => idtac
-    | ?S1 ∥ ?S2 => unfold_space_names S1; unfold_space_names S2
-    | hide _ ?S0 => unfold_space_names S0
-    | flop _ _ _ _ _ _ => idtac
-    | C_elem _ _ _ => idtac
-    | delay_space ?S0 _ _ => unfold_space_names S0
-    | ?name => unfold name
-    | ?f _ => unfold_space_names f
-    end.
+  | func_space ?I0 ?x ?f => idtac
+  | ?S1 ∥ ?S2            => idtac
+  | flop ?set ?reset ?clk ?old_clk ?D ?Q => idtac
+  | delay_space ?S0 ?sens ?guard      => idtac
+
+  (* func *)
+  | _ => let I := fresh "I" in
+         let o := fresh "o" in
+         let f := fresh "f" in
+         evar (I : list name);
+         evar (o : name);
+         evar (f : state name -> value);
+         replace S with (func_space I o f) in *;
+         unfold I, o, f in *;
+         clear I o f;
+         [ | reflexivity]
+                
+  (* union *)
+  | _ => let S1 := fresh "S1" in
+         let S2 := fresh "S2" in
+         evar (S1 : StateSpace name);
+         evar (S2 : StateSpace name);
+         replace S with (S1 ∥ S2) in *;
+         unfold S1, S2 in *;
+         [ | reflexivity];
+         clear S1 S2
+  (* hide *)
+  | _ => let x0 := fresh "x0" in
+         let S0 := fresh "S0" in
+         evar (x0 : name);
+         evar (S0 : StateSpace name);
+         replace S with (hide x0 S0) in *;
+         unfold x0, S0 in *;
+         [ | reflexivity];
+         clear x0 S0
+
+  (* flop *)
+  | _ => let set := fresh "set" in
+         let reset := fresh "reset" in
+         let clk := fresh "clk" in
+         let old_clk := fresh "old_clk" in
+         let D := fresh "D" in
+         let Q := fresh "Q" in
+         evar (set : name); evar (reset : name);
+         evar (clk : name); evar (old_clk : name);
+         evar (D : name); evar (Q : name);
+         replace S with (flop set reset clk old_clk D Q) in *;
+         unfold set, reset, clk, old_clk, D, Q in *;
+         clear set reset clk old_clk D Q;
+         [ | reflexivity]
+
+  (* delay space *)
+  | _ => let S0 := fresh "S0" in
+         let sens := fresh "sens" in
+         let guard := fresh "guard" in
+         evar (S0 : StateSpace name);
+         evar (sens : list name);
+         evar (guard : state name -> bool);
+         replace S with (delay_space S0 sens guard) in *;
+         unfold S0, sens, guard in *;
+         [ | reflexivity];
+         clear S0 sens guard
+
+  end.
+
+Ltac maybe_do flag tac :=
+  match flag with
+  | false => idtac
+  | true  => tac
+  end.
+
+(* unfold_StateSpace_1 := unfold_StateSpace false *)
+
+Ltac replace_with_in x y loc_flag :=
+  match loc_flag with
+  | false => (* only in conclusion *) replace x with y
+  | true  => (* everywhere *) replace x with y in *
+  | _ => replace x with y in loc_flag
+  end.
+Ltac unfold_SS recurse_flag loc_flag S :=
+  match S with
+
+  | func_space ?I0 ?x ?f => idtac
+  | ?S1 ∥ ?S2            =>
+    maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S1);
+    maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S2)
+  | hide ?x ?S'          =>
+    maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S')
+  | flop ?set ?reset ?clk ?old_clk ?D ?Q => idtac
+  | delay_space ?S0 ?sens ?guard      => 
+    maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S0)
+
+  (* func *)
+  | _ => let I := fresh "I" in
+         let o := fresh "o" in
+         let f := fresh "f" in
+         evar (I : list name);
+         evar (o : name);
+         evar (f : state name -> value);
+         replace_with_in S (func_space I o f) loc_flag;
+         unfold I, o, f in *;
+         clear I o f;
+         [ | reflexivity]
+                
+  (* union *)
+  | _ => let S1 := fresh "S1" in
+         let S2 := fresh "S2" in
+         evar (S1 : StateSpace name);
+         evar (S2 : StateSpace name);
+         replace_with_in S (S1 ∥ S2) loc_flag;
+         unfold S1, S2 in *;
+         [ | reflexivity];
+         maybe_do recurse_flag ltac:(let S1' := eval unfold S1 in S1 in
+                                let S2' := eval unfold S2 in S2 in
+                                unfold_SS recurse_flag loc_flag S1';
+                                unfold_SS recurse_flag loc_flag S2');
+         clear S1 S2
+  (* hide *)
+  | _ => let x0 := fresh "x0" in
+         let S0 := fresh "S0" in
+         evar (x0 : name);
+         evar (S0 : StateSpace name);
+         replace_with_in S (hide x0 S0) loc_flag;
+         unfold x0, S0 in *;
+         [ | reflexivity];
+         maybe_do recurse_flag ltac:(let S0' := eval unfold S0 in S0 in
+                                unfold_SS recurse_flag loc_flag S0');
+         clear x0 S0
+
+  (* flop *)
+  | _ => let set := fresh "set" in
+         let reset := fresh "reset" in
+         let clk := fresh "clk" in
+         let old_clk := fresh "old_clk" in
+         let D := fresh "D" in
+         let Q := fresh "Q" in
+         evar (set : name); evar (reset : name);
+         evar (clk : name); evar (old_clk : name);
+         evar (D : name); evar (Q : name);
+         replace_with_in S (flop set reset clk old_clk D Q) loc_flag;
+         unfold set, reset, clk, old_clk, D, Q in *;
+         clear set reset clk old_clk D Q;
+         [ | reflexivity]
+
+  (* delay space *)
+  | _ => let S0 := fresh "S0" in
+         let sens := fresh "sens" in
+         let guard := fresh "guard" in
+         evar (S0 : StateSpace name);
+         evar (sens : list name);
+         evar (guard : state name -> bool);
+         replace_with_in S (delay_space S0 sens guard) loc_flag;
+         unfold S0, sens, guard in *;
+         [ | reflexivity];
+         maybe_do recurse_flag ltac:(let S0' := eval unfold S0 in S0 in
+                                unfold_SS recurse_flag loc_flag S0');
+         clear S0 sens guard
+
+  end.
+  Tactic Notation "unfold_StateSpace" constr(S) :=
+    (unfold_SS true false S).
+  Tactic Notation "unfold_StateSpace_1" constr(S) :=
+    (unfold_SS false false S).
+  Tactic Notation "unfold_StateSpace" constr(S) "in" "*" :=
+    (unfold_SS true true S).
+  Tactic Notation "unfold_StateSpace_1" constr(S) "in" "*" :=
+    (unfold_SS false true S).
+  Tactic Notation "unfold_StateSpace" constr(S) "in" hyp(H) :=
+    (unfold_SS true H S).
+  Tactic Notation "unfold_StateSpace_1" constr(S) "in" hyp(H) :=
+    (unfold_SS false H S).
+
   Ltac reflect_ISpace S :=
   match S with
   | func_space ?I0 ?x ?f => constr:(IFunc I0 x f)
@@ -2846,27 +3066,28 @@ Print StateSpace.
                                       constr:(IDelaySpace SS sens guard)
 (*  | _                              => constr:(IPrim S)*)
   end.
-  Ltac reflect_S S := unfold_space_names S;
-                      let S' := reflect_ISpace S in
-                      replace S with (interp_ISpace S') by reflexivity.
+  Ltac reflect_S S := 
+    let S' := reflect_ISpace S in
+    replace S with (interp_ISpace S') by reflexivity.
 
   Ltac reflect_StateSpace :=
   match goal with
-  | [ |- ?S1 = ?S2 ] => unfold_space_names S1; unfold_space_names S2;
+  | [ |- ?S1 = ?S2 ] => unfold_StateSpace S1;
+                        unfold_StateSpace S2;
     match goal with
     | [ |- ?S1' = ?S2' ] => reflect_S S1'; reflect_S S2'
     end
   end.
 
-
-(*
+  Section Test.
   Variable x : name.
-  Definition S : StateSpace name := C_elem x x x.
-  Lemma foo : (flop _ _ _  ∥ func_space (x::nil) x (fun _ => X)) = S.
-    unfold C_elem. reflect_StateSpace.
-    (*interp_ISpace (Union _ _)*)
+  Let S : StateSpace name := C_elem x x x.
+  Let S' := (S ∥ func_space (x::nil) x (fun _ => X)).
+  Lemma foo : S' = S.
+    assert (Heq : S' = S') by reflexivity.
+    unfold_StateSpace S' in Heq.
   Abort.
-*)
+  End Test.
 
 
   Definition update_oevent (σ : state name) (e : option (event name value)) : state name :=
@@ -2882,7 +3103,7 @@ Print ISpace. Print flop_step.
     | IFunc I0 x0 f0 => x0 :: I0
     | IUnion S1 S2 => ISpace_dom S1 ++ ISpace_dom S2
     | IHide x0 S0  => ISpace_dom S0
-    | IFlop set reset clk old_clk D Q _ => set::reset::clk::old_clk::D::Q::nil
+    | IFlop set reset clk old_clk D Q => set::reset::clk::old_clk::D::Q::nil
     | IDelaySpace S0 sens guard => ISpace_dom S0 ++ sens
     end.
 
@@ -2890,8 +3111,8 @@ Print ISpace. Print flop_step.
     match S with
     | IFunc I0 x0 f0 => x0 :: nil
     | IUnion S1 S2 => ISpace_output S1 ++ ISpace_output S2
-    | IHide x0 S0  => filter (fun y => negb (x0 =? y)) (ISpace_output S0)
-    | IFlop set reset clk old_clk D Q _ => Q::nil
+    | IHide x0 S0  => better_filter (fun y => negb (x0 =? y)) (ISpace_output S0)
+    | IFlop set reset clk old_clk D Q => Q::nil
     | IDelaySpace S0 sens guard => ISpace_output S0
     end.
 
@@ -2901,7 +3122,7 @@ Print ISpace. Print flop_step.
     | IUnion S1 S2 => list_setminus _ (ISpace_input S1) (ISpace_output S2)
                    ++ list_setminus _ (ISpace_input S2) (ISpace_output S1)
     | IHide x0 S0  => ISpace_input S0
-    | IFlop set reset clk old_clk D Q _ => set::reset::clk::D::nil
+    | IFlop set reset clk old_clk D Q => set::reset::clk::D::nil
     | IDelaySpace S0 sens guard => ISpace_input S0 ++ sens
     end.
 
@@ -2910,7 +3131,7 @@ Print ISpace. Print flop_step.
     | IFunc I0 x0 f0 => nil
     | IUnion S1 S2 => ISpace_internal S1 ++ ISpace_internal S2
     | IHide x0 S0  => x0 :: ISpace_internal S0
-    | IFlop set reset clk old_clk D Q _ => old_clk::nil
+    | IFlop set reset clk old_clk D Q => old_clk::nil
     | IDelaySpace S0 sens guard => ISpace_internal S0
     end.
 
@@ -3021,7 +3242,7 @@ Print delay_space_step_fun.
       | Some (Event y v) => if x0 =? y then ∅ else step_ISpace S0 σ e
       | None => step_ISpace S0 σ None ∪ (fun τ => exists v, step_ISpace S0 σ (Some (Event x0 v)) τ)
       end
-    | IFlop set reset clk old_clk D Q Hdisjoint =>
+    | IFlop set reset clk old_clk D Q =>
       flop_step_fun _ set reset clk old_clk D Q σ e
     | IDelaySpace S0 sensitivities guard =>
       match e with
@@ -3075,7 +3296,7 @@ Print ISpace. About wf_union.
 
     * apply hide_functional_correct; auto. admit.
       admit.
-    * apply flop_functional_correct. auto.
+    * apply flop_functional_correct. auto. admit.
     * apply delay_space_functional_correct; auto.
       admit.
   Admitted.
