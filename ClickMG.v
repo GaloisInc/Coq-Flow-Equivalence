@@ -784,6 +784,8 @@ Qed.
 Print stage_place.
 
 
+  (************************** TODO ********************************)
+
   (** Intuitively, [prop_marked p σ] is a property that holds on a state σ
   whenever a related marking m satisfies [m(p) > 0]. *)
   Inductive prop_marked : forall {t1 t2} (p : stage_place t1 t2) (σ : state name), Prop :=

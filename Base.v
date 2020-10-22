@@ -394,6 +394,35 @@ Module EnsembleNotation.
            inversion 1; subst; contradiction.
   Defined.
 
+  Lemma from_list_app : forall {X} (l1 l2 : list X),
+    from_list (l1 ++ l2) == from_list l1 ∪ from_list l2.
+  Proof.
+    induction l1; intros; simpl.
+    * split; intros x Hx.
+      { right; assumption. }
+      { inversion Hx; subst.
+        + inversion H.
+        + assumption.
+      }
+    * rewrite IHl1.
+      split; intros x Hx.
+      { inversion Hx as [? Hx' | ? Hx' ]; subst; clear Hx.
+        { inversion Hx'; subst. left. left. assumption. }
+        { inversion Hx' as [? Hx'' | ? Hx'']; subst; clear Hx'.
+          { left. right. assumption. }
+          { right. assumption. }
+        }
+      }
+      { inversion Hx as [? Hx' | ? Hx' ]; subst; clear Hx.
+        { inversion Hx'; subst.
+          { left. assumption. }
+          { right. left. assumption. }
+        }
+        { right. right. assumption. }
+      }
+  Qed.
+
+
   (** The [all_disjoint ls] predicate asserts that every element of the list
   [ls] is disjoint from every other elemenet of the list [ls]. *)
   Inductive all_disjoint {A} : list A -> Prop :=
@@ -404,10 +433,40 @@ Module EnsembleNotation.
       all_disjoint (x::ls).
 
 
+  Class enumerable {A} (X : Ensemble A) :=
+    { enumerate : list A
+    ; rewrite_enumerate : X == from_list enumerate
+    }.
+  Arguments enumerate {A} X {enumX} : rename.
+  Instance singleton_enumerable {X} : forall (x : X), enumerable (singleton x).
+  Proof. intros x. exists [x]. simpl.
+    split; intros y Hy.
+    * constructor; auto.
+    * inversion Hy; subst; auto.
+      inversion H.
+  Defined.
+  Instance from_list_enumerable {X} : forall (l : list X), enumerable (from_list l).
+  Proof.
+    intros l. exists l. reflexivity.
+  Defined.
+
+  Instance union_enumerable {A} (X Y : Ensemble A) :
+    enumerable X ->
+    enumerable Y ->
+    enumerable (X ∪ Y).
+  Proof.
+    intros [Xl HX] [Yl HY].
+    exists (Xl ++ Yl).
+    rewrite HX, HY.
+    rewrite from_list_app.
+    reflexivity.
+  Defined.
+
 End EnsembleNotation.
 
 
 (** * Tactics *)
+
 
 (** ** Inversion *)
 Ltac inversion_In :=
@@ -616,12 +675,13 @@ Ltac deep_decompose_set_structure :=
           | [ H : _ ∈ _ |- _ ] => inversion H; subst; clear H
           end).
 
+
 Ltac try_solve_set :=
   repeat (auto with sets;
   match goal with
   | [ |- ?x <> ?y ] => auto; fail
   | [ |- ?x <> ?y ] => intro; my_subst; all_disjoint_contradiction
-  | [ |- ?x ∉ singleton ?y ] => apply not_in_singleton_neq
+  | [ |- ?x ∉ singleton ?y ] => apply not_in_singleton_neq; try congruence
   | [ |- ?x ∈ ?X ∖ ?Y ] => constructor
   | [ |- ?x ∈ ?X ∪ ?Y ] => left; try_solve_set; fail
   | [ |- ?x ∈ ?X ∪ ?Y ] => right; try_solve_set; fail
@@ -635,6 +695,62 @@ Ltac try_solve_set :=
 
 Ltac solve_set :=
   simpl; try_solve_set; fail.
+
+  Lemma intersection_emptyset : forall {X} (A : Ensemble X),
+    ∅ ∩ A == ∅.
+  Proof.
+    intros. split; intros x Hx; decompose_set_structure.
+  Qed.
+  Lemma union_emptyset : forall {X} (A : Ensemble X),
+    ∅ ∪ A == A.
+  Proof.
+    intros. split; intros x Hx; decompose_set_structure; solve_set.
+  Qed.
+  Lemma setminus_emptyset : forall {X} (A : Ensemble X),
+    ∅ ∖ A == ∅.
+  Proof.
+    intros. split; intros x Hx; decompose_set_structure; solve_set.
+  Qed.
+
+
+  Lemma union_intersect_distr : forall {X} (A B C : Ensemble X),
+    (A ∪ B) ∩ C == (A ∩ C) ∪ (B ∩ C).
+  Proof.
+    intros. split; intros x Hx; decompose_set_structure; solve_set.
+  Qed.
+
+  Lemma union_setminus_distr : forall {X} (A B C : Ensemble X),
+    (A ∪ B) ∖ C == (A ∖ C) ∪ (B ∖ C).
+  Proof.
+    intros; split; intros x Hx; decompose_set_structure; solve_set.
+  Qed.
+
+  Lemma singleton_intersection_in : forall {X} (A : Ensemble X) a,
+    a ∈ A ->
+    singleton a ∩ A == singleton a.
+  Proof.
+    intros X A a Ha; split; intros x Hx;
+    decompose_set_structure.
+  Qed.
+  Lemma singleton_intersection_not_in : forall {X} (A : Ensemble X) a,
+    a ∉ A ->
+    singleton a ∩ A == ∅.
+  Proof.
+    intros X A a Ha; split; intros x Hx;
+    decompose_set_structure.
+  Qed.
+  Lemma singleton_setminus_in : forall {X} (A : Ensemble X) a,
+      a ∈ A ->
+      singleton a ∖ A == ∅.
+    intros X A a Ha; split; intros x Hx;
+    decompose_set_structure.
+  Qed.
+  Lemma singleton_setminus_not_in : forall {X} (A : Ensemble X) a,
+      a ∉ A ->
+      singleton a ∖ A == singleton a.
+    intros X A a Ha; split; intros x Hx;
+    decompose_set_structure.
+  Qed.
 
 
 (** ** Tactics for decidable equality 
@@ -669,3 +785,114 @@ Ltac compare_next :=
                                        compare (e1 : tp) (e2 : tp)
     | [ H : context[ eqb ?e1 ?e2 ] |- _ ] => let tp := type of e1 in compare (e1 : tp) (e2 : tp)
     end.
+
+(** ** Convert between x ∈ X and in_list_dec x (enumerate X) *)
+
+Lemma in_list_dec_t {A} `{A_dec : eq_dec A} : forall (x : A) (X : list A),
+    in_list_dec x X = true <-> x ∈ from_list X.
+Proof.
+    induction X; split; simpl; intros H; try (inversion H; fail).
+    * compare_next; try solve_set.
+      right. apply IHX. auto.
+    * compare_next; auto.
+      apply IHX.
+      decompose_set_structure.
+Qed.
+Lemma in_list_dec_f {A} `{a_dec : eq_dec A} : forall (x : A) X,
+    in_list_dec x X = false <-> x ∉ from_list X.
+Proof.
+    induction X; split; simpl; intros H; auto; try solve_set.
+    * compare_next.
+      apply IHX in H.
+      solve_set.
+    * decompose_set_structure.
+      compare_next.
+      apply IHX; auto.
+Qed.
+
+Ltac from_in_list_dec :=
+  repeat match goal with
+  | [ H : in_list_dec ?x ?X = true |- _] => apply in_list_dec_t in H
+  | [ |- in_list_dec ?x ?X = true ] => apply in_list_dec_t
+  | [ H : in_list_dec ?x ?X = false |- _] => apply in_list_dec_f in H
+  | [ |- in_list_dec ?x ?X = false ] => apply in_list_dec_f
+  end.
+Ltac to_in_list_dec :=
+  repeat match goal with
+  | [ H : ?x ∈ ?X |- _] => apply in_list_dec_t in H
+  | [ |- ?x ∈ ?X ] => apply in_list_dec_t
+  | [ H : ?x ∉ ?X |- _] => apply in_list_dec_f in H
+  | [ |- ?x ∉ ?X ] => apply in_list_dec_f
+  end.
+
+  Ltac rewrite_in_list_dec :=
+    match goal with
+    | [ H : ?x ∈ from_list ?l |- context[ in_list_dec ?x ?l ] ] =>
+      replace (in_list_dec x l) with true in *
+      by (to_in_list_dec; rewrite H; auto)
+    | [ H : ?x ∈ from_list ?l, H' : context[ in_list_dec ?x ?l ] |- _ ] =>
+      replace (in_list_dec x l) with true in *
+      by (to_in_list_dec; rewrite H; auto)
+    | [ H : ?x ∈ ?X |- context[ in_list_dec ?x (enumerate ?X) ] ] =>
+      replace (in_list_dec x (enumerate X)) with true in *
+      by (rewrite (@rewrite_enumerate _ X) in H;
+          to_in_list_dec;
+          rewrite H;
+          auto)
+    | [ H : ?x ∈ ?X, H' : context[ in_list_dec ?x (enumerate ?X) ] |- _ ] =>
+      replace (in_list_dec x (enumerate X)) with true in *
+      by (rewrite (@rewrite_enumerate _ X) in H;
+          to_in_list_dec;
+          rewrite H;
+          auto)
+
+    | [ H : ?x ∉ from_list ?l |- context[ in_list_dec ?x ?l ] ] =>
+      replace (in_list_dec x l) with false in *
+      by (to_in_list_dec; rewrite H; auto)
+    | [ H : ?x ∉ from_list ?l, H' : context[ in_list_dec ?x ?l ] |- _ ] =>
+      replace (in_list_dec x l) with false in *
+      by (to_in_list_dec; rewrite H; auto)
+    | [ H : ?x ∉ ?X |- context[ in_list_dec ?x (enumerate ?X) ] ] =>
+      replace (in_list_dec x (enumerate X)) with false in *
+      by (rewrite (@rewrite_enumerate _ X) in H;
+          to_in_list_dec;
+          rewrite H;
+          auto)
+    | [ H : ?x ∉ ?X, H' : context[ in_list_dec ?x (enumerate ?X) ] |- _ ] =>
+      replace (in_list_dec x (enumerate X)) with false in *
+      by (rewrite (@rewrite_enumerate _ X) in H;
+          to_in_list_dec;
+          rewrite H;
+          auto)
+    end.
+
+Ltac compare_next_in :=
+  match goal with
+  | [ |- context[ ?x ∈? ?X ] ] => destruct (x ∈? X)
+  | [ H : context[ ?x ∈? ?X ] |- _ ] => destruct (x ∈? X)
+  end.
+Ltac compare_in_list :=
+  match goal with
+  | [ |- context[ in_list_dec ?x ?X ] ] =>
+    let Hx := fresh "Hx" in
+    destruct (in_list_dec x X) eqn:Hx
+  end.
+
+
+
+(** ** Utilities for making robust Ltac tactics *)
+
+Ltac maybe_do flag tac :=
+  match flag with
+  | false => idtac
+  | true  => tac
+  end.
+
+Ltac replace_with_in x y loc_flag :=
+  match loc_flag with
+  | false => (* only in conclusion *) replace x with y
+  | true  => (* everywhere *) replace x with y in *
+  | _ => replace x with y in loc_flag
+  end.
+
+

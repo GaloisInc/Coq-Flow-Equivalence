@@ -30,6 +30,19 @@ Lemma not_event_in : forall {val} x (v : val) I, ~ event_in I (Some (Event x v))
 Proof.
  intros. intro. apply H. constructor. auto.
 Qed.
+Lemma in_implies_event_in : forall (x : name) X (v : value),
+  x ∈ X ->
+  event_in X (Some (Event x v)).
+Proof.
+  intros. econstructor. auto.
+Qed.
+Lemma not_in_implies_event_not_in : forall (x : name) X (v : value),
+  x ∉ X ->
+  ~ event_in X (Some (Event x v)).
+Proof.
+  intros. inversion 1; subst. contradiction.
+Qed.
+
 
 (** A state space consists of 
 
@@ -167,176 +180,6 @@ Record well_formed (S : StateSpace) :=
     σ' x = v
   }.
 
-  Class enumerable {A} (X : Ensemble A) :=
-    { enumerate : list A
-    ; rewrite_enumerate : X == from_list enumerate
-    }.
-  Arguments enumerate {A} X {enumX} : rename.
-  Instance singleton_enumerable : forall (x : name), enumerable (singleton x).
-  Proof. intros x. exists [x]. simpl.
-    split; intros y Hy; decompose_set_structure; solve_set.
-  Defined.
-  Instance from_list_enumerable : forall (l : list name), enumerable (from_list l).
-  Proof.
-    intros l. exists l. reflexivity.
-  Defined.
-  Lemma from_list_app : forall (l1 l2 : list name),
-    from_list (l1 ++ l2) == from_list l1 ∪ from_list l2.
-  Proof.
-    induction l1; intros; simpl.
-    * split; intros x Hx. solve_set. decompose_set_structure; solve_set.
-    * rewrite IHl1.
-      split; intros x Hx; decompose_set_structure; solve_set.
-  Qed.
-
-  Instance union_enumerable (X Y : Ensemble name) :
-    enumerable X ->
-    enumerable Y ->
-    enumerable (X ∪ Y).
-  Proof.
-    intros [Xl HX] [Yl HY].
-    exists (Xl ++ Yl).
-    rewrite HX, HY.
-    rewrite from_list_app.
-    reflexivity.
-  Defined.
-
-  Lemma intersection_emptyset : forall {X} (A : Ensemble X),
-    ∅ ∩ A == ∅.
-  Proof.
-    intros. split; intros x Hx; decompose_set_structure.
-  Qed.
-  Lemma union_emptyset : forall {X} (A : Ensemble X),
-    ∅ ∪ A == A.
-  Proof.
-    intros. split; intros x Hx; decompose_set_structure; solve_set.
-  Qed.
-  Lemma setminus_emptyset : forall {X} (A : Ensemble X),
-    ∅ ∖ A == ∅.
-  Proof.
-    intros. split; intros x Hx; decompose_set_structure; solve_set.
-  Qed.
-
-
-  Lemma union_intersect_distr : forall {X} (A B C : Ensemble X),
-    (A ∪ B) ∩ C == (A ∩ C) ∪ (B ∩ C).
-  Proof.
-    intros. split; intros x Hx; decompose_set_structure; solve_set.
-  Qed.
-
-  Lemma union_setminus_distr : forall {X} (A B C : Ensemble X),
-    (A ∪ B) ∖ C == (A ∖ C) ∪ (B ∖ C).
-  Proof.
-    intros; split; intros x Hx; decompose_set_structure; solve_set.
-  Qed.
-
-  Lemma singleton_intersection_in : forall {X} (A : Ensemble X) a,
-    a ∈ A ->
-    singleton a ∩ A == singleton a.
-  Proof.
-    intros X A a Ha; split; intros x Hx;
-    decompose_set_structure.
-  Qed.
-  Lemma singleton_intersection_not_in : forall {X} (A : Ensemble X) a,
-    a ∉ A ->
-    singleton a ∩ A == ∅.
-  Proof.
-    intros X A a Ha; split; intros x Hx;
-    decompose_set_structure.
-  Qed.
-  Lemma singleton_setminus_in : forall {X} (A : Ensemble X) a,
-      a ∈ A ->
-      singleton a ∖ A == ∅.
-    intros X A a Ha; split; intros x Hx;
-    decompose_set_structure.
-  Qed.
-  Lemma singleton_setminus_not_in : forall {X} (A : Ensemble X) a,
-      a ∉ A ->
-      singleton a ∖ A == singleton a.
-    intros X A a Ha; split; intros x Hx;
-    decompose_set_structure.
-  Qed.
-
-Lemma in_list_dec_t : forall (x : name) (X : list name),
-    in_list_dec x X = true <-> x ∈ from_list X.
-Proof.
-    induction X; split; simpl; intros H; try (inversion H; fail).
-    * compare_next; try solve_set.
-      right. apply IHX. auto.
-    * compare_next; auto.
-      apply IHX.
-      decompose_set_structure.
-Qed.
-Lemma in_list_dec_f : forall (x : name) X,
-    in_list_dec x X = false <-> x ∉ from_list X.
-Proof.
-    induction X; split; simpl; intros H; auto; try solve_set.
-    * compare_next.
-      apply IHX in H.
-      solve_set.
-    * decompose_set_structure.
-      compare_next.
-      apply IHX; auto.
-Qed.
-
-Ltac from_in_list_dec :=
-  repeat match goal with
-  | [ H : in_list_dec ?x ?X = true |- _] => apply in_list_dec_t in H
-  | [ |- in_list_dec ?x ?X = true ] => apply in_list_dec_t
-  | [ H : in_list_dec ?x ?X = false |- _] => apply in_list_dec_f in H
-  | [ |- in_list_dec ?x ?X = false ] => apply in_list_dec_f
-  end.
-Ltac to_in_list_dec :=
-  repeat match goal with
-  | [ H : ?x ∈ ?X |- _] => apply in_list_dec_t in H
-  | [ |- ?x ∈ ?X ] => apply in_list_dec_t
-  | [ H : ?x ∉ ?X |- _] => apply in_list_dec_f in H
-  | [ |- ?x ∉ ?X ] => apply in_list_dec_f
-  end.
-
-About enumerate.
-
-
-  Ltac rewrite_in_list_dec :=
-    match goal with
-    | [ H : ?x ∈ from_list ?l |- context[ in_list_dec ?x ?l ] ] =>
-      replace (in_list_dec x l) with true in *
-      by (to_in_list_dec; rewrite H; auto)
-    | [ H : ?x ∈ from_list ?l, H' : context[ in_list_dec ?x ?l ] |- _ ] =>
-      replace (in_list_dec x l) with true in *
-      by (to_in_list_dec; rewrite H; auto)
-    | [ H : ?x ∈ ?X |- context[ in_list_dec ?x (enumerate ?X) ] ] =>
-      replace (in_list_dec x (enumerate X)) with true in *
-      by (rewrite (@rewrite_enumerate _ X) in H;
-          to_in_list_dec;
-          rewrite H;
-          auto)
-    | [ H : ?x ∈ ?X, H' : context[ in_list_dec ?x (enumerate ?X) ] |- _ ] =>
-      replace (in_list_dec x (enumerate X)) with true in *
-      by (rewrite (@rewrite_enumerate _ X) in H;
-          to_in_list_dec;
-          rewrite H;
-          auto)
-
-    | [ H : ?x ∉ from_list ?l |- context[ in_list_dec ?x ?l ] ] =>
-      replace (in_list_dec x l) with false in *
-      by (to_in_list_dec; rewrite H; auto)
-    | [ H : ?x ∉ from_list ?l, H' : context[ in_list_dec ?x ?l ] |- _ ] =>
-      replace (in_list_dec x l) with false in *
-      by (to_in_list_dec; rewrite H; auto)
-    | [ H : ?x ∉ ?X |- context[ in_list_dec ?x (enumerate ?X) ] ] =>
-      replace (in_list_dec x (enumerate X)) with false in *
-      by (rewrite (@rewrite_enumerate _ X) in H;
-          to_in_list_dec;
-          rewrite H;
-          auto)
-    | [ H : ?x ∉ ?X, H' : context[ in_list_dec ?x (enumerate ?X) ] |- _ ] =>
-      replace (in_list_dec x (enumerate X)) with false in *
-      by (rewrite (@rewrite_enumerate _ X) in H;
-          to_in_list_dec;
-          rewrite H;
-          auto)
-    end.
 
 Ltac deduce_in_domain S :=
   match goal with
@@ -351,31 +194,6 @@ Ltac deduce_in_domain S :=
   | [ He : event_in (space_domain S) (Some (Event ?x _)) |- _ ] =>
     assert (x ∈ space_domain S)
       by (inversion He; auto)
-  end.
-
-  Ltac compare_next_in_list_dec :=
-  match goal with
-  | [ Hstep : ?S ⊢ _ →{Some (Event ?x _)} _
-    |- context[ in_list_dec ?x (enumerate (space_domain ?S) _) ] ]=>
-    let Hin := fresh "Hin" in
-    assert (Hin : x ∈ space_domain S)
-      by (apply wf_space in Hstep;
-           [unfold space_domain; solve_set | auto]);
-    rewrite rewrite_enumerate in Hin;
-    to_in_list_dec;
-    rewrite Hin;
-    clear Hin;
-    simpl
-  | [ Hevent : ~ event_in ?X (Some (Event ?x _))
-    |- context[ in_list_dec ?x (enumerate ?X _) ] ] =>
-    let Hin := fresh "Hin" in
-    assert (Hin : x ∉ X)
-      by (intro; contradict Hevent; constructor; auto);
-    rewrite rewrite_enumerate in Hin;
-    to_in_list_dec;
-    rewrite Hin;
-    clear Hin;
-    simpl
   end.
 
 
@@ -422,7 +240,6 @@ Ltac deduce_in_domain S :=
     Variable X Y : Ensemble name.
     Context `{enumX : enumerable _ X} `{enumY : enumerable _ Y}.
 
-Print filter.
     Fixpoint better_filter {A : Type} (f : A -> bool) (l : list A) :=
       match l with
       | nil => nil
@@ -951,14 +768,6 @@ Require Import Coq.Logic.FunctionalExtensionality.
         rewrite <- Heq; auto.
       }
   Qed.
-
-Ltac compare_next_in :=
-  match goal with
-  | [ |- context[ ?x ∈? ?X ] ] => destruct (x ∈? X)
-  | [ H : context[ ?x ∈? ?X ] |- _ ] => destruct (x ∈? X)
-  end.
-
-
 
 
   Lemma func_in_step : forall σ e τ,
@@ -2013,7 +1822,6 @@ when set and reset lines are X:
     flop_stable σ.
 *)
 
-About update_on.
   Let update_on_flop σ x v := state_equiv_on (from_list [set;reset;clk;D;Q;old_clk]) (Some (update σ x v)).
   Definition flop_step_fun (σ : state name) (e : option (event name value)) :=
     match e with
@@ -2252,11 +2060,18 @@ Section DelaySpace.
   Admitted.
 
   Lemma delay_space_inversion : forall σ e τ,
+    space_input S ⊥ space_output S ->
     delay_space ⊢ σ →{e} τ ->
-    S ⊢ σ →{e} τ.
+    S ⊢ σ →{e} τ
+    /\ state_equiv_on (from_list sensitivities) (Some σ) τ
+    /\ (event_in (space_output S) e -> guard σ = true).
   Proof.
-    intros σ e τ Hstep.
-    inversion Hstep; subst; auto.
+    intros σ e τ [Hwf] Hstep.
+    inversion Hstep; subst; auto; repeat split; auto.
+    * intros Hin. contradict Hin. inversion 1; subst.
+      contradiction (Hwf x).
+      solve_set.
+    * intros Hin. inversion Hin.
   Qed.
 
   Context `{S_functional : functional_step_relation S}.
@@ -2287,7 +2102,6 @@ Section DelaySpace.
 
   Context `{S_functional_correct : @functional_step_relation_correct S S_functional}.
   
-Search in_dec enumerable.
 Instance enum_in_dec : forall (X : Ensemble name) `{enumerable _ X}, in_dec X.
 Proof.
   intros X [Xl Hl].
@@ -2318,8 +2132,7 @@ Defined.
   * intros σ e τ Hstep.
     simpl in Hstep. unfold delay_space_step_fun in Hstep.
     destruct e as [[x v] | ].
-    2:{ Print delay_space_step.
-        decompose_set_structure.
+    2:{ decompose_set_structure.
         apply delay_space_internal.
         { apply fun_in_step; auto. }
         { rewrite rewrite_enumerate.
@@ -2327,7 +2140,7 @@ Defined.
         }
     }
     destruct (x ∈? space_input S); rewrite_in_list_dec.
-    { decompose_set_structure. Print delay_space_step.
+    { decompose_set_structure.
       apply delay_space_input; auto.
       { apply fun_in_step; auto. }
       { rewrite rewrite_enumerate.
@@ -2336,7 +2149,7 @@ Defined.
     }
     destruct (x ∈? space_output S); rewrite_in_list_dec.
     { destruct (guard σ) eqn:Hguard; [ simpl in Hstep | inversion Hstep].
-      decompose_set_structure. Print delay_space_step.
+      decompose_set_structure.
       apply delay_space_output; auto.
       { apply fun_in_step; auto. }
       { rewrite rewrite_enumerate.
@@ -2350,6 +2163,8 @@ End DelaySpace.
 
 End state_space.
 
+Arguments event_in {name val}.
+Arguments Event_In {name val}.
 Arguments space_input {name}.
 Arguments space_output {name}.
 Arguments space_internal {name}.
@@ -2389,15 +2204,15 @@ Module StateSpaceTactics (Export name : NameType).
     intros ? ? ? ? ? ? Hstep Hdom.
     inversion Hstep; subst; auto.
     (* the only remaining case is when x ∉ dom(S1), a contradiction *)
-    { absurd (event_in _ (space_domain S1) (Some (Event x v))); auto.
+    { absurd (event_in (space_domain S1) (Some (Event x v))); auto.
       constructor; auto.
     }
   Qed.
 
   Lemma union_inversion_left_only : forall (S1 S2 : StateSpace name) σ e σ',
     (S1 ∥ S2) ⊢ σ →{e} Some σ' ->
-    event_in _ (space_domain S1) e ->
-    ~ event_in _ (space_domain S2) e ->
+    event_in (space_domain S1) e ->
+    ~ event_in (space_domain S2) e ->
     S1 ⊢ σ →{e} Some σ'
     /\ state_equiv_on (space_domain S2) (Some σ) (Some σ').
   Proof.
@@ -2407,7 +2222,7 @@ Module StateSpaceTactics (Export name : NameType).
     contradict H2.
     inversion H; subst; auto;
     match goal with
-    [ H : event_in _ (_ ?S2) ?e |- event_in _ (space_domain ?S2) ?e ] =>
+    [ H : event_in (_ ?S2) ?e |- event_in (space_domain ?S2) ?e ] =>
       inversion H; subst;
       constructor;
       unfold space_domain; solve_set
@@ -2422,15 +2237,15 @@ Module StateSpaceTactics (Export name : NameType).
     intros ? ? ? ? ? ? Hstep Hdom.
     inversion Hstep; subst; auto.
     (* the only remaining case is when x ∉ dom(S2), a contradiction *)
-    { absurd (event_in _ (space_domain S2) (Some (Event x v))); auto.
+    { absurd (event_in (space_domain S2) (Some (Event x v))); auto.
       constructor; auto.
     }
   Qed.
 
   Lemma union_inversion_right_only : forall (S1 S2 : StateSpace name) σ e σ',
     (S1 ∥ S2) ⊢ σ →{e} Some σ' ->
-    ~ event_in _ (space_domain S1) e ->
-    event_in _ (space_domain S2) e ->
+    ~ event_in (space_domain S1) e ->
+    event_in (space_domain S2) e ->
     S2 ⊢ σ →{e} Some σ'
     /\ state_equiv_on (space_domain S1) (Some σ) (Some σ').
   Proof.
@@ -2440,7 +2255,7 @@ Module StateSpaceTactics (Export name : NameType).
     contradict H1.
     inversion H; subst; auto;
     match goal with
-    [ H : event_in _ (_ ?S2) ?e |- event_in _ (space_domain ?S2) ?e ] =>
+    [ H : event_in (_ ?S2) ?e |- event_in (space_domain ?S2) ?e ] =>
       inversion H; subst;
       constructor;
       unfold space_domain; solve_set
@@ -2477,7 +2292,6 @@ Module StateSpaceTactics (Export name : NameType).
   Instance output_in_dec : forall l, in_dec (space_output (latch_stage_with_env l)).
   Admitted.
 *)
-About state_equiv_on.
 
 
   Lemma union_internal_inversion_right : forall (S1 S2 : StateSpace name) σ x v σ',
@@ -2574,7 +2388,27 @@ About state_equiv_on.
     intros. inversion H.
   Qed.
 
-About union_inversion_lr.
+Lemma func_space_inversion : forall I o f σ e σ',
+  o ∉ from_list I ->
+  func_space I o f ⊢ σ →{e} Some σ' ->
+  match e with
+  | None => False
+  | Some (Event y v) => state_equiv_on (from_list I ∪ singleton o) (Some (update σ y v)) (Some σ')
+                    /\ (y = o -> v = f σ)
+  end.
+Proof.
+  intros ? ? ? ? ? ? Hwf Hstep.
+  inversion Hstep; subst.
+  * split; auto.
+    intros Heq; subst.
+    contradict pf_i. auto.
+  * split; auto.
+    intros Heq; subst. contradict pf_i; auto.
+  * split; auto.
+Qed.
+
+
+(*
   Ltac step_inversion_1 :=
   match goal with
   | [ Hstep : _ ⊢ _ →{ Some _ } Some _ |- _ ] =>
@@ -2626,6 +2460,110 @@ About union_inversion_lr.
       [ | simpl; solve_set; fail | simpl; solve_set; fail];
       rewrite Hstep
   end.
+*)
+
+
+(** ** Unfold definitions in a state space S in the context *)
+(** recurse_flag ::= true  (unfold all nested structures)
+                   | false (unfold up to head normal form)
+    loc_flag ::= true  (unfold in * )
+               | false (unfold in current goal)
+               | H     (unfold in hypothesis H)
+    S ::= StateSpace
+*)
+Ltac unfold_SS recurse_flag loc_flag S :=
+  match S with
+
+  | func_space ?I0 ?x ?f => idtac
+  | ?S1 ∥ ?S2            =>
+    (* If the recurse_flag is true then we want to unfold recursively; if false,
+    only unfold the head term, in this case, already a Union *)
+    maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S1);
+    maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S2)
+  | hide ?x ?S'          =>
+    maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S')
+  | flop ?set ?reset ?clk ?old_clk ?D ?Q => idtac
+  | delay_space ?S0 ?sens ?guard      => 
+    maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S0)
+
+  (* func *)
+  | _ => let I := fresh "I" in
+         let o := fresh "o" in
+         let f := fresh "f" in
+         evar (I : list name);
+         evar (o : name);
+         evar (f : state name -> value);
+         replace_with_in S (func_space I o f) loc_flag;
+         unfold I, o, f in *;
+         clear I o f;
+         [ | reflexivity]
+                
+  (* union *)
+  | _ => let S1 := fresh "S1" in
+         let S2 := fresh "S2" in
+         evar (S1 : StateSpace name);
+         evar (S2 : StateSpace name);
+         replace_with_in S (S1 ∥ S2) loc_flag;
+         unfold S1, S2 in *;
+         [ | reflexivity];
+         maybe_do recurse_flag ltac:(let S1' := eval unfold S1 in S1 in
+                                let S2' := eval unfold S2 in S2 in
+                                unfold_SS recurse_flag loc_flag S1';
+                                unfold_SS recurse_flag loc_flag S2');
+         clear S1 S2
+  (* hide *)
+  | _ => let x0 := fresh "x0" in
+         let S0 := fresh "S0" in
+         evar (x0 : name);
+         evar (S0 : StateSpace name);
+         replace_with_in S (hide x0 S0) loc_flag;
+         unfold x0, S0 in *;
+         [ | reflexivity];
+         maybe_do recurse_flag ltac:(let S0' := eval unfold S0 in S0 in
+                                unfold_SS recurse_flag loc_flag S0');
+         clear x0 S0
+
+  (* flop *)
+  | _ => let set := fresh "set" in
+         let reset := fresh "reset" in
+         let clk := fresh "clk" in
+         let old_clk := fresh "old_clk" in
+         let D := fresh "D" in
+         let Q := fresh "Q" in
+         evar (set : name); evar (reset : name);
+         evar (clk : name); evar (old_clk : name);
+         evar (D : name); evar (Q : name);
+         replace_with_in S (flop set reset clk old_clk D Q) loc_flag;
+         unfold set, reset, clk, old_clk, D, Q in *;
+         clear set reset clk old_clk D Q;
+         [ | reflexivity]
+
+  (* delay space *)
+  | _ => let S0 := fresh "S0" in
+         let sens := fresh "sens" in
+         let guard := fresh "guard" in
+         evar (S0 : StateSpace name);
+         evar (sens : list name);
+         evar (guard : state name -> bool);
+         replace_with_in S (delay_space S0 sens guard) loc_flag;
+         unfold S0, sens, guard in *;
+         [ | reflexivity];
+         maybe_do recurse_flag ltac:(let S0' := eval unfold S0 in S0 in
+                                unfold_SS recurse_flag loc_flag S0');
+         clear S0 sens guard
+  end.
+  Tactic Notation "unfold_StateSpace" constr(S) :=
+    (unfold_SS true false S).
+  Tactic Notation "unfold_StateSpace_1" constr(S) :=
+    (unfold_SS false false S).
+  Tactic Notation "unfold_StateSpace" constr(S) "in" "*" :=
+    (unfold_SS true true S).
+  Tactic Notation "unfold_StateSpace_1" constr(S) "in" "*" :=
+    (unfold_SS false true S).
+  Tactic Notation "unfold_StateSpace" constr(S) "in" hyp(H) :=
+    (unfold_SS true H S).
+  Tactic Notation "unfold_StateSpace_1" constr(S) "in" hyp(H) :=
+    (unfold_SS false H S).
 
 End StateSpaceTactics.
 
@@ -2814,13 +2752,11 @@ Section MG_to_SS.
       rewrite H7.
       2:{ right. eexists. eexists. exists p. reflexivity. }
       unfold update. compare_next.
-      { Search transition_name place_name.
-        apply transition_place_name_disjoint in Heq; contradiction.
+      { apply transition_place_name_disjoint in Heq; contradiction.
       }
       unfold fire_in_state.
       destruct (name_is_place_dec (place_name p)) as [[t1' [t2' [p' Heq']]] | Hneq'].
       2:{ specialize (Hneq' _ _ p); find_contradiction. }
-      Search place_name place_eq.
       apply places_all_disjoint in Heq'.
 Require Import Coq.Program.Equality.
       dependent destruction Heq'.
@@ -2840,7 +2776,6 @@ End MG_to_SS.
 
 Module Structural_SS (Export name : NameType).
 
-Print StateSpace.
   Inductive ISpace :=
   | IFunc (I : list name) (x : name) (f : state name -> value) : ISpace
   | IUnion (S1 S2 : ISpace) : ISpace
@@ -2870,113 +2805,6 @@ Print StateSpace.
   Admitted.
 
 
-Ltac maybe_do flag tac :=
-  match flag with
-  | false => idtac
-  | true  => tac
-  end.
-
-(* unfold_StateSpace_1 := unfold_StateSpace false *)
-
-Ltac replace_with_in x y loc_flag :=
-  match loc_flag with
-  | false => (* only in conclusion *) replace x with y
-  | true  => (* everywhere *) replace x with y in *
-  | _ => replace x with y in loc_flag
-  end.
-Ltac unfold_SS recurse_flag loc_flag S :=
-  match S with
-
-  | func_space ?I0 ?x ?f => idtac
-  | ?S1 ∥ ?S2            =>
-    maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S1);
-    maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S2)
-  | hide ?x ?S'          =>
-    maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S')
-  | flop ?set ?reset ?clk ?old_clk ?D ?Q => idtac
-  | delay_space ?S0 ?sens ?guard      => 
-    maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S0)
-
-  (* func *)
-  | _ => let I := fresh "I" in
-         let o := fresh "o" in
-         let f := fresh "f" in
-         evar (I : list name);
-         evar (o : name);
-         evar (f : state name -> value);
-         replace_with_in S (func_space I o f) loc_flag;
-         unfold I, o, f in *;
-         clear I o f;
-         [ | reflexivity]
-                
-  (* union *)
-  | _ => let S1 := fresh "S1" in
-         let S2 := fresh "S2" in
-         evar (S1 : StateSpace name);
-         evar (S2 : StateSpace name);
-         replace_with_in S (S1 ∥ S2) loc_flag;
-         unfold S1, S2 in *;
-         [ | reflexivity];
-         maybe_do recurse_flag ltac:(let S1' := eval unfold S1 in S1 in
-                                let S2' := eval unfold S2 in S2 in
-                                unfold_SS recurse_flag loc_flag S1';
-                                unfold_SS recurse_flag loc_flag S2');
-         clear S1 S2
-  (* hide *)
-  | _ => let x0 := fresh "x0" in
-         let S0 := fresh "S0" in
-         evar (x0 : name);
-         evar (S0 : StateSpace name);
-         replace_with_in S (hide x0 S0) loc_flag;
-         unfold x0, S0 in *;
-         [ | reflexivity];
-         maybe_do recurse_flag ltac:(let S0' := eval unfold S0 in S0 in
-                                unfold_SS recurse_flag loc_flag S0');
-         clear x0 S0
-
-  (* flop *)
-  | _ => let set := fresh "set" in
-         let reset := fresh "reset" in
-         let clk := fresh "clk" in
-         let old_clk := fresh "old_clk" in
-         let D := fresh "D" in
-         let Q := fresh "Q" in
-         evar (set : name); evar (reset : name);
-         evar (clk : name); evar (old_clk : name);
-         evar (D : name); evar (Q : name);
-         replace_with_in S (flop set reset clk old_clk D Q) loc_flag;
-         unfold set, reset, clk, old_clk, D, Q in *;
-         clear set reset clk old_clk D Q;
-         [ | reflexivity]
-
-  (* delay space *)
-  | _ => let S0 := fresh "S0" in
-         let sens := fresh "sens" in
-         let guard := fresh "guard" in
-         evar (S0 : StateSpace name);
-         evar (sens : list name);
-         evar (guard : state name -> bool);
-         replace_with_in S (delay_space S0 sens guard) loc_flag;
-         unfold S0, sens, guard in *;
-         [ | reflexivity];
-         maybe_do recurse_flag ltac:(let S0' := eval unfold S0 in S0 in
-                                unfold_SS recurse_flag loc_flag S0');
-         clear S0 sens guard
-
-  end.
-  Tactic Notation "unfold_StateSpace" constr(S) :=
-    (unfold_SS true false S).
-  Tactic Notation "unfold_StateSpace_1" constr(S) :=
-    (unfold_SS false false S).
-  Tactic Notation "unfold_StateSpace" constr(S) "in" "*" :=
-    (unfold_SS true true S).
-  Tactic Notation "unfold_StateSpace_1" constr(S) "in" "*" :=
-    (unfold_SS false true S).
-  Tactic Notation "unfold_StateSpace" constr(S) "in" hyp(H) :=
-    (unfold_SS true H S).
-  Tactic Notation "unfold_StateSpace_1" constr(S) "in" hyp(H) :=
-    (unfold_SS false H S).
-
   Ltac reflect_ISpace S :=
   match S with
   | func_space ?I0 ?x ?f => constr:(IFunc I0 x f)
@@ -2993,6 +2821,8 @@ Ltac unfold_SS recurse_flag loc_flag S :=
   Ltac reflect_S S := 
     let S' := reflect_ISpace S in
     replace S with (interp_ISpace S') by reflexivity.
+  Module SSTactics := StateSpaceTactics(name).
+  Import SSTactics.
 
   Ltac reflect_StateSpace :=
   match goal with
@@ -3010,6 +2840,7 @@ Ltac unfold_SS recurse_flag loc_flag S :=
   Lemma foo : S' = S.
     assert (Heq : S' = S') by reflexivity.
     unfold_StateSpace S' in Heq.
+    reflect_StateSpace.
   Abort.
   End Test.
 
@@ -3020,7 +2851,6 @@ Ltac unfold_SS recurse_flag loc_flag S :=
     | Some (Event x v) => update σ x v
     end.
 
-Print ISpace. Print flop_step.
 
   Fixpoint ISpace_dom (S : ISpace) : list name :=
     match S with
@@ -3092,7 +2922,7 @@ Print ISpace. Print flop_step.
   Admitted.
 
 
- (* Set reflection, with  *)
+ (* Set reflection, with ISpaces built in  *)
 
 Inductive SetStructure :=
   | SetEmpty : SetStructure
@@ -3106,6 +2936,7 @@ Inductive SetStructure :=
   | SetSpaceOutput : ISpace -> SetStructure
   | SetSpaceInternal : ISpace -> SetStructure
 .
+
 Ltac reflect_to_SetStructure S :=
   match S with
   | ∅ => constr:(SetEmpty)
@@ -3116,7 +2947,7 @@ Ltac reflect_to_SetStructure S :=
   | space_domain ?S0 => let S0' := reflect_ISpace S0 in
                         constr:(SetSpaceDomain S0')
   | space_input ?S0 => let S0' := reflect_ISpace S0 in
-                        constr:(SetSpaceInternal S0')
+                        constr:(SetSpaceInput S0')
   | space_output ?S0 => let S0' := reflect_ISpace S0 in
                         constr:(SetSpaceOutput S0')
   | space_internal ?S0 => let S0' := reflect_ISpace S0 in
@@ -3146,6 +2977,8 @@ Fixpoint interpret_SetStructure S :=
   | SetSpaceInternal S0 => space_internal (interp_ISpace S0)
   end.
 
+  
+
 
 Fixpoint SetStructure_to_list S :=
   match S with
@@ -3156,13 +2989,13 @@ Fixpoint SetStructure_to_list S :=
   | SetIntersection S1 S2 => list_intersection _ (SetStructure_to_list S1)
                                                (SetStructure_to_list S2)
   | SetDifference S1 S2 => list_setminus  _ (SetStructure_to_list S1)
-                                          (SetStructure_to_list S2)
+                                            (SetStructure_to_list S2)
   | SetSpaceDomain S0 => ISpace_dom S0
   | SetSpaceInput S0 => ISpace_input S0
   | SetSpaceOutput S0 => ISpace_output S0
   | SetSpaceInternal S0 => ISpace_internal S0
   end.
-    
+
 Lemma SetStructure_to_list_correct : forall S,
   interpret_SetStructure S == from_list (SetStructure_to_list S).
 Proof.
@@ -3176,6 +3009,71 @@ Admitted.
       [ reflexivity | rewrite SetStructure_to_list_correct; reflexivity]
     | ].
 
+  (** * Solve goal of the form x ∈ S or x ∉ S by reflection. *)
+  Ltac solve_space_set :=
+  match goal with
+  | [ |- ?x ∈ ?S ] => let H := fresh "H" in
+                      set_to_list H S; rewrite H; clear H;
+                      to_in_list_dec; unfold in_list_dec; reduce_eqb; auto;
+                      simpl; reduce_eqb; auto
+  | [ |- ?x ∉ ?S ] => let H := fresh "H" in
+                      set_to_list H S; rewrite H; clear H;
+                      to_in_list_dec; unfold in_list_dec; reduce_eqb; auto;
+                      simpl; reduce_eqb; auto
+  end.
+
+
+Ltac space_domain_to_list Hdom S :=
+  let l := fresh "l" in
+  evar (l : list name);
+  assert (Hdom : space_domain S == from_list l);
+  [ unfold_StateSpace S;
+    match goal with
+    | [ |- space_domain ?S == _ ] => let S' := reflect_ISpace S in
+                                     transitivity (space_domain (interp_ISpace S'));
+                                     [ reflexivity | ]
+    end;
+    rewrite space_domain_ISpace;
+    unfold l;
+    reflexivity
+  | simpl in l;
+    unfold l in Hdom;
+    clear l
+    ].
+
+
+
+  Ltac compare_next_in_list_dec :=
+  match goal with
+  | [ Hstep : ?S ⊢ _ →{Some (Event ?x _)} _
+    |- context[ in_list_dec ?x (enumerate (space_domain ?S) _) ] ]=>
+    let Hdom := fresh "Hdom" in
+    space_domain_to_list Hdom S;
+    rewrite Hdom;
+    rewrite <- rewrite_enumerate
+
+  | [ Hstep : ?S ⊢ _ →{Some (Event ?x _)} _
+    |- context[ in_list_dec ?x (enumerate (space_domain ?S) _) ] ]=>
+    let Hin := fresh "Hin" in
+    assert (Hin : x ∈ space_domain S)
+      by (apply wf_space in Hstep;
+           [unfold space_domain; solve_set | auto]);
+    rewrite rewrite_enumerate in Hin;
+    to_in_list_dec;
+    rewrite Hin;
+    clear Hin;
+    simpl
+  | [ Hevent : ~ event_in ?X (Some (Event ?x _))
+    |- context[ in_list_dec ?x (enumerate ?X _) ] ] =>
+    let Hin := fresh "Hin" in
+    assert (Hin : x ∉ X)
+      by (intro; contradict Hevent; constructor; auto);
+    rewrite rewrite_enumerate in Hin;
+    to_in_list_dec;
+    rewrite Hin;
+    clear Hin;
+    simpl
+  end.
 
 
   (* NO, this doesn't work because of the non-determinism introduced by Union/Eps transitions... *)
@@ -3184,50 +3082,9 @@ Admitted.
   Open Scope ensemble_notation.
 
 
-Lemma in_list_dec_equiv_t : forall {A} `{eq_dec A} (x : A) (X : list A),
-    in_list_dec x X = true <-> x ∈ from_list X.
-Proof.
-  induction X; split; inversion 1; subst; auto.
-  * compare_next; [left; solve_set | right; apply IHX; auto].
-  * simpl. inversion H1; subst. reduce_eqb. auto.
-  * simpl. compare_next; auto.
-    apply IHX; auto.
-Qed.
-
-Lemma in_list_dec_equiv_f : forall {A} `{eq_dec A} (x : A) (X : list A),
-    in_list_dec x X = false <-> x ∉ from_list X.
-Proof.
-  induction X; split; intros Hin; auto.
-  * solve_set.
-  * simpl in *. compare_next.
-    apply IHX in Hin. solve_set.
-  * simpl in *. compare_next.
-    + contradict Hin. solve_set.
-    + apply IHX. solve_set.
-Qed.
-Lemma from_list_app : forall {A} (l1 l2 : list A),
-    from_list (l1 ++ l2) == from_list l1 ∪ from_list l2.
-Proof.
-  induction l1; intros l2; simpl; constructor; intros x Hx.
-  * solve_set.
-  * decompose_set_structure.
-  * rewrite IHl1 in Hx.
-    decompose_set_structure; solve_set.
-  * rewrite IHl1.
-    decompose_set_structure; solve_set.
-Qed.
-
-
-Print functional_step_relation. Print func_step_fun.
-About enumerate.
 Arguments enumerate {A} X {HX} : rename.
-About fun_step.
 Arguments fun_step {name} S {functional_step_relation}.
-Print union_step_fun.
-Print IFunc.
-Print flop_step_fun.
-Print hide_step_fun.
-Print delay_space_step_fun.
+
   Fixpoint step_ISpace (S : ISpace) (σ : state name) (e : option (event name value))
            : Ensemble (option (state name)) :=
     match S with
@@ -3266,7 +3123,6 @@ Print delay_space_step_fun.
       end
     end.
 
-Print functional_step_relation.
 
   Instance ISpace_functional : forall S, functional_step_relation _ (interp_ISpace S).
   Proof.
@@ -3278,7 +3134,6 @@ Print functional_step_relation.
     * apply delay_space_functional; auto. typeclasses eauto.
   Defined.
 
-Print ISpace. About wf_union.
   Inductive ISpace_wf : ISpace -> Prop :=
   | IFunc_wf : forall I x f,
     x ∉ from_list I ->
@@ -3378,7 +3233,6 @@ Print ISpace. About wf_union.
       destruct e as [[y v] | ].
       { compare_next; auto. reflexivity. }
       rewrite IHS.
-      Search Same_set Union.
       apply union_mor; try reflexivity.
       split; intros τ [v Hτ];
         destruct (IHS σ (Some (Event x v))) as [IH1 IH2].
@@ -3410,36 +3264,27 @@ Print ISpace. About wf_union.
   Qed.
       
 
+
   Ltac rewrite_state_equiv :=
   match goal with
   | [ H : state_equiv_on ?X (Some ?σ') (Some _) |- context[?σ' _] ] =>
     rewrite H; [ try unfold update | decompose_set_structure]
   | [ H : state_equiv_on ?X (Some _) (Some ?σ') |- context[?σ' _] ] =>
     rewrite <- H; [ try unfold update | decompose_set_structure]
+
   end.
-Ltac compare_in_list :=
+
+
+  Ltac rewrite_state_equiv_branch y :=
   match goal with
-  | [ |- context[ in_list_dec ?x ?X ] ] =>
-    let Hx := fresh "Hx" in
-    destruct (in_list_dec x X) eqn:Hx
-  end.
-Ltac from_in_list_dec :=
-  repeat match goal with
-  | [ H : in_list_dec ?x ?X = true |- _ ] => apply in_list_dec_equiv_t in H
-  | [ H : in_list_dec ?x ?X = false |- _ ] => apply in_list_dec_equiv_f in H
-  | [ |- in_list_dec _ _ = true ] => apply in_list_dec_equiv_t
-  | [ |- in_list_dec _ _ = false ] => apply in_list_dec_equiv_f
-  end.
-Ltac to_in_list_dec :=
-  repeat match goal with
-  | [ H : ?x ∈ from_list ?X |- _ ] => apply in_list_dec_equiv_t in H
-  | [ H : ?x ∉ from_list ?X |- _ ] => apply in_list_dec_equiv_f in H
-  | [ |- _ ∈ from_list _ ] => apply in_list_dec_equiv_t
-  | [ |- _ ∉ from_list _ ] => apply in_list_dec_equiv_f
+  | [ Hequiv : state_equiv_on ?X (Some ?σ) (Some ?σ')
+    |- context[ ?σ' y ] ] =>
+      let Hy := fresh "Hy" in
+      destruct (y ∈? X) as [Hy | Hy];
+        [ rewrite_state_equiv | clear Hequiv]
   end.
 
 
-Print functional_step_relation_correct.
   Theorem step_ISpace_in : forall S σ e τ,
     ISpace_wf S ->
     interp_ISpace S ⊢ σ →{e} τ ->
@@ -3468,11 +3313,3 @@ Print functional_step_relation_correct.
 
 End Structural_SS.
 
-Section Reflection.
-
-Print func_space. Print flop. Print C_elem. Print delay_space.
-  Context {name : Set} `{name_eq_dec : eq_dec name}.
-  
-
-
-End Reflection.
