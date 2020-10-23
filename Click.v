@@ -1089,6 +1089,29 @@ Ltac solve_wf :=
     let Hguard := fresh "Hguard" in
     apply delay_space_inversion in Hstep;
     [ destruct Hstep as [Hstep [Hequiv Hguard]]
+
+    (*
+      (* clean up Hguard so it doesn't have any occurrences of (_ =? _) *)
+      repeat match type of Hguard with
+      | event_in ?X ?e -> _ => 
+        assert (Hin : event_in X e);
+        [ constructor; solve_space_set; auto; fail
+        | specialize (Hguard Hin); clear Hin ]
+      | (?x =? ?y) = true =>
+        let Hguard' := fresh "Hguard" in
+        assert (Hguard' : x = y);
+        [ compare x y | ]
+      | event_in ?X ?e -> (?x =? ?y) = true =>
+        let Hguard' := fresh "Hguard" in
+        assert (Hguard' : event_in X e -> x = y);
+        [ let Hin := fresh "Hin" in
+          intro Hin;
+          apply Hguard in Hin;
+          compare x y
+        | ]
+      end; clear Hguard
+    *)
+
     | try solve_set
     ]
 
@@ -1374,20 +1397,17 @@ Admitted.
         clear HX
       end.
 
-
-
-
   Lemma step_wf_state_lemma : forall l σ e σ',
     wf_stage_state l σ ->
     latch_stage_with_env l ⊢ σ →{Some e} Some σ' ->
     wf_stage_state l σ'.
   Proof.
     intros l σ [x v] σ' [Hwf1 Hwf2 Hwf3 Hwf4] Hstep.
-    set (Hdisjoint := scheme_all_disjoint l).
     assert (Hx : x ∈ space_input (latch_stage_with_env l) ∪ space_output (latch_stage_with_env l)).
     { eapply wf_space; eauto. }
     rewrite latch_stage_with_env_input, latch_stage_with_env_output in Hx.
     rewrite latch_stage_input, latch_stage_output in Hx.
+    simpl in Hx.
 
     decompose_set_structure.
 
@@ -1432,6 +1452,7 @@ Admitted.
       }
       rewrite HX in Hequiv. clear HX.
       
+(*
       assert (H_val_is_bit : forall x0 : name, x0 ∈ space_domain (latch_stage_with_env l) ->
                              val_is_bit (σ' x0)).
       {
@@ -1440,8 +1461,13 @@ Admitted.
         simpl. repeat compare_next; auto.
         solve_val_is_bit.
       }
+*)
       constructor.
-      +  (* val_is_bit *) auto.
+      +  (* val_is_bit *)
+        intros y HY.
+        rewrite_state_equiv; auto.
+        simpl. repeat compare_next; auto.
+        solve_val_is_bit.
 
       + (* ctrl_reset_n *)
         rewrite_state_equiv; auto.
