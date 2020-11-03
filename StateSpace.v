@@ -1,7 +1,7 @@
 Require Import Base.
 Require Import Circuit.
 Require Import Monad.
-
+Require Import Setoid.
 
 Require Import List.
 Import ListNotations.
@@ -9,6 +9,7 @@ Open Scope list_scope.
 
 Import EnsembleNotation.
 Open Scope ensemble_scope.
+
 
 (** * Define a state space for modeling asynchronous controllers, based loosely
 on trace theory *)
@@ -41,6 +42,13 @@ Lemma not_in_implies_event_not_in : forall (x : name) X (v : value),
   ~ event_in X (Some (Event x v)).
 Proof.
   intros. inversion 1; subst. contradiction.
+Qed.
+
+Add Parametric Morphism : event_in
+  with signature Same_set name ==> @eq (option (event name value)) ==> iff as event_in_equiv.
+Proof.
+  intros X Y Hequiv e.
+  split; intros Hin; inversion Hin; subst; constructor; rewrite Hequiv in *; auto.
 Qed.
 
 
@@ -101,7 +109,6 @@ Definition traces_of (S : StateSpace) (σ0 : state name) : Ensemble (trace name 
       end.
 
 
-  Require Export Setoid.
   Add Parametric Morphism : state_equiv_on
     with signature (Same_set name) ==> (@eq (option (state name)))
                                    ==> (@eq (option (state name))) ==> iff
@@ -2265,6 +2272,22 @@ Module Type NameType.
 End NameType.
 
 Module StateSpaceTactics (Export name : NameType).
+
+  Add Parametric Morphism : event_in
+    with signature Same_set name ==> @eq (option (event name value)) ==> iff as event_in_equiv.
+  Proof.
+    intros.
+    apply event_in_equiv; auto.
+  Qed.
+  Add Parametric Morphism : state_equiv_on
+    with signature (Same_set name) ==> (@eq (option (state name)))
+                                   ==> (@eq (option (state name))) ==> iff
+    as state_equiv_on_equiv.
+  Proof.
+    intros.
+    apply state_equiv_on_equiv; auto.
+  Qed.
+   
 
 
   Lemma union_inversion_left : forall (S1 S2 : StateSpace name) σ x v σ',

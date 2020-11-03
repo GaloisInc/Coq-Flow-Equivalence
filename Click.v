@@ -2,6 +2,8 @@ Require Import Base.
 Require Import Circuit.
 Require Import StateSpace.
 Require Import Monad.
+Require Import Coq.Program.Equality.
+Require Import Coq.Strings.String.
 
 Require Import List.
 Import ListNotations.
@@ -323,7 +325,6 @@ Module Type EOType.
   Existing Instance latch_eq_dec.
 End EOType.
 
-Require Import Coq.Strings.String.
 
 Module Type ClickType.
   Declare Module eo : EOType.
@@ -1017,8 +1018,12 @@ Ltac solve_wf :=
   auto;
   repeat match goal with
 
+  | [ |- val_is_bit _ ] => constructor; fail
+
   | [ H : wf_stage_state ?l ?σ |- val_is_bit (?σ ?x) ] =>
-    apply (wf_all_bits H); solve_space_set
+    apply (wf_all_bits _ _ H);
+    rewrite dom_latch_stage_with_env;
+    solve_space_set
 
   | [ |- context[ latch_to_token_flag ?l ] ] => destruct l; simpl
 
@@ -1211,7 +1216,7 @@ Ltac decide_event_in_domain e S :=
     step_inversion Hstep
   | [ Hstep : delay_space _ _ _ _ ⊢ _ →{_} _ |- _ ] =>
     step_inversion Hstep
-  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{None} _ |- _ ] =>
+  | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{ None } _ |- _ ] =>
     step_inversion Hstep
   | [ Hstep : (?S1 ∥ ?S2) ⊢ _ →{_} _ |- _ ] =>
     decide_events_of Hstep;
@@ -1387,16 +1392,55 @@ Defined.
 
 Import StateSpace.
 
-
-Add Parametric Morphism : event_in
-  with signature Same_set name ==> @eq (option (event name value)) ==> iff as event_in_equiv.
-Proof.
-  intros X Y Hequiv e.
-  split; intros Hin; inversion Hin; subst; constructor; rewrite Hequiv in *; auto.
-Qed.
+  Lemma combine_state_equiv_on_complex : forall X1 X2 `{in_dec _ X2} σ σ' x v,
+    x ∉ X1 ->
+    state_equiv_on X1 (Some σ) (Some σ') ->
+    state_equiv_on X2 (Some (update σ x v)) (Some σ') ->
+    state_equiv_on (X1 ∪ X2) (Some (update σ x v)) (Some σ').
+  Proof.
+    intros ? ? ? ? ? ? ? ? Hequiv1 Hequiv2.
+    intros y Hy.
+    destruct (y ∈? X2); auto.
+    decompose_set_structure.
+    unfold update.
+    compare_next; auto.
+  Qed.
+  Lemma combine_state_equiv_on_complex_2 : forall X0 X `{in_dec _ X} σ σ' x1 x2 v1 v2,
+    x1 ∉ X0 ->
+    x2 ∉ X0 ->
+    state_equiv_on X0 (Some σ) (Some σ') ->
+    state_equiv_on X (Some (update (update σ x1 v1) x2 v2)) (Some σ') ->
+    state_equiv_on (X0 ∪ X) (Some (update (update σ x1 v1) x2 v2)) (Some σ').
+  Proof.
+    intros ? ? ? ? ? ? ? ? ? ? ? Hequiv1 Hequiv2.
+    intros y Hy.
+    destruct (y ∈? X); auto.
+    decompose_set_structure.
+    unfold update.
+    repeat compare_next; auto.
+  Qed.
 
   Ltac combine_state_equiv_on_complex :=
   match goal with
+  | [ H0 : state_equiv_on ?X0 (Some ?σ) (Some ?σ')
+    , H  : state_equiv_on ?X (Some (update ?σ ?x ?v)) (Some ?σ')
+    |- _ ] =>
+    let Hequiv := fresh "Hequiv" in
+    assert (Hequiv : state_equiv_on (X0 ∪ X) (Some (update σ x v)) (Some σ'));
+    [ apply (combine_state_equiv_on_complex X0 X σ σ' x v); auto;
+        try solve_space_set
+    | clear H H0
+    ]
+  | [ H0 : state_equiv_on ?X0 (Some ?σ) (Some ?σ')
+    , H  : state_equiv_on ?X (Some (update (update ?σ ?x1 ?v1) ?x2 ?v2)) (Some ?σ')
+    |- _ ] =>
+    let Hequiv := fresh "Hequiv" in
+    assert (Hequiv : state_equiv_on (X0 ∪ X) (Some (update (update σ x1 v1) x2 v2)) (Some σ'));
+    [ apply (combine_state_equiv_on_complex_2 X0 X σ σ' x1 x2 v1 v2); auto;
+        try solve_space_set
+    | clear H H0
+    ]
+
   | [ H1 : state_equiv_on (from_list ?X1) (Some ?σ1) (Some ?σ')
     , H2 : state_equiv_on (from_list ?X2) (Some ?σ2) (Some ?σ')
     |- _ ] =>
@@ -1406,20 +1450,6 @@ Qed.
                                     (Some σ'));
     [ | clear H1 H2 ]
   end. 
-Lemma not_in_intersection : forall (x : name) A B, x ∉ A \/ x ∉ B -> x ∉ (A ∩ B).
-Admitted.
-
-
-  Add Parametric Morphism : (state_equiv_on)
-    with signature (Same_set name) ==> eq ==> eq ==> iff
-    as equiv_on_iff.
-  Proof.
-    intros X Y Heq τ1 τ2.
-    split; intros Hequiv;
-    destruct τ1; destruct τ2; auto.
-    * intros y Hy; rewrite <- Heq in Hy; auto.
-    * intros y Hy; rewrite -> Heq in Hy; auto.
-  Qed.
 
   Ltac standardize_state_equiv_on_set H :=
       match type of H with
@@ -1430,23 +1460,15 @@ Admitted.
         clear HX
       end.
 
-Require Import Coq.Program.Equality.
-
   Lemma flop_not_stable_old_clk : forall l σ,
     wf_stage_state l σ ->
     σ (latch_clk l) <> σ (latch_old_clk l) ->
     ~ stable (latch_flop_component l) σ.
   Proof.
     intros l σ Hwf Hneq.
-    assert (Hclk : val_is_bit (σ (latch_clk l))).
-    { eapply wf_all_bits; eauto.
-      rewrite dom_latch_stage_with_env. solve_space_set. }
-    assert (Hstate0 : val_is_bit (σ (latch_state0 l))).
-    { eapply wf_all_bits; eauto.
-      rewrite dom_latch_stage_with_env. solve_space_set. }
-    assert (Hnot_state0 : val_is_bit (σ (latch_not_state0 l))).
-    { eapply wf_all_bits; eauto.
-      rewrite dom_latch_stage_with_env. solve_space_set. }
+    assert (Hclk : val_is_bit (σ (latch_clk l))) by solve_val_is_bit.
+    assert (Hstate0 : val_is_bit (σ (latch_state0 l))) by solve_val_is_bit.
+    assert (Hnot_state0 : val_is_bit (σ (latch_not_state0 l))) by solve_val_is_bit.
     dependent destruction Hclk; rename x into Hclk.
     { (* clk = 0 *)
       assert (Hstep : latch_flop_component l ⊢ σ →{None}
@@ -1618,71 +1640,38 @@ Qed.
 
       standardize_state_equiv_on_set Hequiv1.
       standardize_state_equiv_on_set Hequiv2.
+      combine_state_equiv_on_complex; auto.
+      { destruct l; solve_space_set. }
+      standardize_state_equiv_on_set Hequiv.
 
-      match type of Hequiv2 with
+      match type of Hequiv with
       | state_equiv_on ?X _ _ =>
-        assert (HX : X == from_list [dp_reset_n; ctrl_reset_n; latch_hidden l
-                                    ; latch_clk l; latch_old_clk l
-                                    ; latch_state0 l; latch_not_state0 l
-                                    ; ack (latch_input l); req (latch_output l); ack (latch_output l)])
+        assert (HX : X == space_domain (latch_stage_with_env l))
       end.
-      { split; intros z Hz; to_in_list_dec; simpl; simpl in Hz;    
-          repeat (compare_next; auto).
-        destruct l; simpl in *; find_contradiction.
-        destruct l; simpl in *; find_contradiction.
+      { rewrite dom_latch_stage_with_env.
+        split; intros z Hz; to_in_list_dec; simpl in Hz;    
+          repeat (compare_next; auto); destruct l; simpl; reduce_eqb; auto.
       }
       rewrite HX in *; clear HX.
 
-      combine_state_equiv_on_complex.
-      { apply state_equiv_on_disjoint; auto.
-        intros z Hz. unfold update. compare_next; auto.
-        contradict Hz.
-        apply not_in_intersection.
-        left.
-        destruct l; simpl; solve_set.
-      }
-      standardize_state_equiv_on_set Hequiv.
-
-      match goal with
-      | [ Hequiv : state_equiv_on ?X _ _ |- _ ] =>
-        assert (HX : X == space_domain (latch_stage_with_env l))
-      end.
-      { rewrite dom_latch_stage_with_env. clear Hequiv.
-        split; intros z Hz; to_in_list_dec;
-          simpl; simpl in Hz;
-          repeat (compare_next; auto).
-      }
-      rewrite HX in Hequiv. clear HX.
-      
-(*
-      assert (H_val_is_bit : forall x0 : name, x0 ∈ space_domain (latch_stage_with_env l) ->
-                             val_is_bit (σ' x0)).
-      {
-        intros y HY.
-        rewrite_state_equiv; auto.
-        simpl. repeat compare_next; auto.
-        solve_val_is_bit.
-      }
-*)
       constructor.
-      +  (* val_is_bit *)
+      + (* val_is_bit *)
         intros y HY.
         rewrite_state_equiv; auto.
-        simpl. repeat compare_next; auto.
+        repeat compare_next; auto.
         solve_val_is_bit.
 
       + (* ctrl_reset_n *)
         rewrite_state_equiv; auto.
-        { rewrite dom_latch_stage_with_env. to_in_list_dec. auto. }
+        { rewrite dom_latch_stage_with_env. solve_space_set. }
 
       + (* dp_reset_n *)
         rewrite_state_equiv; auto.
-        { rewrite dom_latch_stage_with_env. to_in_list_dec. auto. }
+        { rewrite dom_latch_stage_with_env; solve_space_set. }
 
       + (* latch_hidden *)
         rewrite_state_equiv; auto.
-        2:{ rewrite dom_latch_stage_with_env. to_in_list_dec. simpl. reduce_eqb. auto. }
-        simpl. reduce_eqb. auto.
+        { rewrite dom_latch_stage_with_env; solve_space_set. }
 
       + intros Hstable.
         split; auto.
@@ -1690,8 +1679,7 @@ Qed.
         repeat step_inversion_1.
         admit  (* stronger hide inversion when we don't know the result in τ?? *).
     
-      + Search stable latch_flop_component.
-        intros H_not_stable.
+      + intros H_not_stable.
         admit.
       + (* latch_clk vs latch_state0 *)
         rewrite dom_latch_stage_with_env in Hequiv.
@@ -1707,50 +1695,30 @@ Qed.
       standardize_state_equiv_on_set Hequiv1.
       standardize_state_equiv_on_set Hequiv2.
 
-      match type of Hequiv2 with
-      | state_equiv_on ?X _ _ =>
-        assert (HX : X == from_list [ dp_reset_n; ctrl_reset_n; latch_hidden l
-                                    ; latch_clk l; latch_old_clk l
-                                    ; latch_state0 l; latch_not_state0 l
-                                    ; req (latch_output l); req (latch_input l); ack (latch_output l)])
-      end.
-      { split; intros z Hz; to_in_list_dec; simpl; simpl in Hz;    
-          repeat (compare_next; auto).
-        destruct l; simpl in *; find_contradiction.
-        destruct l; simpl in *; find_contradiction.
-      }
-      rewrite HX in *; clear HX.
-
       combine_state_equiv_on_complex.
-      { apply state_equiv_on_disjoint; auto.
-        intros z Hz. unfold update. compare_next; auto.
-        contradict Hz.
-        apply not_in_intersection.
-        left. 
-        destruct l; simpl; solve_set.
-      }
-      standardize_state_equiv_on_set Hequiv.
+      { destruct l; solve_space_set. }
 
+      standardize_state_equiv_on_set Hequiv.
       match goal with
       | [ Hequiv : state_equiv_on ?X _ _ |- _ ] =>
         assert (HX : X == space_domain (latch_stage_with_env l))
       end.
       { rewrite dom_latch_stage_with_env. clear Hequiv.
         split; intros z Hz; to_in_list_dec;
-          simpl; simpl in Hz;
-          repeat (compare_next; auto).
+          simpl in Hz;
+          repeat (compare_next; auto);
+          simpl; reduce_eqb; auto;
+          destruct l; simpl; reduce_eqb; auto.
       }
       rewrite HX in Hequiv. clear HX.
-      
 
       assert (H_val_is_bit : forall x0 : name, x0 ∈ space_domain (latch_stage_with_env l) ->
                              val_is_bit (σ' x0)).
       {
         intros y HY.
         rewrite_state_equiv; auto.
-        simpl. repeat compare_next; auto.
-        assert (Hstate0 : val_is_bit (σ (latch_state0 l))).
-        { apply Hwf1. rewrite dom_latch_stage_with_env. solve_space_set. }
+        compare_next; auto.
+        assert (Hstate0 : val_is_bit (σ (latch_state0 l))) by solve_val_is_bit.
         destruct l; simpl; auto. inversion Hstate0; constructor.
       }
       constructor.
@@ -1758,14 +1726,14 @@ Qed.
       + (* val_is_bit *) auto.
       + (* ctrl_reset_n *)
         rewrite_state_equiv; auto.
-        rewrite dom_latch_stage_with_env. to_in_list_dec. auto.
+        rewrite dom_latch_stage_with_env. solve_space_set.
       + (* dp_reset_n *)
         rewrite_state_equiv; auto.
-        rewrite dom_latch_stage_with_env. to_in_list_dec. auto.
+        rewrite dom_latch_stage_with_env. solve_space_set.
       + (* latch_hidden *)
         rewrite_state_equiv; auto.
-        2:{ rewrite dom_latch_stage_with_env. to_in_list_dec. simpl. reduce_eqb; auto. }
-        { simpl. reduce_eqb. auto. }
+        rewrite dom_latch_stage_with_env. solve_space_set.
+
       + (* stable *) admit.
       + (* stable *) admit.
       + (* clk vs state0 *)
@@ -1782,6 +1750,18 @@ Qed.
   Admitted.
 
 
+Ltac solve_in_dom :=
+  repeat match goal with
+  | [ |- ?x ∈ space_domain (latch_stage_with_env _) ] =>
+    rewrite dom_latch_stage_with_env
+  | [ |- ?x ∈ _ ] => solve_space_set
+  end;
+  try match goal with
+  | [ |- context[ latch_to_token_flag ?l ] ] =>
+    destruct l; solve_space_set
+  end;
+  fail.
+
   Lemma step_wf_state_eps : forall l σ σ',
     wf_stage_state l σ ->
     latch_stage_with_env l ⊢ σ →{None} Some σ' ->
@@ -1792,47 +1772,47 @@ Qed.
 
     repeat step_inversion_1; repeat combine_state_equiv_on.
     * standardize_state_equiv_on_set Hequiv0.
-        match type of Hequiv0 with
-        | state_equiv_on ?X ?τ ?τ' =>
-            assert (HX : X == from_list [req (latch_input l); ack (latch_output l); ack (latch_input l); 
-                               req (latch_output l); latch_clk l; latch_state0 l; latch_not_state0 l; 
-                               latch_hidden l; ctrl_reset_n; dp_reset_n])
-        end.
-        { split; intros x Hx; to_in_list_dec;
-            simpl in Hx; repeat compare_next; simpl; reduce_eqb; auto.
-        }
-        rewrite HX in Hequiv0. clear HX.
+      inversion Hstep; subst.
+      standardize_state_equiv_on_set H2.
+      combine_state_equiv_on_complex.
+      { simpl. solve_space_set. }
+      standardize_state_equiv_on_set Hequiv.
+      assert (Hequiv' : state_equiv_on (space_domain (latch_stage_with_env l))
+                          (Some (update σ (latch_old_clk l) (σ (latch_clk l))))
+                          (Some σ')).
+      { intros x Hx. apply Hequiv.
+        clear Hequiv.
+        rewrite dom_latch_stage_with_env in Hx.
+        simpl in Hx. decompose_set_structure;
+          solve_in_dom.
+      }
+      clear Hequiv.
+      
       assert (Hold : σ' (latch_old_clk l) = σ (latch_clk l)).
-      { inversion Hstep; subst.
-        rewrite <- H2.
-        2:{ destruct l; solve_space_set. }
-        unfold update. reduce_eqb; auto.
+      { rewrite_state_equiv.
+        2:{ solve_in_dom. }
+        reduce_eqb; auto.
       }
       constructor.
-      + intros x Hx. rewrite dom_latch_stage_with_env in Hx.
+      + intros x Hx.
         compare x (latch_old_clk l).
         { (* eq *) rewrite Hold.
-          apply Hwf1. rewrite dom_latch_stage_with_env. solve_space_set.
+          apply Hwf1. solve_in_dom.
         }
-        { (* <> *) rewrite <- Hequiv0.
-          { apply Hwf1. rewrite dom_latch_stage_with_env. auto. }
-          { to_in_list_dec. simpl in Hx.
-            repeat compare_next; simpl; reduce_eqb; auto.
-          }
+        { (* <> *)
+          rewrite <- Hequiv'; auto.
+          { unfold update. reduce_eqb. solve_val_is_bit. }
         }
-      + rewrite_state_equiv; auto.
-        { solve_space_set. }
-      + rewrite_state_equiv; auto.
-        { solve_space_set. }
-      + rewrite_state_equiv; auto.
-        { solve_space_set. }
+      + rewrite_state_equiv; auto; solve_in_dom.
+      + rewrite_state_equiv; auto; solve_in_dom.
+      + rewrite_state_equiv; auto; solve_in_dom.
       + admit.
       + admit.
-      + rewrite <- Hequiv0; [ | solve_space_set].
-        rewrite <- Hequiv0; [ | solve_space_set].
-        rewrite <- Hequiv0; [ | solve_space_set].
-        rewrite Hold.
-        auto.
+      + rewrite <- Hequiv'; [ | solve_in_dom ].
+        rewrite <- Hequiv'; [ | solve_in_dom ].
+        rewrite <- Hequiv'; [ | solve_in_dom ].
+        rewrite <- Hequiv'; [ | solve_in_dom ].
+        unfold update; simpl. reduce_eqb. auto.
 
     * standardize_state_equiv_on_set Hequiv1.
   Admitted.

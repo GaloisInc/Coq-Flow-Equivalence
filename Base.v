@@ -712,7 +712,6 @@ Ltac solve_set :=
     intros. split; intros x Hx; decompose_set_structure; solve_set.
   Qed.
 
-
   Lemma union_intersect_distr : forall {X} (A B C : Ensemble X),
     (A ∪ B) ∩ C == (A ∩ C) ∪ (B ∩ C).
   Proof.
@@ -750,6 +749,13 @@ Ltac solve_set :=
       singleton a ∖ A == singleton a.
     intros X A a Ha; split; intros x Hx;
     decompose_set_structure.
+  Qed.
+
+  Lemma not_in_intersection : forall {X} (x : X) A B, x ∉ A \/ x ∉ B -> x ∉ (A ∩ B).
+  Proof.
+    intros X x A B [H | H]; intros Hx;
+    inversion Hx; subst;
+       contradiction.
   Qed.
 
 

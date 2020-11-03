@@ -67,9 +67,6 @@ Section LatchSequence.
   Definition val_to_nat (v : value) : nat :=
   match v with
   | Num n => n
-(*  | Bit0  => 0
-  | Bit1  => 1
-*)
   | X     => 0
   end.
 
@@ -77,28 +74,16 @@ Section LatchSequence.
     match v with 
     | Num 0 => Num 1
     | Num 1 => Num 0
-(*
-    | Bit0  => Bit1
-    | Bit1  => Bit0
-*)
     | _     => v
     end.
   Definition inc_value (v : value) : value :=
     match v with
     | Num n => Num (n+1)
-(*
-    | Bit0  => Bit1
-    | Bit1  => Bit0
-*)
     | _     => v
     end.
   Definition dec_value (v : value) : value :=
     match v with
     | Num n => Num (n-1)
-(*
-    | Bit0  => Bit0
-    | Bit1  => Bit0
-*)
     | _     => v
     end.
 
@@ -123,6 +108,19 @@ Section LatchSequence.
     intros v1 v2 Hv2 Heq; subst. rewrite val_is_bit_neg_neg; auto.
   Qed.
 
+  Lemma val_to_nat_dec : forall v, val_to_nat (dec_value v) = val_to_nat v - 1.
+  Proof. intros v; destruct v; auto. Qed.
+  Lemma val_to_nat_inc : forall v, v <> X -> val_to_nat (inc_value v) = val_to_nat v + 1.
+  Proof. intros v Hv; destruct v; auto. find_contradiction. Qed.
+
+  Lemma val_is_bit_neq_neg : forall v1 v2,
+    val_is_bit v1 \/ val_is_bit v2 ->
+    neg_value v1 = v2 ->
+    v1 <> v2.
+  Proof.
+    intros v1 v2 [H | H] Heq; inversion H; subst; try (inversion 1; fail);
+      destruct v1 as [[|[|n]]|]; try find_contradiction.
+  Qed.
 
 
   (** A transparency state records whether latches are currently transparent or opaque. *)
