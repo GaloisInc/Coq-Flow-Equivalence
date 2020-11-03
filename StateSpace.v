@@ -1955,6 +1955,25 @@ when set and reset lines are X:
    ; fun_in_step := flop_fun_in_step
    |}.
 
+  Lemma flop_inversion_output : forall σ v σ',
+    σ set = Bit1 ->
+    σ reset = Bit1 ->
+    flop ⊢ σ →{Some (Event Q v)} Some σ' ->
+    σ clk = Bit1 /\
+    σ old_clk <> Bit1 /\
+    v = σ D /\
+     state_equiv_on (from_list [set;reset;clk;D;Q;old_clk])
+        (Some (update (update σ Q v) old_clk (σ clk)))
+        (Some σ').
+  Proof.
+    intros ? ? ? Hset Hreset Hstep.
+    inversion Hstep; subst; auto.
+    + contradict H3.
+      unfold flop_input. solve_set.
+    + find_contradiction.
+    + find_contradiction.
+  Qed.
+
 
 End Flop.
 
@@ -1985,7 +2004,9 @@ Section Delay.
   Variable x y : name.
   Variable sensitivities : list name.
   (** The guard should only depend on the variables in the sensitivites set *)
-  Variable guard : state name -> bool.
+  Variable guard : state name -> Prop.
+  Variable guardb : state name -> bool.
+  Hypothesis guardb_equiv : forall σ, guard σ <-> guardb σ = true.
 
   Inductive delay_step (σ : state name) :
                       option (event name value) ->
@@ -1996,7 +2017,7 @@ Section Delay.
   | delay_input_stable : forall v, σ y = σ x -> delay_step σ (Some (Event x v)) (Some (update σ x v))
   (* output only transitions when the guard is true *)
   | delay_output σ' : σ y <> σ x ->
-                   guard σ = true ->
+                   guard σ ->
                    state_equiv_on (from_list sensitivities ∪ from_list [x;y]) (Some σ')
                                                                     (Some (update σ y (σ x))) ->
                    delay_step σ (Some (Event y (σ x))) (Some σ')
@@ -2009,8 +2030,6 @@ Section Delay.
      ; space_step := delay_step
     |}.
 
-
-    
   Lemma delay_wf : well_formed delay.
   Admitted.
 
@@ -2020,7 +2039,7 @@ Section DelaySpace.
   Variable S : StateSpace.
   Variable sensitivities : list name.
   (** The guard should only depend on the variables in the sensitivites set *)
-  Variable guard : state name -> bool.
+  Variable guard : state name -> Prop.
 
 
   Inductive delay_space_step (σ : state name) :
@@ -2042,29 +2061,76 @@ Section DelaySpace.
 
   (* output steps can only happen if the guard is true *)
   | delay_space_output : forall x v τ,
-    guard σ = true ->
+    guard σ ->
     S ⊢ σ →{Some (Event x v)} τ ->
     x ∈ space_output S ->
     state_equiv_on (from_list sensitivities) (Some σ) τ ->
     delay_space_step σ (Some (Event x v)) τ
   .
 
-  Definition delay_space : StateSpace :=
+  Definition delay_space (guardb : state name -> bool) : StateSpace :=
     {| space_input := space_input S ∪ from_list sensitivities
      ; space_output := space_output S
      ; space_internal := space_internal S
      ; space_step := delay_space_step
     |}.
 
-  Lemma delay_space_wf : well_formed delay_space.
-  Admitted.
+  Variable guardb : state name -> bool.
+
+
+  Lemma delay_space_wf :
+    well_formed S ->
+    from_list sensitivities ⊥ space_domain S ->
+    well_formed (delay_space guardb).
+  Proof.
+    intros Hwf Hdisjoint.
+    destruct Hwf.
+    unfold space_domain in Hdisjoint.
+    assert (Hdisjoint1 : from_list sensitivities ⊥ space_input S).
+    { destruct Hdisjoint as [Hdisjoint]. constructor. intros x Hx.
+      apply (Hdisjoint x).
+      decompose_set_structure; solve_set.
+    }
+    assert (Hdisjoint2 : from_list sensitivities ⊥ space_output S).
+    { destruct Hdisjoint as [Hdisjoint]. constructor. intros x Hx.
+      apply (Hdisjoint x).
+      decompose_set_structure; solve_set.
+    }
+    assert (Hdisjoint3 : from_list sensitivities ⊥ space_internal S).
+    { destruct Hdisjoint as [Hdisjoint]. constructor. intros x Hx.
+      apply (Hdisjoint x).
+      decompose_set_structure; solve_set.
+    }
+    split.
+    * simpl. solve_set.
+    * simpl. solve_set.
+    * simpl. solve_set.
+    * intros σ x v τ Hstep.
+      simpl.
+      inversion Hstep; subst.
+      + solve_set.
+      + solve_set.
+    * intros ? ? ? Hstep x Hv Hx.
+      simpl in Hx.
+      decompose_set_structure.
+      { (* x ∈ input *) inversion Hstep; subst;
+        eapply wf_scoped0; eauto; solve_set.
+      }
+      { (* x ∈ sens *) inversion Hstep; subst; rewrite_state_equiv_on; auto. }
+      { (* x ∈ input *) inversion Hstep; subst;
+        eapply wf_scoped0; eauto; solve_set.
+      }
+    * intros ? ? ? ? Hstep.
+      inversion Hstep; subst;
+      eapply wf_update0; eauto.
+  Qed.
 
   Lemma delay_space_inversion : forall σ e τ,
     space_input S ⊥ space_output S ->
-    delay_space ⊢ σ →{e} τ ->
+    delay_space guardb ⊢ σ →{e} τ ->
     S ⊢ σ →{e} τ
     /\ state_equiv_on (from_list sensitivities) (Some σ) τ
-    /\ (event_in (space_output S) e -> guard σ = true).
+    /\ (event_in (space_output S) e -> guard σ).
   Proof.
     intros σ e τ [Hwf] Hstep.
     inversion Hstep; subst; auto; repeat split; auto.
@@ -2081,6 +2147,10 @@ Section DelaySpace.
   Existing Instance output_list.
   Existing Instance internal_list.
 
+
+  Hypothesis guardb_equiv : forall σ, guard σ <-> guardb σ = true.
+
+
   Definition delay_space_step_fun σ e : Ensemble (option (state name)) :=
     match e with
     | None => (* must come from epsilon step inside S *)
@@ -2089,12 +2159,12 @@ Section DelaySpace.
       if in_list_dec x (enumerate (space_input S))
       then fun_step S σ e ∩ equiv_on_list sensitivities σ
       else if andb (in_list_dec x (enumerate (space_output S)))
-                   (guard σ)
+                   (guardb σ)
       then fun_step S σ e ∩ equiv_on_list sensitivities σ
       else ∅
     end.
 
-  Instance delay_space_functional : functional_step_relation delay_space :=
+  Instance delay_space_functional : functional_step_relation (delay_space guardb) :=
   {| fun_step := delay_space_step_fun |}.
   * simpl. typeclasses eauto.
   * simpl. typeclasses eauto.
@@ -2111,7 +2181,7 @@ Proof.
   + right. rewrite Hl; auto.
 Defined.
 
-  Instance delay_space_functional_correct : functional_step_relation_correct delay_space.
+  Instance delay_space_functional_correct : functional_step_relation_correct (delay_space guardb).
   split.
   * intros σ e τ Hstep.
     inversion Hstep; subst; simpl.
@@ -2123,7 +2193,7 @@ Defined.
       { eapply fun_step_in; auto. }
       { apply state_equiv_on_implies_list; auto. }
     + rewrite_in_list_dec; simpl.
-      replace (guard σ) with true by assumption.
+      apply guardb_equiv in H. rewrite H.
       assert (τ ∈ fun_step S σ (Some (Event x v))) by (apply fun_step_in; auto).
       assert (τ ∈ equiv_on_list sensitivities σ).
       { apply state_equiv_on_implies_list; auto. }
@@ -2148,9 +2218,10 @@ Defined.
       }
     }
     destruct (x ∈? space_output S); rewrite_in_list_dec.
-    { destruct (guard σ) eqn:Hguard; [ simpl in Hstep | inversion Hstep].
+    { destruct (guardb σ) eqn:Hguard; [ simpl in Hstep | inversion Hstep].
       decompose_set_structure.
       apply delay_space_output; auto.
+      { apply guardb_equiv; auto. }
       { apply fun_in_step; auto. }
       { rewrite rewrite_enumerate.
         apply equiv_on_list_implies_state_equiv_on; auto.
@@ -2279,6 +2350,20 @@ Module StateSpaceTactics (Export name : NameType).
     intros S1 S2 e σ σ' Hstep.
     inversion Hstep; auto.
   Qed.
+
+  Lemma union_inversion_None : forall (S1 S2 : StateSpace name) σ σ',
+    (S1 ∥ S2) ⊢ σ →{None} Some σ' ->
+       (S1 ⊢ σ →{None} Some σ' /\ state_equiv_on (space_domain S2) (Some σ) (Some σ'))
+    \/ (S2 ⊢ σ →{None} Some σ' /\ state_equiv_on (space_domain S1) (Some σ) (Some σ')).
+  Proof.
+    intros S1 S2 σ σ' Hstep.
+    inversion Hstep; subst; auto.
+    inversion H;
+    match goal with
+    | [ H : event_in _ None |- _ ] => inversion H
+    end.
+  Qed.
+
 
 (*
   Instance internal_in_dec : forall l, in_dec (space_internal (latch_stage_with_env l)).
@@ -2483,7 +2568,7 @@ Ltac unfold_SS recurse_flag loc_flag S :=
   | hide ?x ?S'          =>
     maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S')
   | flop ?set ?reset ?clk ?old_clk ?D ?Q => idtac
-  | delay_space ?S0 ?sens ?guard      => 
+  | delay_space ?S0 ?sens ?guard ?guardb    => 
     maybe_do recurse_flag ltac:(unfold_SS recurse_flag loc_flag S0)
 
   (* func *)
@@ -2542,15 +2627,17 @@ Ltac unfold_SS recurse_flag loc_flag S :=
   | _ => let S0 := fresh "S0" in
          let sens := fresh "sens" in
          let guard := fresh "guard" in
+         let guardb := fresh "guardb" in
          evar (S0 : StateSpace name);
          evar (sens : list name);
-         evar (guard : state name -> bool);
-         replace_with_in S (delay_space S0 sens guard) loc_flag;
-         unfold S0, sens, guard in *;
+         evar (guard : state name -> Prop);
+         evar (guardb : state name -> bool);
+         replace_with_in S (delay_space S0 sens guard guardb) loc_flag;
+         unfold S0, sens, guard, guardb in *;
          [ | reflexivity];
          maybe_do recurse_flag ltac:(let S0' := eval unfold S0 in S0 in
                                 unfold_SS recurse_flag loc_flag S0');
-         clear S0 sens guard
+         clear S0 sens guard guardb
   end.
   Tactic Notation "unfold_StateSpace" constr(S) :=
     (unfold_SS true false S).
@@ -2785,7 +2872,8 @@ Module Structural_SS (Export name : NameType).
     ISpace
   | IDelaySpace (S : ISpace)
                 (sensitivities : list name)
-                (guard : state name -> bool) : ISpace
+                (guard : state name -> Prop)
+                (guardb : state name -> bool) : ISpace
 (*  | IPrim : StateSpace name -> ISpace*)
   .
 
@@ -2796,13 +2884,13 @@ Module Structural_SS (Export name : NameType).
     | IUnion S1 S2 => interp_ISpace S1 ∥ interp_ISpace S2
     | IHide x S0   => hide x (interp_ISpace S0)
     | IFlop set reset clk old_clk D Q => flop set reset clk old_clk D Q
-    | IDelaySpace S0 sens guard => delay_space (interp_ISpace S0) sens guard
+    | IDelaySpace S0 sens guard guardb => delay_space (interp_ISpace S0) sens guard guardb
     end.
 
 
   Lemma interp_ISpace_wf : forall S,
     well_formed (interp_ISpace S).
-  Admitted.
+  Abort.
 
 
   Ltac reflect_ISpace S :=
@@ -2814,8 +2902,8 @@ Module Structural_SS (Export name : NameType).
   | hide ?x ?S'          => let SSS' := reflect_ISpace S' in
                             constr:(IHide x SSS')
   | flop ?set ?reset ?clk ?old_clk ?D ?Q => constr:(IFlop set reset clk old_clk D Q)
-  | delay_space ?S0 ?sens ?guard      => let SS := reflect_ISpace S0 in
-                                      constr:(IDelaySpace SS sens guard)
+  | delay_space ?S0 ?sens ?guard  ?guardb    => let SS := reflect_ISpace S0 in
+                                      constr:(IDelaySpace SS sens guard guardb)
 (*  | _                              => constr:(IPrim S)*)
   end.
   Ltac reflect_S S := 
@@ -2858,7 +2946,7 @@ Module Structural_SS (Export name : NameType).
     | IUnion S1 S2 => ISpace_dom S1 ++ ISpace_dom S2
     | IHide x0 S0  => ISpace_dom S0
     | IFlop set reset clk old_clk D Q => set::reset::clk::old_clk::D::Q::nil
-    | IDelaySpace S0 sens guard => ISpace_dom S0 ++ sens
+    | IDelaySpace S0 sens guard guardb => ISpace_dom S0 ++ sens
     end.
 
   Fixpoint ISpace_output (S : ISpace) : list name :=
@@ -2867,7 +2955,7 @@ Module Structural_SS (Export name : NameType).
     | IUnion S1 S2 => ISpace_output S1 ++ ISpace_output S2
     | IHide x0 S0  => better_filter (fun y => negb (x0 =? y)) (ISpace_output S0)
     | IFlop set reset clk old_clk D Q => Q::nil
-    | IDelaySpace S0 sens guard => ISpace_output S0
+    | IDelaySpace S0 sens guard guardb => ISpace_output S0
     end.
 
   Fixpoint ISpace_input (S : ISpace) : list name :=
@@ -2877,7 +2965,7 @@ Module Structural_SS (Export name : NameType).
                    ++ list_setminus _ (ISpace_input S2) (ISpace_output S1)
     | IHide x0 S0  => ISpace_input S0
     | IFlop set reset clk old_clk D Q => set::reset::clk::D::nil
-    | IDelaySpace S0 sens guard => ISpace_input S0 ++ sens
+    | IDelaySpace S0 sens guard guardb => ISpace_input S0 ++ sens
     end.
 
   Fixpoint ISpace_internal (S : ISpace) : list name :=
@@ -2886,7 +2974,7 @@ Module Structural_SS (Export name : NameType).
     | IUnion S1 S2 => ISpace_internal S1 ++ ISpace_internal S2
     | IHide x0 S0  => x0 :: ISpace_internal S0
     | IFlop set reset clk old_clk D Q => old_clk::nil
-    | IDelaySpace S0 sens guard => ISpace_internal S0
+    | IDelaySpace S0 sens guard guardb => ISpace_internal S0
     end.
 
   Lemma space_domain_ISpace : forall S,
@@ -3111,12 +3199,12 @@ Arguments fun_step {name} S {functional_step_relation}.
       end
     | IFlop set reset clk old_clk D Q =>
       flop_step_fun _ set reset clk old_clk D Q σ e
-    | IDelaySpace S0 sensitivities guard =>
+    | IDelaySpace S0 sensitivities guard guardb =>
       match e with
       | Some (Event x _) =>
         if in_list_dec x (ISpace_input S0)
         then step_ISpace S0 σ e ∩ equiv_on_list _ sensitivities σ
-        else if (in_list_dec x (ISpace_output S) && guard σ)%bool
+        else if (in_list_dec x (ISpace_output S) && guardb σ)%bool
         then step_ISpace S0 σ e ∩ equiv_on_list _ sensitivities σ
         else ∅
       | None => step_ISpace S0 σ e ∩ equiv_on_list _ sensitivities σ
@@ -3258,7 +3346,7 @@ Arguments fun_step {name} S {functional_step_relation}.
       { rewrite IHS. reflexivity. }
       destruct (in_list_dec x (ISpace_output S)) eqn:Hx'; simpl.
       2:{ reflexivity. }
-      destruct (guard σ) eqn:Hguard.
+      destruct (guardb σ) eqn:Hguard.
       { rewrite IHS. reflexivity. }
       { reflexivity. }
   Qed.
