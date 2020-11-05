@@ -91,6 +91,8 @@ Section LatchSequence.
   Inductive val_is_bit : value -> Prop :=
   | val_bit0 : val_is_bit Bit0
   | val_bit1 : val_is_bit Bit1.
+  Hint Constructors val_is_bit : circuit.
+
   Lemma val_is_bit_neg_neg : forall v, val_is_bit v -> neg_value (neg_value v) = v.
   Proof.
     intros v Hv; inversion Hv; subst; auto.

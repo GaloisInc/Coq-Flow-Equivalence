@@ -712,6 +712,35 @@ Ltac solve_set :=
     intros. split; intros x Hx; decompose_set_structure; solve_set.
   Qed.
 
+  Lemma union_symm : forall {X} (A B : Ensemble X),
+    A ∪ B == B ∪ A.
+  Proof.
+    intros. split; intros x Hx; decompose_set_structure; solve_set.
+  Qed.
+  Lemma intersection_symm : forall {X} (A B : Ensemble X),
+    A ∩ B == B ∩ A.
+  Proof.
+    intros. split; intros x Hx; decompose_set_structure; solve_set.
+  Qed.
+
+
+  Lemma union_emptyset_r : forall {X} (A : Ensemble X),
+    A ∪ ∅ == A.
+  Proof.
+    intros.
+    rewrite union_symm. apply union_emptyset.
+  Qed.
+  Lemma intersection_emptyset_r : forall {X} (A : Ensemble X),
+    A ∩ ∅ == ∅.
+  Proof.
+    intros. rewrite intersection_symm. apply intersection_emptyset.
+  Qed.
+  Lemma setminus_emptyset_r : forall {X} (A : Ensemble X),
+    A ∖ ∅ == A.
+  Proof.
+    intros. split; intros x Hx; decompose_set_structure; solve_set.
+  Qed.
+
   Lemma union_intersect_distr : forall {X} (A B C : Ensemble X),
     (A ∪ B) ∩ C == (A ∩ C) ∪ (B ∩ C).
   Proof.
@@ -757,6 +786,15 @@ Ltac solve_set :=
     inversion Hx; subst;
        contradiction.
   Qed.
+
+Ltac reduce_set_simpl := match goal with
+    | [ |- context[ ∅ ∩ ?A ] ] => rewrite (intersection_emptyset A)
+    | [ |- context[ ?A ∩ ∅ ] ] => rewrite (intersection_emptyset_r A)
+    | [ |- context[ ∅ ∖ ?A ] ] => rewrite (setminus_emptyset A)
+    | [ |- context[ ?A ∖ ∅ ] ] => rewrite (setminus_emptyset_r A)
+    | [ |- context[ ∅ ∪ ?A ] ] => rewrite (union_emptyset A)
+    | [ |- context[ ?A ∪ ∅ ] ] => rewrite (union_emptyset_r A)
+    end.
 
 
 (** ** Tactics for decidable equality 
@@ -900,5 +938,3 @@ Ltac replace_with_in x y loc_flag :=
   | true  => (* everywhere *) replace x with y in *
   | _ => replace x with y in loc_flag
   end.
-
-

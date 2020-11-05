@@ -8,7 +8,9 @@ Import ListNotations.
 Open Scope list_scope.
 
 Require Import MarkedGraph.
-Require Import Click.
+Require Import Click.ClickStateSpace.
+Require Import Click.ClickInvariants.
+
 
 Require Import Omega.
 
@@ -159,13 +161,13 @@ Arguments MG_SS {name name_dec transition transition_dec} MG {MG_scheme}.
   Instance stage_scheme : stage_naming_scheme :=
     {| stage_place_name := fun l t1 t2 p =>
                              match p with
-                             | left_ack_left_req => latch_and_nat l "left_ack_left_req"
-                             | clk_fall_left_ack => latch_and_nat l "clk_fall_left_ack"
-                             | clk_rise_right_req => latch_and_nat l "clk_rise_right_req"
-                             | right_req_right_ack => latch_and_nat l "right_req_right_ack"
-                             | clock_fall => latch_and_nat l "clock_fall"
-                             | left_req_clk_rise => latch_and_nat l "left_req_clk_rise"
-                             | right_ack_clk_rise => latch_and_nat l "right_ack_clk_rise"
+                             | left_ack_left_req => local_name l "left_ack_left_req"
+                             | clk_fall_left_ack => local_name l "clk_fall_left_ack"
+                             | clk_rise_right_req => local_name l "clk_rise_right_req"
+                             | right_req_right_ack => local_name l "right_req_right_ack"
+                             | clock_fall => local_name l "clock_fall"
+                             | left_req_clk_rise => local_name l "left_req_clk_rise"
+                             | right_ack_clk_rise => local_name l "right_ack_clk_rise"
                              end
     |}.
   * intros l ? ? p.
@@ -604,11 +606,6 @@ Qed.
     σ (req (latch_output l)) <> σ (latch_state0 l) ->
     prop_marked clk_rise_right_req σ
 
-  (* right_req -> right_ack *)
-  | right_req_right_ack_marked σ :
-    σ (req (latch_output l)) <> σ (latch_state0 l) ->
-    prop_marked right_req_right_ack σ
-
   (* clk+ -> clk- *)
   | clock_fall_flop_marked σ :
     σ (latch_clk l) = Bit1 ->
@@ -654,11 +651,12 @@ Ltac combine_state_equiv_on_domain Hequiv :=
 
   Lemma step_implies_prop_marked : forall σ t σ',
     wf_stage_state l σ ->
+    wf_stage_state_stable l σ ->
     latch_stage_with_env l ⊢ σ →{Some (transition_event l t σ)} Some σ' ->
     forall t0 (p : stage_place t0 t), prop_marked p σ.
   Proof.
     set (Hdisjoint := scheme_all_disjoint l).
-    intros σ t σ' Hwf Hstep t0 p.
+    intros σ t σ' Hwf Hstable Hstep t0 p.
     dependent destruction p.
     { (* left_ack_left_req *)
       constructor.
@@ -798,7 +796,6 @@ Ltac combine_state_equiv_on_domain Hequiv :=
 (*        combine_state_equiv_on_domain Hequiv.*)
 
         apply val_is_bit_neq in H0; try solve_val_is_bit.
-        2:{ constructor. }
         apply val_is_bit_neq in H1; try solve_val_is_bit.
         right. left. rewrite <- H1. auto.
 
@@ -852,12 +849,13 @@ Ltac rewrite_back_wf_scoped :=
   (* Helper lemmas for relate_implies_marked below *)
   Lemma relate_implies_marked_eps : forall σ σ',
     wf_stage_state l σ ->
+    wf_stage_state_stable l σ ->
     latch_stage_with_env l ⊢ σ →{None} Some σ' ->
     forall {t1 t2} (p : stage_place t1 t2),
     prop_marked p σ' ->
     prop_marked p σ.
   Proof.
-    intros σ σ' Hwf Hstep t1 t2 p Hp.
+    intros σ σ' Hwf Hstable Hstep t1 t2 p Hp.
     dependent destruction Hp.
     * (* Because σ0 left_ack = σ0 left_req, if σ →{None} σ0,
          then it must be the case that σ is equivalent to σ0 on left_ack and left_req. *)
@@ -907,12 +905,12 @@ Ltac rewrite_back_wf_scoped :=
 
   Lemma outgoing_place_not_marked : forall σ σ' t,
     wf_stage_state l σ ->
+    wf_stage_state_stable l σ ->
     latch_stage_with_env l ⊢ σ →{Some (transition_event l t σ)} Some σ' ->
     forall t0 (p : stage_place t0 t),
         ~ prop_marked p σ'.
   Proof.
-    set (Hdisjoint := scheme_all_disjoint l).
-    intros σ σ' t Hwf Hstep t0 p Hprop.
+    intros σ σ' t Hwf Hwf_stable Hstep t0 p Hprop.
 
     dependent destruction Hprop.
     * (* t = left_req *)
@@ -972,11 +970,10 @@ Ltac rewrite_back_wf_scoped :=
           by auto.
 
       assert (Hack : σ0 (ack (latch_input l)) = neg_value (σ (ack (latch_input l)))).
-      { rewrite_step_inversion; auto.
+      { erewrite wf_update; [ | | eauto]; auto.
       }
       assert (Hreq : σ0 (req (latch_input l)) = σ (req (latch_input l))).
-      { rewrite_step_inversion; auto.
-      }
+      { rewrite_back_wf_scoped; auto. }
 
       repeat step_inversion_1.
       repeat combine_state_equiv_on.
@@ -1038,7 +1035,7 @@ Ltac rewrite_back_wf_scoped :=
         solve_in_dom.
       }
 
-      assert (state0_bit : val_is_bit (σ (latch_and_nat l "state0"))).
+      assert (state0_bit : val_is_bit (σ (local_name l "state0"))).
       { solve_val_is_bit. }
 
       symmetry in Heq.
@@ -1098,7 +1095,11 @@ Ltac rewrite_back_wf_scoped :=
     combine_state_equiv_on_complex. { solve_in_dom. }
     standardize_state_equiv_on_set Hequiv0.
     admit.
-    
+  * admit.
+  * admit.
+  * admit.
+  * admit.
+  * admit.
 
   Admitted.
 
@@ -1106,14 +1107,14 @@ Ltac rewrite_back_wf_scoped :=
   Lemma disjoint_place_marked : forall σ σ' t,
     latch_stage_with_env l ⊢ σ →{Some (transition_event l t σ)} Some σ' ->
     wf_stage_state l σ ->
+    wf_stage_state_stable l σ ->
     forall t1 t2 (p : stage_place t1 t2),
       t1 <> t ->
       t2 <> t ->
       prop_marked p σ' ->
       prop_marked p σ.
   Proof.
-    set (Hdisjoint := scheme_all_disjoint l).
-    intros σ σ' t Hstep Hwf t1 t2 p Ht1 Ht2 Hmarked.
+    intros σ σ' t Hstep Hwf Hwf_stable t1 t2 p Ht1 Ht2 Hmarked.
     dependent destruction Hmarked.
     * constructor.
       rewrite_back_wf_scoped.
@@ -1142,7 +1143,8 @@ Ltac rewrite_back_wf_scoped :=
         contradict H.
         replace (transition_event l clk_rise σ) with (Event (latch_clk l) Bit1) in Hstep
           by auto.
-        rewrite_step_inversion. inversion 1.
+        erewrite (wf_update _ _ (latch_stage_well_formed l) _ _ _ _ Hstep).
+        inversion 1.
       }
 
       assert (Hclk : σ0 (latch_clk l) = σ (latch_clk l)).
@@ -1199,7 +1201,7 @@ Ltac rewrite_back_wf_scoped :=
         contradict H.
         replace (transition_event l clk_rise σ) with (Event (latch_clk l) Bit1) in Hstep
           by auto.
-        rewrite_step_inversion. inversion 1.
+        rewrite (wf_update _ _ (latch_stage_well_formed l) _ _ _ _ Hstep); inversion 1.
       }
 
       assert (Hclk : σ0 (latch_clk l) = σ (latch_clk l)).
@@ -1231,14 +1233,45 @@ Ltac rewrite_back_wf_scoped :=
       { rewrite <- Hclk; auto. }
       { rewrite <- Hold_clk. auto. }
 
-    * 
+    * admit.
+    * admit.
+    * admit.
+    * admit.
+    * admit.
+    * admit.
 
   Admitted.
 
 
+  (****** TODO: fix bug *)
   Lemma init_relate_implies_marked : forall {t1 t2} (p : stage_place t1 t2),
     prop_marked p (σR l) ->
     init_marking (stage_MG in_flag out_flag) _ _ p > 0.
+  Proof.
+    intros t1 t2 p Hp.
+    dependent destruction Hp;
+      try (simpl; unfold init_marking_flag; simpl;
+      unfold σR in *; simpl in *; reduce_eqb;
+      try (destruct l; simpl in *; find_contradiction; auto; fail);
+    fail).
+    * (* clk_fall_left_ack *)
+      destruct l; simpl in H0; inversion H0; simpl; auto.
+      2:{ unfold σR in *; simpl in *; reduce_eqb. }
+      (* clk_fall_left_ack is never enabled in the initial state, but
+         prop_marked holds when l is a token buffer, since:
+
+         σ clk = Bit0 and
+         σ (ack (latch_input l)) = σ state0 *)
+      unfold σR in *; simpl in *; reduce_eqb. admit.
+    * (* clk_rise_right_req *)
+      destruct l; simpl in H; find_contradiction.
+      2:{ unfold σR in *; simpl in *; reduce_eqb. } Print prop_marked.
+      (* clk_fall_left_ack is never enabled in the initial state, but
+         prop_marked holds when l is a non-token buffer, since:
+
+         Bit0 = σ (req (latch_output l)) <> σ (latch_state0 l) = Bit1 *)
+      { unfold σR in *; simpl in *; reduce_eqb. admit. }
+
   Admitted.
 
   Lemma state_relate_marking_steps : forall σ m,
@@ -1273,6 +1306,11 @@ About step_wf_state.
         destruct Hrelate as [tr Hsteps].
         eapply step_wf_state; eauto.
       }
+      assert (Hwf_stable : wf_stage_state_stable l σ).
+      { apply state_relate_marking_steps in Hrelate.
+        destruct Hrelate as [tr Hsteps].
+        eapply step_wf_state_stable; eauto.
+      }
 
       unfold is_enabled in Henabled.
       rewrite Hm'.
@@ -1281,7 +1319,7 @@ About step_wf_state.
       { inversion p; subst; find_contradiction. }
       compare_next.
       { (* t = t2 *) contradict Hp.
-        eapply outgoing_place_not_marked; [ | eauto]; auto.
+        eapply outgoing_place_not_marked; [ | | eauto]; auto.
       }
       compare_next.
       { omega. }
@@ -1294,10 +1332,15 @@ About step_wf_state.
         destruct Hrelate as [tr Hsteps].
         eapply step_wf_state; eauto.
       }
+      { apply state_relate_marking_steps in Hrelate.
+        destruct Hrelate as [tr Hsteps].
+        eapply step_wf_state_stable; eauto.
+      }
   Qed.
 
   Theorem state_related_enabled : forall σ σ' t m,
     wf_stage_state l σ ->
+    wf_stage_state_stable l σ ->
     latch_stage_with_env l ⊢ σ →{Some (transition_event l t σ)} Some σ' ->
     state_relate_marking l σ m ->
     is_enabled _ t m.
@@ -1312,10 +1355,12 @@ About step_wf_state.
 
   Lemma step_implies_bit : forall σ x v σ',
     wf_stage_state l σ ->
+    wf_stage_state_stable l σ ->
+
     latch_stage_with_env l ⊢ σ →{Some (Event x v)} Some σ' ->
     val_is_bit v.
   Proof.
-    intros ? ? ? ? Hwf Hstep.
+    intros ? ? ? ? Hwf Hwf_stable Hstep.
     assert (v = σ' x).
     { apply wf_update in Hstep; auto. }
     subst.
@@ -1324,7 +1369,7 @@ About step_wf_state.
       unfold space_domain. solve_set.
     }
     apply step_wf_state_lemma in Hstep; auto.
-    clear Hwf. Print wf_stage_state.
+    clear Hwf.
     eapply wf_all_bits; eauto.
   Qed.
 
@@ -1356,6 +1401,7 @@ Import ClickTactics.
   (* How to prove this? Maybe build on prop_marked?? *)
   Lemma step_implies_event_step : forall t σ x v σ',
     wf_stage_state l σ ->
+    wf_stage_state_stable l σ ->
     latch_stage_with_env l ⊢ σ →{Some (Event x v)} Some σ' ->
     x = @transition_name name _ (stage_MG in_flag out_flag) _ t ->
     exists t', v = @transition_update_value _ _ (stage_MG in_flag out_flag) _ t' (σ x).
@@ -1366,7 +1412,7 @@ Import ClickTactics.
 *)
   Proof.
     set (Hdisjoint := scheme_all_disjoint l).
-    intros t σ x v σ' Hwf Hstep.
+    intros t σ x v σ' Hwf Hwf' Hstep.
     assert (Hv : val_is_bit v).
     { eapply step_implies_bit; eauto. }
 
@@ -1437,6 +1483,11 @@ Import ClickTactics.
     intros σ1 σ1' σ2 [x v] t Hstep Hrelate.
     assert (Hwfσ1 : wf_stage_state l σ1).
     { eapply step_wf_state.
+      eapply relate_trace_project_left.
+      eauto.
+    }
+    assert (Hwfσ1' : wf_stage_state_stable l σ1).
+    { eapply step_wf_state_stable.
       eapply relate_trace_project_left.
       eauto.
     }
