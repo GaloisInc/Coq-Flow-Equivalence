@@ -1,7 +1,7 @@
 Require Import Base.
 Require Import Circuit.
 Require Import StateSpace.
-Require Import Click.ClickStateSpace.
+Require Import Click.StateSpace.
 Require Import Monad.
 Require Import Coq.Program.Equality.
 
@@ -313,11 +313,12 @@ Module WFStage (Export ClickModule : ClickType).
     | False => contradiction
     | _ /\ _ => let Hequiv := fresh "Hequiv" in
                 let Heq := fresh "Heq" in
+                let Hunstable := fresh "Hunstable" in
                 destruct Hstep as [Hequiv Heq];
                 simpl in Heq;
                 try match type of Heq with
-                | ?x = ?x -> _ => specialize (Heq eq_refl)
-                | ?x = ?y -> _ => clear Heq (* too much?? *)
+                | ?x = ?x -> _ => specialize (Heq eq_refl); destruct Heq as [Heq Hunstable]
+(*                | ?x = ?y -> _ => clear Heq (* too much?? *)*)
                 end
     end
   end.

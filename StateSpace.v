@@ -2502,16 +2502,15 @@ Lemma func_space_inversion : forall I o f σ e σ',
   match e with
   | None => False
   | Some (Event y v) => state_equiv_on (from_list I ∪ singleton o) (Some (update σ y v)) (Some σ')
-                    /\ (y = o -> v = f σ)
+                    /\ (y = o -> (v = f σ /\ f σ <> σ o))
   end.
 Proof.
   intros ? ? ? ? ? ? Hwf Hstep.
   inversion Hstep; subst.
   * split; auto.
-    intros Heq; subst.
-    contradict pf_i. auto.
+    intro Hi; subst; find_contradiction.
   * split; auto.
-    intros Heq; subst. contradict pf_i; auto.
+    intros Heq; subst; find_contradiction.
   * split; auto.
 Qed.
 
@@ -2695,14 +2694,20 @@ Section MG_to_SS.
   | place_refl : forall t1 t2 (p : place MG t1 t2), place_eq p p.
 
 
+Print sigT.
   Class MG_naming_scheme :=
   { transition_name : transition -> name
   ; place_name : forall {t1 t2} (p : place MG t1 t2), name
 
+(*
   ;  name_is_place_dec : forall (x : name),
      {t1 : transition & {t2 : transition & {p : place MG t1 t2 & x = place_name p}}}
    + {forall t1 t2 (p : place MG t1 t2), x <> place_name p}
-
+*)
+  ; name_to_place : name -> option {t1 & {t2 & place MG t1 t2}}
+  ; name_to_place_correct : forall x tin tout (p : place MG tin tout),
+        name_to_place x = Some (existT _ tin (existT _ tout p))
+    <-> x = place_name p
 
   ; transition_update_value : transition -> value -> value
 
@@ -2732,20 +2737,36 @@ Section MG_to_SS.
   Definition state_to_marking (σ : state name) : marking MG :=
     fun t1 t2 p => val_to_nat (σ (place_name p)).
 
+  Lemma name_to_place_eq : forall t1 t2 (p : place MG t1 t2),
+    name_to_place (place_name p) = Some (existT _ t1 (existT _ t2 p)).
+  Proof.
+    intros.
+    apply name_to_place_correct; auto.
+  Qed.
+  Lemma name_to_place_neq : forall t,
+    name_to_place (transition_name t) = None.
+  Proof.
+    intros t.
+    destruct (name_to_place (transition_name t)) as [[t1 [t2 p]] | ] eqn:contra; auto.
+    apply name_to_place_correct in contra.
+    apply transition_place_name_disjoint in contra.
+    contradiction.
+  Qed.
+
   Definition fire_in_state (t : transition) (σ : state name) : state name :=
     fun x =>
-    match name_is_place_dec x with
+    match name_to_place x with
     (* if x is not a place, do nothing *)
-    | inright _ => σ x
-    | inleft (existT _ tin (existT _ tout (existT _ p x_is_p))) =>
-      (* corner case: do nothing *)
-      if tin =? tout then σ x
-      (* if x is a place leading into t, increment the value *)
-      else if t =? tout then dec_value (σ x)
-      (* if x is a place leading out of t, decrement the value *)
-      else if t =? tin then inc_value (σ x)
-      (* otherwise do nothing *)
-      else σ x
+    | None => σ x
+    | Some (existT _ tin (existT _ tout p)) =>
+         (* corner case: do nothing *)
+         if tin =? tout then σ x
+         (* if x is a place leading into t, increment the value *)
+         else if t =? tout then dec_value (σ x)
+         (* if x is a place leading out of t, decrement the value *)
+         else if t =? tin then inc_value (σ x)
+         (* otherwise do nothing *)
+         else σ x
     end.
 
   (* NOTE: this may not be the right relation for all marked graphs--get example from Peter *)
@@ -2779,6 +2800,60 @@ Section MG_to_SS.
    ; space_internal := places_set
    ; space_step := MG_SS_step
    |}.
+
+  Require Import Program.Equality.
+  Lemma places_all_numbers_step : forall σ σ' e {t1 t2} (p : place MG t1 t2),
+    σ (place_name p) <> X ->
+    MG_SS ⊢ σ →{e} Some σ' ->
+    σ' (place_name p) <> X.
+  Proof.
+    intros σ σ' e t1 t2 p Hwf Hstep.
+    inversion Hstep; subst.
+    rewrite H5.
+    2:{ right. exists t1. exists t2. exists p. reflexivity. }
+    unfold update.
+    set (Hneq := transition_place_name_disjoint t p).
+    reduce_eqb.
+    unfold fire_in_state.
+    rewrite name_to_place_eq.
+    compare_next; auto.
+    compare_next; auto.
+    { destruct (σ (place_name p)); find_contradiction. }
+    compare_next; auto.
+    { destruct (σ (place_name p)); find_contradiction. }
+  Qed.
+
+
+  Lemma places_all_numbers : forall σ σ' tr {t1 t2} (p : place MG t1 t2),
+    σ (place_name p) <> X ->
+    MG_SS ⊢ σ →*{tr} Some σ' ->
+    σ' (place_name p) <> X.
+  Proof.
+    intros ? ? ? ? ? ? ? Hstep.
+    remember MG_SS as S.
+    remember (Some σ') as τ.
+    generalize dependent σ'.
+    generalize dependent t2. generalize dependent t1.
+    induction Hstep; intros t1 t2 p Hneq σ'' Hτ; subst.
+    * inversion Hτ; subst; auto.
+    * destruct e as [x v].
+      inversion H; subst; clear H.
+      rewrite H7.
+        2:{ right. do 3 eexists. reflexivity. }
+        unfold update.
+        set (Hneq' := transition_place_name_disjoint t0 p).
+        reduce_eqb.
+        unfold fire_in_state.
+        rewrite name_to_place_eq.
+        specialize (IHHstep _ _ p Hneq σ' eq_refl).
+        compare_next; auto.
+        compare_next; auto.
+        { destruct (σ' (place_name p)); find_contradiction. }
+        compare_next; auto.
+        { destruct (σ' (place_name p)); find_contradiction. }
+
+    * inversion H.
+  Qed.
 
   Arguments well_formed {name}.
   Lemma wf_MG_SS : well_formed MG_SS.
@@ -2815,28 +2890,23 @@ Section MG_to_SS.
        }
     * intros ? ? ? Hstep ? He Hexternal.
       inversion Hstep; subst.
-      unfold update. unfold fire_in_state.
-      destruct (name_is_place_dec x) as [[t1 [t2 [p Hp]]] | ].
-      { (*contradiction *)
-        contradict Hexternal. subst.
-        simpl. inversion 1 as [? [t' [Ht' Hp']] | x [? [? Hp']]]; subst;
-          apply transition_place_name_disjoint in Hp'; auto.
+      rewrite H5.
+      2:{ simpl in Hexternal. deep_decompose_set_structure; subst;
+          left; exists x0; split; auto; constructor.
       }
-      compare x (transition_name t); auto.
+      unfold update.
+      compare_next; auto.
       { contradiction (He (transition_update_value t (σ (transition_name t)))); auto. }
-      { assert (Hx : exists t', x = transition_name t').
-        { inversion Hexternal as [? Hex | ? Hex]; subst;
-           inversion Hex as [t' [Ht Hx]]; subst;
-           eexists; split; auto; constructor.
-        }
-        destruct Hx as [t' Ht']; subst.
-        rewrite H5. 2:{ left. exists t'; split; auto; constructor. }
-        unfold update. compare_next. unfold fire_in_state.
-        destruct (name_is_place_dec (transition_name t'))
-          as [[t1 [t2 [p Hp]]] | ]; auto.
-        { contradict Hp. apply transition_place_name_disjoint. }
+      unfold fire_in_state.
+      assert (Hx : forall t1 t2 (p : place MG t1 t2), x <> place_name p).
+      { simpl in Hexternal. deep_decompose_set_structure; subst;
+        apply transition_place_name_disjoint.
       }
-        
+      assert (Hx' : name_to_place x = None).
+      { simpl in Hexternal; deep_decompose_set_structure; subst;
+          rewrite name_to_place_neq; auto.
+      }
+      rewrite Hx'; auto.
 
     * intros ? ? ? ? Hstep.
       inversion Hstep; subst.
@@ -2865,11 +2935,7 @@ Section MG_to_SS.
       { apply transition_place_name_disjoint in Heq; contradiction.
       }
       unfold fire_in_state.
-      destruct (name_is_place_dec (place_name p)) as [[t1' [t2' [p' Heq']]] | Hneq'].
-      2:{ specialize (Hneq' _ _ p); find_contradiction. }
-      apply places_all_disjoint in Heq'.
-Require Import Coq.Program.Equality.
-      dependent destruction Heq'.
+      rewrite name_to_place_eq.
       compare_next; auto.
       compare_next. { destruct (σ' (place_name p)); try (inversion 1; fail); find_contradiction. }
       compare_next. { destruct (σ' (place_name p)); try (inversion 1; fail); find_contradiction. }

@@ -235,6 +235,11 @@ Section Stage.
     | Odd _ => NonToken
     | Even _ => Token
     end.
+  Definition swap_token_flag (f : token_flag) : token_flag :=
+    match f with
+    | Token => NonToken
+    | NonToken => Token
+    end.
 
   (** NOTE: added delay here *)
   Definition ack_i_output f := (*match f with

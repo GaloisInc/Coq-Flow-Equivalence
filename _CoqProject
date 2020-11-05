@@ -7,6 +7,7 @@ RiseDecoupled.v
 FallDecoupled.v
 Desynchronization.v
 StateSpace.v
-Click/ClickStateSpace.v
-Click/ClickInvariants.v
-ClickMG.v
+Click/StateSpace.v
+Click/Invariants.v
+Click/MG.v
+Click/MGProofs.v
