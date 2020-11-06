@@ -35,6 +35,8 @@ Infix "=?" := eqb.
 (** ** Some lemmas about decidable equality *)
 Lemma eqb_eq : forall A `{eq_dec A} (a : A), a =? a = true.
 Proof. intros. unfold eqb. destruct (Dec a a); auto. Qed.
+Lemma eqb_eq' : forall A `{eq_dec A} (a b : A), a = b -> (a =? b) = true.
+Proof. intros. unfold eqb. destruct (Dec a b); auto. Qed.
 Lemma eqb_neq : forall A `{eq_dec A} (a b : A), a <> b -> a =? b = false.
 Proof. intros. unfold eqb. destruct (Dec a b); auto. contradiction. Qed.
 
@@ -423,6 +425,9 @@ Module EnsembleNotation.
   Qed.
 
 
+
+
+
   (** The [all_disjoint ls] predicate asserts that every element of the list
   [ls] is disjoint from every other elemenet of the list [ls]. *)
   Inductive all_disjoint {A} : list A -> Prop :=
@@ -461,6 +466,16 @@ Module EnsembleNotation.
     rewrite from_list_app.
     reflexivity.
   Defined.
+
+  Instance enum_in_dec : forall {A} `{eq_dec A} (X : Ensemble A) `{enumerable _ X}, in_dec X.
+  Proof.
+    intros ? ? X [Xl Hl].
+    constructor; intros x.
+    destruct (x ∈? from_list Xl).
+    + left. rewrite Hl; auto.
+    + right. rewrite Hl; auto.
+  Defined.
+
 
 End EnsembleNotation.
 
@@ -787,6 +802,9 @@ Ltac solve_set :=
        contradiction.
   Qed.
 
+
+
+
 Ltac reduce_set_simpl := match goal with
     | [ |- context[ ∅ ∩ ?A ] ] => rewrite (intersection_emptyset A)
     | [ |- context[ ?A ∩ ∅ ] ] => rewrite (intersection_emptyset_r A)
@@ -816,6 +834,18 @@ Ltac reduce_eqb :=
   | [ H' : ?x1 <> ?x2 |- context[ ?x2 =? ?x1 ] ] => rewrite (eqb_neq _ x2 x1); [ | auto]
   | [ H' : ?x1 = ?x2 |- context[ ?x1 =? ?x2 ] ] => rewrite H'
   | [ H' : ?x1 = ?x2 |- context[ ?x2 =? ?x1 ] ] => rewrite H'
+
+
+  | [ H1 : context[ ?x =? ?y ]
+    , H2 : ?x = ?y
+    |- _ ] => rewrite (eqb_eq' _ x y) in H1; auto
+  | [ H1 : context[ ?x =? ?y ]
+    , H2 : ?y = ?x
+    |- _ ] => rewrite (eqb_eq' _ x y) in H1; auto
+  | [ H2 : ?x = ?y
+    |- context[ ?x =? ?y] ] => rewrite (eqb_eq' _ x y); auto
+  | [ H2 : ?y = ?x
+    |- context[ ?x =? ?y] ] => rewrite (eqb_eq' _ x y); auto
   end; find_contradiction.
 
 Ltac compare e1 e2 :=
@@ -921,6 +951,106 @@ Ltac compare_in_list :=
     let Hx := fresh "Hx" in
     destruct (in_list_dec x X) eqn:Hx
   end.
+
+
+  Section IntersectionEnumerable.
+
+    Context {A : Type} `{A_dec : eq_dec A}.
+    Variable X Y : Ensemble A.
+    Context `{enumX : enumerable _ X} `{enumY : enumerable _ Y}.
+    Definition list_intersection (A B : list A) := filter (fun x => in_list_dec x B) A.
+    Lemma list_intersection_equiv :
+      X ∩ Y == from_list (list_intersection (enumerate X) (enumerate Y)).
+    Proof.
+      destruct enumX as [Xl HX]; destruct enumY as [Yl HY].
+      unfold list_intersection.
+      simpl.
+      rewrite HX, HY; clear HX HY.
+      induction Xl.
+      * simpl. rewrite intersection_emptyset.
+        reflexivity.
+      * simpl.
+        destruct (in_list_dec a Yl) eqn:Ha.
+        + (* a ∈ Yl *) simpl; from_in_list_dec.
+          rewrite union_intersect_distr.
+          rewrite singleton_intersection_in; auto.
+          rewrite IHXl.
+          reflexivity.
+        + (* a ∉ Yl *)
+          from_in_list_dec.
+          rewrite union_intersect_distr.
+          rewrite singleton_intersection_not_in; auto.
+          rewrite union_emptyset.
+          rewrite IHXl; reflexivity.
+    Qed.
+
+    Instance intersection_enumerable :
+      enumerable (X ∩ Y).
+    Proof.
+      exists (list_intersection (enumerate X) (enumerate Y)).
+      apply list_intersection_equiv.
+    Defined.
+  End IntersectionEnumerable.
+  Existing Instance intersection_enumerable.
+
+
+  Section SetminusEnumerable.
+    Context {name : Type} `{name_dec : eq_dec name}.
+    Variable X Y : Ensemble name.
+    Context `{enumX : enumerable _ X} `{enumY : enumerable _ Y}.
+
+    Fixpoint better_filter {A : Type} (f : A -> bool) (l : list A) :=
+      match l with
+      | nil => nil
+      | x :: l0 => (if f x then x::nil else nil) ++ better_filter f l0
+      end.
+    Lemma filter_false : forall {X} (l : list X),
+      better_filter (fun _ => false) l = nil.
+    Proof.
+      induction l; auto.
+    Qed.
+
+    Definition list_setminus (lX lY : list name) :=
+      better_filter (fun x => negb (in_list_dec x lY)) lX.
+    Lemma list_setminus_equiv :
+      X ∖ Y == from_list (list_setminus (enumerate X) (enumerate Y)).
+    Proof.
+      destruct enumX as [Xl HX]; destruct enumY as [Yl HY].
+      unfold list_setminus.
+      simpl.
+      rewrite HX, HY; clear HX HY.
+      induction Xl.
+      * simpl.
+        rewrite setminus_emptyset.
+        reflexivity.
+      * simpl.
+        rewrite union_setminus_distr.
+        rewrite IHXl.
+        destruct (in_list_dec a Yl) eqn:Ha;
+          from_in_list_dec;
+          simpl.
+        + (* a ∈ Y *)
+          rewrite singleton_setminus_in; auto.
+          rewrite union_emptyset.
+          reflexivity.
+        + (* a ∉ Y *)
+          rewrite singleton_setminus_not_in; auto.
+          reflexivity.
+  Qed.
+  Instance setminus_enumerable : enumerable (X ∖ Y).
+    exists (list_setminus (enumerate X) (enumerate Y)).
+    apply list_setminus_equiv.
+  Defined.
+  End SetminusEnumerable.
+
+  Instance empty_enumerable : forall {A}, @enumerable A ∅.
+  Proof.
+    intros A.
+    exists nil. simpl. reflexivity.
+  Defined.
+  Existing Instance union_enumerable.
+  Existing Instance setminus_enumerable.
+
 
 
 

@@ -1,6 +1,7 @@
 Require Import Base.
 Require Import Circuit.
 Require Import StateSpace.
+Require Import StateSpace.MarkedGraphs.
 Require Import Monad.
 
 Require Import List.
@@ -8,7 +9,7 @@ Import ListNotations.
 Open Scope list_scope.
 
 Require Import MarkedGraph.
-Require Import Click.StateSpace.
+Require Import Click.Definitions.
 Require Import Click.Invariants.
 
 
@@ -144,17 +145,13 @@ End TokenMG.
 Existing Instance token_transition_eq_dec.
 Arguments MG_SS {name name_dec transition transition_dec} MG {MG_scheme}.
 
-  Inductive place_eq : forall {t1 t2 t1' t2' : token_transition}, stage_place t1 t2 -> stage_place t1' t2' -> Prop :=
-  | place_refl : forall t1 t2 (p : stage_place t1 t2), place_eq p p.
-
-
   Class stage_naming_scheme :=
     { stage_place_name : forall (l : latch even odd) {t1 t2 : token_transition}, stage_place t1 t2 -> name
     ; stage_places_disjoint_transitions : forall l t1 t2 (p : stage_place t1 t2),
       stage_place_name l p ∉ space_domain (latch_stage_with_env l)
     ; stage_places_all_disjoint : forall l f1 f2 {t1 t2 t1' t2'} (p : stage_place t1 t2) (p' : stage_place t1' t2'),
       stage_place_name l p = stage_place_name l p' ->
-      StateSpace.place_eq (stage_MG f1 f2) p p'
+      place_eq (stage_MG f1 f2) p p'
 
     }.
 
@@ -171,7 +168,6 @@ Arguments MG_SS {name name_dec transition transition_dec} MG {MG_scheme}.
                              end
     |}.
   * intros l ? ? p.
-    Search space_domain latch_stage_with_env.
     rewrite dom_latch_stage_with_env.
     to_in_list_dec.
     simpl.
@@ -291,7 +287,6 @@ Section TokenMG_to_SS.
 
 End TokenMG_to_SS.
 Existing Instance stage_MG_scheme.
-About name_to_place.
 Arguments name_to_place {name transition} MG {MG_naming_scheme}.
 Arguments traces_of {name}.
 

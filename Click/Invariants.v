@@ -1,7 +1,7 @@
 Require Import Base.
 Require Import Circuit.
 Require Import StateSpace.
-Require Import Click.StateSpace.
+Require Import Click.Definitions.
 Require Import Monad.
 Require Import Coq.Program.Equality.
 
@@ -56,8 +56,6 @@ Module WFStage (Export ClickModule : ClickType).
     unfold_StateSpace (latch_left_ack_component l).
     solve_wf.
     Unshelve.
-    Print latch_left_ack_component.
-    Print ack_i_output.
     exact (fun σ => σ (latch_clk l) =? Bit0).
   Qed.
   Lemma latch_right_req_component_well_formed : forall l,  well_formed (latch_right_req_component l).
@@ -146,7 +144,6 @@ Module WFStage (Export ClickModule : ClickType).
   Proof.
     intros σ h Hreq Hack.
     inversion Hreq as [Hreq' | Hreq']; inversion Hack as [Hack' | Hack'].
-    Print wf_handshake.
     apply handshake_in_sync; rewrite <- Hreq', <- Hack'; auto.
     apply handshake_out_of_sync; rewrite <- Hreq', <- Hack'; auto.
     apply handshake_out_of_sync; rewrite <- Hreq', <- Hack'; auto.
@@ -412,7 +409,6 @@ Module WFStage (Export ClickModule : ClickType).
   Proof.
     intros S1 S2 σ σ' Hequiv1 Hequiv2.
     intros x Hx.
-    Search space_domain union.
     unfold space_domain in Hx; simpl in Hx.
     decompose_set_structure;
     try (rewrite <- Hequiv1; auto;
@@ -666,7 +662,7 @@ Import StateSpace.
            then latch_clk = latch_old_clk
      *)
     assert (invariant : σ (latch_state0 l) <> σ (latch_not_state0 l)).
-    { intros Heq. Print wf_stage_state.
+    { intros Heq.
       apply wf_clk_unstable in Heq; auto.
     }
 

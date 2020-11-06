@@ -6,8 +6,14 @@ Circuit.v
 RiseDecoupled.v
 FallDecoupled.v
 Desynchronization.v
+StateSpace/Definitions.v
+StateSpace/Tactics.v
+StateSpace/MarkedGraphs.v
+StateSpace/Reflection.v
+StateSpace/RelateTrace.v
+StateSpace/Functional.v
 StateSpace.v
-Click/StateSpace.v
+Click/Definitions.v
 Click/Invariants.v
 Click/MG.v
 Click/MGProofs.v

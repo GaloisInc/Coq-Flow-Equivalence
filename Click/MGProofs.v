@@ -1,6 +1,8 @@
 Require Import Base.
 Require Import Circuit.
 Require Import StateSpace.
+Require Import StateSpace.MarkedGraphs.
+Require Import StateSpace.RelateTrace.
 Require Import Monad.
 
 Require Import List.
@@ -8,7 +10,7 @@ Import ListNotations.
 Open Scope list_scope.
 
 Require Import MarkedGraph.
-Require Import Click.StateSpace.
+Require Import Click.Definitions.
 Require Import Click.Invariants.
 Require Import Click.MG.
 
@@ -185,7 +187,6 @@ Module ClickMGProofs (ClickModule : ClickType).
         + rewrite val_to_nat_dec; auto.
         + rewrite val_to_nat_inc; auto.
 
-    Search (_ <> X).
           replace (stage_place_name l p)
             with (place_name (latch_stage_MG l) p)
             by reflexivity.
@@ -548,8 +549,7 @@ Ltac rewrite_back_wf_scoped :=
       { admit (*not strong enough information?? *). }
       { find_contradiction. }
 
-    * Print prop_marked.
-      admit.
+    * admit.
     * admit.      
 
   Admitted.
@@ -794,7 +794,8 @@ Ltac rewrite_back_wf_scoped :=
         contradict H.
         replace (latch_transition_event l clk_rise σ) with (Event (latch_clk l) Bit1) in Hstep
           by auto.
-        erewrite (wf_update _ _ (latch_stage_well_formed l) _ _ _ _ Hstep).
+        erewrite (wf_update _ (latch_stage_well_formed l) _ _ _ _ Hstep).
+
         inversion 1.
       }
 
@@ -852,7 +853,7 @@ Ltac rewrite_back_wf_scoped :=
         contradict H.
         replace (latch_transition_event l clk_rise σ) with (Event (latch_clk l) Bit1) in Hstep
           by auto.
-        rewrite (wf_update _ _ (latch_stage_well_formed l) _ _ _ _ Hstep); inversion 1.
+        rewrite (wf_update _ (latch_stage_well_formed l) _ _ _ _ Hstep); inversion 1.
       }
 
       assert (Hclk : σ0 (latch_clk l) = σ (latch_clk l)).
@@ -916,7 +917,7 @@ Ltac rewrite_back_wf_scoped :=
       unfold σR in *; simpl in *; reduce_eqb. admit.
     * (* clk_rise_right_req *)
       destruct l; simpl in H; find_contradiction.
-      2:{ unfold σR in *; simpl in *; reduce_eqb. } Print prop_marked.
+      2:{ unfold σR in *; simpl in *; reduce_eqb. }
       (* clk_fall_left_ack is never enabled in the initial state, but
          prop_marked holds when l is a non-token buffer, since:
 
@@ -1087,7 +1088,6 @@ Ltac solve_bit_neq_neg :=
         repeat combine_state_equiv_on. clear Hequiv Hequiv1. simpl in Hguard.
         subst.
         clear Heq.
-        Search neg_value.
         symmetry; apply val_is_bit_neq; try solve_val_is_bit.
 
       + exists right_req; split; [ reflexivity | ].
