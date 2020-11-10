@@ -442,7 +442,7 @@ Module Desync (Export click_module : ClickType).
   Definition σR (l : latch even odd) : state name :=
     fun x =>
       (* acknowledgments are 0 *)
-      if x =? ack (latch_output l) then Bit0
+      if      x =? ack (latch_output l) then Bit0
       else if x =? ack (latch_input l) then Bit0
 
       (* if l is a token latch, then its left neighbor is a non-token latch, so
@@ -451,8 +451,8 @@ Module Desync (Export click_module : ClickType).
       (* if l is a token latch, then it will output a 1 on its right request;
       vice versa for a non-token latch *)
       else if x =? req (latch_output l) then (if is_token_latch l then Bit1 else Bit0)
-      else if x =? latch_state0 l then Bit1
-      else if x =? latch_not_state0 l then Bit0
+      else if x =? latch_state0 l       then (if is_token_latch l then Bit1 else Bit0)
+      else if x =? latch_not_state0 l   then (if is_token_latch l then Bit0 else Bit1)
       (* clock starts out 0 *)
       else if x =? latch_clk l then Bit0
       else if x =? latch_old_clk l then Bit0

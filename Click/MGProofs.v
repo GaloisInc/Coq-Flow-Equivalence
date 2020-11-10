@@ -1,3 +1,4 @@
+
 Require Import Base.
 Require Import Circuit.
 Require Import StateSpace.
@@ -122,6 +123,9 @@ Module ClickMGProofs (ClickModule : ClickType).
     apply Hm12.
   Qed.
 
+
+
+
   Arguments fire_in_state {name transition transition_dec} MG {MG_scheme}.
   (** Unfolding the definition of fire_in_state *)
   Lemma fire_in_state_place : forall l t σ t1 t2 (p : stage_place t1 t2),
@@ -238,16 +242,19 @@ Qed.
   (* clk- -> left_ack *)
   | clk_fall_left_ack_marked σ :
     σ (latch_clk l) = Bit0 ->
+(*    σ (latch_old_clk l) = Bit0 -> (* i.e. flop component is stable *) *)
+    (* The left_ack component is unstable *)
     σ (ack (latch_input l)) = match latch_to_token_flag l with
                               | Token => σ (latch_state0 l)
                               | Nontoken => neg_value (σ (latch_state0 l))
                               end ->
+(*    σ (req (latch_input l)) = σ (ack (latch_input l)) -> (* left environment is stable *)*)
     prop_marked clk_fall_left_ack σ
+
   | clk_fall_left_ack_state0_marked σ :
     σ (latch_clk l) = Bit0 ->
     σ (latch_old_clk l) = Bit1 ->
     prop_marked clk_fall_left_ack σ
-
 
   (* clk+ -> right_req *)
   | clk_rise_right_req_marked σ :
@@ -256,6 +263,7 @@ Qed.
     prop_marked clk_rise_right_req σ
   | clk_rise_right_req_marked_state0 σ :
     σ (req (latch_output l)) <> σ (latch_state0 l) ->
+(*    σ (ack (latch_output l)) <> σ (req (latch_output l)) -> *)
     prop_marked clk_rise_right_req σ
 
   (* clk+ -> clk- *)
@@ -286,31 +294,37 @@ Qed.
 Import ClickTactics.
 
 
-Ltac combine_state_equiv_on_domain Hequiv :=
-  match type of Hequiv with
-  | state_equiv_on ?X (Some ?σ) (Some ?σ') =>
-    let Hequiv' := fresh "Hequiv" in
-    assert (Hequiv' : state_equiv_on (space_domain (latch_stage_with_env l)) (Some σ) (Some σ'));
-    [ let Hx := fresh "Hx" in
-      intros ? Hx;
-      rewrite dom_latch_stage_with_env in Hx;
-      apply Hequiv;
-      decompose_set_structure;
-      solve_in_dom
-    | clear Hequiv
-    ]
-  end.
 
-  Lemma step_implies_prop_marked : forall σ t σ',
-    wf_stage_state l σ ->
-    wf_stage_state_stable l σ ->
-    latch_stage_with_env l ⊢ σ →{Some (latch_transition_event l t σ)} Some σ' ->
-    forall t0 (p : stage_place t0 t), prop_marked p σ.
+
+
+  Lemma init_relate_implies_marked : forall {t1 t2} (p : stage_place t1 t2),
+    prop_marked p (σR l) ->
+    init_marking (latch_stage_MG l) _ _ p > 0.
   Proof.
-    set (Hdisjoint := scheme_all_disjoint l).
-    intros σ t σ' Hwf Hstable Hstep t0 p.
-    dependent destruction p.
-    { (* left_ack_left_req *)
+    intros t1 t2 p Hp.
+    dependent destruction Hp;
+      try (simpl; unfold init_marking_flag; simpl;
+      unfold σR in *; simpl in *; reduce_eqb;
+      try (destruct l; simpl in *; find_contradiction; auto; fail);
+    fail).
+  Qed.
+
+
+  Section step_implies_prop_marked.
+
+    Variable σ σ' : state name.
+    Hypothesis Hwf : wf_stage_state l σ.
+    Hypothesis Hwf_stable : wf_stage_state_stable l σ.
+
+
+  Definition step_implies_prop_marked_spec {t t0} (p : stage_place t0 t) :=
+    latch_stage_with_env l ⊢ σ →{Some (latch_transition_event l t σ)} Some σ' ->
+    prop_marked p σ.
+
+  Lemma step_implies_prop_marked_left_ack_left_req :
+    step_implies_prop_marked_spec left_ack_left_req.
+  Proof.
+    intros Hstep.
       constructor.
       unfold latch_transition_event, transition_event in Hstep.
       repeat step_inversion_1.
@@ -329,10 +343,15 @@ Ltac combine_state_equiv_on_domain Hequiv :=
       apply val_is_bit_neg_inversion.
       { solve_val_is_bit. }
       reflexivity.
-    }
+  Unshelve. exact (fun _ => true).
+  Qed.
 
-    { (* clk_fall_left_ack *)
+  Lemma step_implies_prop_marked_clk_fall_left_ack :
+    step_implies_prop_marked_spec clk_fall_left_ack.
+  Proof.
+    intros Hstep. 
       unfold latch_transition_event, transition_event in Hstep.
+
       repeat (step_inversion_1; try combine_state_equiv_on).
       standardize_state_equiv_on_set Hequiv1.
       standardize_state_equiv_on_set Hequiv2.
@@ -340,23 +359,27 @@ Ltac combine_state_equiv_on_domain Hequiv :=
       { solve_in_dom. }
       standardize_state_equiv_on_set Hequiv.
       combine_state_equiv_on_domain Hequiv.
+      clear Heq.
+      simpl in Hguard.
+      assert (Hevent : event_in (singleton (ack (latch_input l)))
+                                (Some (Event (ack (latch_input l)) (neg_value (σ (ack (latch_input l))))))).
+      { constructor. solve_set. }
+      specialize (Hguard Hevent); clear Hevent.
+      clear Hin0.
+
 
       apply clk_fall_left_ack_marked; auto.
-      { apply Hguard. constructor. simpl. solve_set.
-      }
+        apply val_is_bit_neq in Hunstable; try solve_val_is_bit.
+        simpl. rewrite <- Hunstable.
+        destruct l; simpl; auto.
+        rewrite val_is_bit_neg_neg; try solve_val_is_bit; auto.
+  Unshelve. exact (fun _ => true).
+  Qed.
 
-      (* rewrite Heq *)
-      symmetry in Heq0.
-      apply val_is_bit_neg_inversion in Heq0.
-      2:{ solve_val_is_bit. }
-      simpl.
-      rewrite <- Heq0.
-      destruct l; simpl; auto.
-      rewrite val_is_bit_neg_neg; auto.
-      { solve_val_is_bit. } 
-    }
-
-    { (* clk_rise_right_req *) 
+  Lemma step_implies_prop_marked_clk_rise_right_req :
+    step_implies_prop_marked_spec clk_rise_right_req.
+  Proof.
+    intros Hstep.
       replace (latch_transition_event l right_req σ)
         with  (Event (req (latch_output l)) (neg_value (σ (req (latch_output l)))))
         in    Hstep
@@ -367,38 +390,161 @@ Ltac combine_state_equiv_on_domain Hequiv :=
       combine_state_equiv_on_complex.
       { solve_in_dom. }
       combine_state_equiv_on_domain Hequiv.
-
-      apply clk_rise_right_req_marked_state0.
-      apply val_is_bit_neq_neg.
-      { left. eapply wf_all_bits; eauto.
-        rewrite dom_latch_stage_with_env.
-        solve_space_set.
+      clear Hin0.
+      destruct Hin as [Hin | Hin].
+      2:{ contradict Hin. unfold update. reduce_eqb.
+          apply bit_neq_neg_r; solve_val_is_bit.
       }
-      assumption.
-   }
+      apply clk_rise_right_req_marked_state0.
+      { apply val_is_bit_neq_neg; auto.
+        { left; solve_val_is_bit. }
+      }
+    Unshelve. exact (fun _ => true).
+  Qed. 
 
-   { (* right_req_right_ack *)
+  Lemma step_implies_prop_marked_right_req_right_ack :
+    step_implies_prop_marked_spec right_req_right_ack.
+  Proof.
+    intros Hstep.
       constructor.
       unfold latch_transition_event, transition_event in Hstep.
       repeat (step_inversion_1; try combine_state_equiv_on).
-   }
+  Unshelve. exact (fun _ => true).
+  Qed.
 
-  { (* clock_fall *)
-    unfold latch_transition_event, transition_event in Hstep.
-    repeat step_inversion_1.
-    repeat combine_state_equiv_on.
+  Lemma step_implies_prop_marked_clock_fall :
+    step_implies_prop_marked_spec clock_fall.
+  Proof.
+    intros Hstep.
+    replace (latch_transition_event l clk_fall σ)
+      with  (Event (latch_clk l) Bit0)
+      in    Hstep
+      by    auto.
+    do 5 (step_inversion_1; try combine_state_equiv_on).
+    do 5 (step_inversion_1; try combine_state_equiv_on).
     standardize_state_equiv_on_set Hequiv0.
+    do 1 (step_inversion_1; try combine_state_equiv_on).
+    step_inversion Hstep2. 
+    (* Ok, so from the delay_space, since it listens to clk, we know that clk shouldn't change. *)
+    
+
+    decide_events_of Hstep1.
+    step_inversion Hstep1.
+  match type of Hstep1 with
+  ( ?S1 ∥ ?S2 ) ⊢ _ →{_} _ =>
+    match goal with
+    | [ He1 : event_in (space_domain S1) ?e
+      , He2 : ~ event_in (space_domain S2) ?e
+      |- _ ] =>
+      apply union_inversion_left_only in Hstep; auto;
+      let Hequiv := fresh "Hequiv" in
+      destruct Hstep as [Hstep Hequiv]
+
+    | [ He1 : ~ event_in (space_domain S1) ?e
+      , He2 : event_in (space_domain S2) ?e
+      |- _ ] =>
+      apply union_inversion_right_only in Hstep; auto;
+      let Hequiv := fresh "Hequiv" in
+      destruct Hstep as [Hstep Hequiv]
+
+    | [ He1 : event_in (space_domain S1) ?e
+      , He2 : event_in (space_domain S2) ?e
+      |- _ ] =>
+      let Hstep1' := fresh "Hstep1" in
+      let Hstep2' := fresh "Hstep2" in
+      apply union_inversion_lr in Hstep1;
+        [ destruct Hstep1 as [Hstep1' Hstep2']
+        | unfold space_domain; simpl; try solve_set;
+          (* just in case we're blocked by a latch *)
+          match goal with
+          | [ |- context[ latch_to_token_flag ?l ] ] =>
+            destruct l; simpl; solve_set
+          end
+        ] 
+    end end.
+
+    apply union_inversion_lr in Hstep1;
+        [ destruct Hstep1 as [Hstep1' Hstep2'] | ].
+    2:{ unfold space_domain; simpl; try solve_set. }
+    clear Hdec0 Hdec1.
+
+solve_space_set.
+ simpl.
+    do 1 (step_inversion_1). 
+
     standardize_state_equiv_on_set Hequiv.
+    standardize_state_equiv_on_set Hequiv1.
+
+    clear Hin. simpl in Hguard. clear Hguard.
+
+    assert (Hequiv' : state_equiv_on 
+
+  try match goal with
+  | [ H0 : state_equiv_on ?X0 (Some ?σ) (Some ?σ')
+    , H  : state_equiv_on ?X (Some (update ?σ ?x ?v)) (Some ?σ')
+    |- _ ] =>
+    let Hequiv := fresh "Hequiv" in
+    assert (Hequiv : state_equiv_on (X0 ∪ X) (Some (update σ x v)) (Some σ'));
+    [ apply (combine_state_equiv_on_complex X0 X σ σ' x v); auto;
+        try solve_space_set; fail
+    | clear H H0
+    ]
+  end.
+  try match goal with
+  | [ H0 : state_equiv_on ?X0 (Some ?σ) (Some ?σ')
+    , H  : state_equiv_on ?X (Some (update (update ?σ ?x1 ?v1) ?x2 ?v2)) (Some ?σ')
+    |- _ ] =>
+    let Hequiv := fresh "Hequiv" in
+    assert (Hequiv : state_equiv_on (X0 ∪ X) (Some (update (update σ x1 v1) x2 v2)) (Some σ'));
+    [ apply (combine_state_equiv_on_complex_2 X0 X σ σ' x1 x2 v1 v2); auto;
+        try solve_space_set; fail
+    | clear H H0
+    ]
+  end.
+
+  | [ H1 : state_equiv_on (from_list ?X1) (Some ?σ1) (Some ?σ')
+    , H2 : state_equiv_on (from_list ?X2) (Some ?σ2) (Some ?σ')
+    |- _ ] =>
+    let Hequiv := fresh "Hequiv" in
+    assert (Hequiv : state_equiv_on (from_list X1 ∪ from_list X2)
+                                    (Some (fun x => if in_list_dec x X1 then σ1 x else σ2 x))
+                                    (Some σ'));
+    [ | clear H1 H2 ]
+
+
+    clear Hin. simpl in Hguard. clear Hguard.
+    step_inversion Hstep0. clear Hin.
+    rewrite <- Heq in Hunstable; clear Heq.
+    standardize_state_equiv_on_set Hequiv0.
+    combine_state_equiv_on.
+    standardize_state_equiv_on_set Hequiv2.
+    combine_state_equiv_on_complex.
+
+
+
+
+    repeat (step_inversion_1; try combine_state_equiv_on).
+    standardize_state_equiv_on_set Hequiv1.
+    standardize_state_equiv_on_set Hequiv2.
     (* can't combine?? combine_state_equiv_on_complex. is this a bug??? *)
+Print latch_stage_with_env. Print latch_stage.
+  stage ⊢ σ →{clk ↦ 0} Some σ'
+
+==>
+  latch_stage l ⊢ σ →{clk ↦ 0} Some σ'
+
+    combine_state_equiv_on_complex.
 
 
     (* We know that clk_defn σ = Bit0 *)
     (* We know that flop ⊢ σ →{CLK+} Some σ' *)
     admit.
+  Admitted.
 
-  }
-
-  { (* left_req_clk_rise *)
+  Lemma step_implies_prop_marked_left_req_clk_rise :
+    step_implies_prop_marked_spec left_req_clk_rise.
+  Proof.
+    intros Hstep.
     unfold latch_transition_event, transition_event in Hstep.
     repeat step_inversion_1.
     repeat combine_state_equiv_on.
@@ -410,11 +556,12 @@ Ltac combine_state_equiv_on_domain Hequiv :=
     (* We know that flop ⊢ σ →{CLK+} Some σ' *)
 
     admit.
+  Admitted.
 
-    
-  }
-
-  { (* right_ack_clk_rise *)
+  Lemma step_implies_prop_marked_right_ack_clk_rise :
+    step_implies_prop_marked_spec right_ack_clk_rise.
+  Proof.
+    intros Hstep.
     unfold latch_transition_event, transition_event in Hstep.
     repeat step_inversion_1.
     repeat combine_state_equiv_on.
@@ -424,10 +571,30 @@ Ltac combine_state_equiv_on_domain Hequiv :=
     (* We know that clk_defn σ = Bit1 *)
     (* We know that flop ⊢ σ →{CLK+} Some σ' *)
     admit.
-
-  }
   Admitted.
 
+
+  End step_implies_prop_marked.
+
+  Lemma step_implies_prop_marked : forall σ t σ',
+    wf_stage_state l σ ->
+    wf_stage_state_stable l σ ->
+    latch_stage_with_env l ⊢ σ →{Some (latch_transition_event l t σ)} Some σ' ->
+    forall t0 (p : stage_place t0 t), prop_marked p σ.
+  Proof.
+    set (Hdisjoint := scheme_all_disjoint l).
+    intros σ t σ' Hwf Hstable Hstep t0 p.
+    dependent destruction p.
+    { (* left_ack_left_req *)
+      eapply step_implies_prop_marked_left_ack_left_req; eauto.
+    }
+    { eapply step_implies_prop_marked_clk_fall_left_ack; eauto. }
+    { eapply step_implies_prop_marked_clk_rise_right_req; eauto. }
+    { eapply step_implies_prop_marked_right_req_right_ack; eauto. }
+    { eapply step_implies_prop_marked_clock_fall; eauto. }
+    { eapply step_implies_prop_marked_left_req_clk_rise; eauto. }
+    { eapply step_implies_prop_marked_right_ack_clk_rise; eauto. }
+  Qed.
 
 
   Lemma stage_eps_decide_state0 : forall σ σ0,
@@ -891,38 +1058,6 @@ Ltac rewrite_back_wf_scoped :=
     * admit.
     * admit.
     * admit.
-
-  Admitted.
-
-
-  (****** TODO: fix bug *)
-  Lemma init_relate_implies_marked : forall {t1 t2} (p : stage_place t1 t2),
-    prop_marked p (σR l) ->
-    init_marking (latch_stage_MG l) _ _ p > 0.
-  Proof.
-    intros t1 t2 p Hp.
-    dependent destruction Hp;
-      try (simpl; unfold init_marking_flag; simpl;
-      unfold σR in *; simpl in *; reduce_eqb;
-      try (destruct l; simpl in *; find_contradiction; auto; fail);
-    fail).
-    * (* clk_fall_left_ack *)
-      destruct l; simpl in H0; inversion H0; simpl; auto.
-      2:{ unfold σR in *; simpl in *; reduce_eqb. }
-      (* clk_fall_left_ack is never enabled in the initial state, but
-         prop_marked holds when l is a token buffer, since:
-
-         σ clk = Bit0 and
-         σ (ack (latch_input l)) = σ state0 *)
-      unfold σR in *; simpl in *; reduce_eqb. admit.
-    * (* clk_rise_right_req *)
-      destruct l; simpl in H; find_contradiction.
-      2:{ unfold σR in *; simpl in *; reduce_eqb. }
-      (* clk_fall_left_ack is never enabled in the initial state, but
-         prop_marked holds when l is a non-token buffer, since:
-
-         Bit0 = σ (req (latch_output l)) <> σ (latch_state0 l) = Bit1 *)
-      { unfold σR in *; simpl in *; reduce_eqb. admit. }
 
   Admitted.
 

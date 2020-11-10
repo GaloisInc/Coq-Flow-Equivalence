@@ -670,15 +670,23 @@ Section Flop.
     (* an input is allowed when, either (1) the flip-flop is stable aka any
     possible clock changes have been registered; or (2) when the input would not
     actually be observable on the outputs of the circuit. *)
+    (* Note: I am modifying condition 2 because, for clocks, that would enable
+    the clocks to get out of sync. *)
   | Flop_input i v σ' :
-    flop_stable σ \/ Q_output σ = Q_output (update σ i v) ->
+(*    flop_stable σ \/ Q_output σ = Q_output (update σ i v) -> *)
+    σ clk = σ old_clk ->
+    (σ Q = Q_output σ \/ Q_output σ = Q_output (update σ i v)) ->
     i ∈ flop_input ->
     state_equiv_on (from_list [set;reset;clk;D;Q;old_clk]) (Some (update σ i v)) (Some σ') ->
     flop_step σ (Some (Event i v)) (Some σ')
 
     (* other inputs lead to the error state *)
-  | Flop_input_err i v :
-    ~ flop_stable σ ->
+  | Flop_input_err_clk i v :
+    σ clk <> σ old_clk ->
+    i ∈ flop_input ->
+    flop_step σ (Some (Event i v)) None
+  | Flop_input_err_val i v :
+    σ Q <> Q_output σ ->
     Q_output σ <> Q_output (update σ i v) ->
     i ∈ flop_input ->
     flop_step σ (Some (Event i v)) None
@@ -778,7 +786,7 @@ Section Flop.
     val_is_bit v.
   Proof.
     intros ? ? ? ? Hstep.
-    inversion Hstep as [? ? ? ? Hi | | | | |]; subst;
+    inversion Hstep as [? ? ? ? ? Hi | | | | | |]; subst;
       auto; try constructor.
     * contradict Hi. unfold flop_input. solve_set.
   Qed.
@@ -792,7 +800,7 @@ Section Flop.
     val_is_bit (σ' old_clk).
   Proof.
     intros ? ? ? ? ? Hstep ? ?.
-    inversion Hstep as [? ? ? ? Hi | | | | |]; try subst; unfold update;
+    inversion Hstep as [? ? ? ? ? Hi | | | | | |]; try subst; unfold update;
       try match goal with
       | [ H : state_equiv_on _ _ (Some ?σ') |- _ ] =>
         rewrite <- H; [try unfold update; repeat (compare_next; auto) | solve_set]
@@ -899,12 +907,18 @@ Section DelaySpace.
   Variable sensitivities : list name.
   (** The guard should only depend on the variables in the sensitivites set *)
   Variable guard : state name -> Prop.
-
+Print func_step.
 
   Inductive delay_space_step (σ : state name) :
                       option (event name value) ->
                       option (state name) ->
                       Prop :=
+  (* sensitivity steps are always valid *)
+  | delay_space_sensitivity : forall x v σ',
+    x ∈ from_list sensitivities ->
+    state_equiv_on (space_domain S ∪ from_list sensitivities) (Some (update σ x v)) (Some σ') ->
+    delay_space_step σ (Some (Event x v)) (Some σ')
+
   (* input steps are always valid *)
   | delay_space_input : forall x v τ,
     S ⊢ σ →{Some (Event x v)} τ ->
@@ -967,35 +981,78 @@ Section DelaySpace.
       inversion Hstep; subst.
       + solve_set.
       + solve_set.
+      + solve_set.
     * intros ? ? ? Hstep x Hv Hx.
       simpl in Hx.
       decompose_set_structure.
       { (* x ∈ input *) inversion Hstep; subst;
-        eapply wf_scoped0; eauto; solve_set.
+        try (eapply wf_scoped0; eauto; try solve_set; fail).
+        assert (x0 <> x).
+        { intros Hx. subst. apply (Hv v). auto. }
+        unfold space_domain in *. rewrite_state_equiv_on.
+        unfold update. reduce_eqb. auto.
       }
-      { (* x ∈ sens *) inversion Hstep; subst; rewrite_state_equiv_on; auto. }
-      { (* x ∈ input *) inversion Hstep; subst;
-        eapply wf_scoped0; eauto; solve_set.
+      { (* x ∈ sens *) inversion Hstep; subst; try (rewrite_state_equiv_on; auto; fail).
+        assert (x0 <> x).
+        { intros Hx. subst. apply (Hv v). auto. }
+        unfold space_domain in *. rewrite_state_equiv_on.
+        unfold update. reduce_eqb. auto.
+      }
+      { (* x ∈ output *) inversion Hstep; subst;
+        try (eapply wf_scoped0; eauto; solve_set; fail).
+        assert (x0 <> x).
+        { intros Hx. subst. apply (Hv v). auto. }
+        unfold space_domain in *. rewrite_state_equiv_on.
+        unfold update. reduce_eqb. auto.
       }
     * intros ? ? ? ? Hstep.
       inversion Hstep; subst;
-      eapply wf_update0; eauto.
+      try (eapply wf_update0; eauto; fail).
+      rewrite_state_equiv_on. unfold update. reduce_eqb. auto.
   Qed.
 
-  Lemma delay_space_inversion : forall σ e τ,
-    space_input S ⊥ space_output S ->
-    delay_space guardb ⊢ σ →{e} τ ->
-    S ⊢ σ →{e} τ
-    /\ state_equiv_on (from_list sensitivities) (Some σ) τ
-    /\ (event_in (space_output S) e -> guard σ).
+  Lemma delay_space_inversion_sens : forall σ x v τ,
+    delay_space guardb ⊢ σ →{Some (Event x v)} τ ->
+    from_list sensitivities ⊥ space_domain S ->
+    x ∈ from_list sensitivities ->
+    state_equiv_on (space_domain S ∪ from_list sensitivities) (Some (update σ x v)) τ.
   Proof.
-    intros σ e τ [Hwf] Hstep.
-    inversion Hstep; subst; auto; repeat split; auto.
-    * intros Hin. contradict Hin. inversion 1; subst.
-      contradiction (Hwf x).
+    intros σ x v τ Hstep [Hwf] Hx.
+    inversion Hstep; subst; auto.
+    * contradiction (Hwf x). unfold space_domain. solve_set.
+    * contradiction (Hwf x); unfold space_domain.
       solve_set.
-    * intros Hin. inversion Hin.
   Qed.
+
+  Lemma delay_space_inversion_step : forall σ e τ,
+    delay_space guardb ⊢ σ →{e} τ ->
+    ~ (event_in (from_list sensitivities) e) ->
+    S ⊢ σ →{e} τ /\ state_equiv_on (from_list sensitivities) (Some σ) τ.
+  Proof.
+    intros ? ? ? Hstep Hin.
+    inversion Hstep; subst.
+    * (* contradiction *)
+      contradict Hin. constructor. solve_set.
+    * split; auto.
+    * split; auto.
+    * split; auto.
+  Qed.
+
+  Lemma delay_space_inversion_output : forall σ e τ,
+    delay_space guardb ⊢ σ →{e} τ ->
+    from_list sensitivities ⊥ space_domain S ->
+    space_input S ⊥ space_output S ->
+    event_in (space_output S) e ->
+    guard σ.
+  Proof.
+    intros ? ? ? Hstep [Hwf1] [Hwf2] Hin.
+    inversion Hstep; subst; auto.
+    * inversion Hin; subst. contradiction (Hwf1 x). unfold space_domain; solve_set.
+    * inversion Hin; subst. contradiction (Hwf2 x). unfold space_domain; solve_set.
+    * inversion Hin; subst.
+  Qed.
+
+
 End DelaySpace.
 
 
@@ -1014,7 +1071,7 @@ Arguments C_elem {name name_eq_dec}.
 Arguments hide {name}.
 Arguments flop {name name_eq_dec}.
 Arguments delay {name name_eq_dec}.
-Arguments delay_space {name}.
+Arguments delay_space {name name_eq_dec}.
 Arguments state_equiv_on {name}.
 Arguments traces_of {name}.
 

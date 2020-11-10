@@ -270,15 +270,17 @@ Lemma func_space_inversion : forall I o f σ e σ',
   | None => False
   | Some (Event y v) => state_equiv_on (from_list I ∪ singleton o) (Some (update σ y v)) (Some σ')
                     /\ (y = o -> (v = f σ /\ f σ <> σ o))
+                    /\ (y ∈ from_list I -> f σ = σ o \/ f σ = f (update σ y v))
   end.
 Proof.
   intros ? ? ? ? ? ? Hwf Hstep.
   inversion Hstep; subst.
-  * split; auto.
+  * split; auto. split; auto.
     intro Hi; subst; find_contradiction.
-  * split; auto.
-    intros Heq; subst; find_contradiction.
-  * split; auto.
+  * split; auto. split; auto.
+    { intros Heq; subst; find_contradiction. }
+  * split; auto. split; auto.
+    { intros Hin. find_contradiction. }
 Qed.
 
   Lemma flop_inversion_output : forall set reset clk old_clk D Q σ v σ',
@@ -295,10 +297,25 @@ Qed.
   Proof.
     intros ? ? ? ? ? ? ? ? ? ? Hset Hreset Hstep.
     inversion Hstep; subst; auto; clear Hstep.
-    + contradict H4. simpl. solve_set.
+    + contradict H5. simpl. solve_set.
     + find_contradiction.
     + find_contradiction.
   Qed.
+
+
+  Lemma flop_inversion_clk : forall set reset clk old_clk D Q σ v σ',
+    all_disjoint [set;reset;clk;old_clk;D;Q] ->
+    (flop set reset clk old_clk D Q) ⊢ σ →{Some (Event clk v)} Some σ' ->
+    σ set = Bit1 ->
+    σ reset = Bit1 ->
+    state_equiv_on (from_list (set::reset::clk::D::Q::old_clk::nil)) (Some (update σ clk v)) (Some σ')
+    /\ σ clk = σ old_clk.
+  Proof.
+    intros ? ? ? ? ? ? ? ? ? Hdisjoint Hstep Hset Hreset.
+    inversion Hstep; try (subst; find_contradiction; fail).
+    * split; auto.
+  Qed.
+
 
 Ltac unfold_SS recurse_flag loc_flag S :=
   match S with
