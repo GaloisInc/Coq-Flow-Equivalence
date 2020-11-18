@@ -221,11 +221,11 @@ Section Stage.
                      | Token => hidden_reset
                      | NonToken => dp_reset_n
                      end in
-      hide not_state0
-    ( hide hidden_reset
+      hide hidden_reset
     ( flop flop_set flop_reset clk old_clk not_state0 state0
     ∥ NOT state0 not_state0
-    ∥ output hidden_reset (Some (Num 1)))).
+    ∥ output hidden_reset (Some (Num 1))).
+  (* NOTE: not_state0 is now an output of flop_component *)
 
   (** 4. Combine these components. We define variants with reset, as well as
   variants where the reset inputs remain stable, meaning that reset is not a
@@ -242,6 +242,7 @@ Section Stage.
     end.
 
   (** NOTE: added delay here *)
+  (** NOTE: I added an additional delay, watching that not_state0 is stable wrt state0 *)
   Definition ack_i_output f := (*match f with
                             | Token => NOT state0 (ack i)
                             | NonToken => forward state0 (ack i)
@@ -251,12 +252,13 @@ Section Stage.
                                                     | Token => neg_value (σ state0)
                                                     | NonToken => σ state0
                                                     end))
-    (clk::nil)
-    (fun σ => σ clk = Bit0)
-    (fun σ => σ clk =? Bit0).
+    (clk::not_state0::nil)
+    (fun σ => σ clk = Bit0 /\ σ not_state0 = neg_value (σ state0))
+    (fun σ => andb (σ clk =? Bit0) (σ not_state0 =? neg_value (σ state0))).
 
   Definition stage_with_reset (f : token_flag) :=
-    clk_component f ∥ flop_component f ∥ forward state0 (req o) ∥ ack_i_output f.
+    hide not_state0 
+    (clk_component f ∥ flop_component f ∥ forward state0 (req o) ∥ ack_i_output f).
 
   Definition stage (f : token_flag) :=
       hide state0 
@@ -473,13 +475,25 @@ Module Desync (Export click_module : ClickType).
                    (latch_clk l) (latch_old_clk l)
                    (latch_state0 l) (latch_not_state0 l)
                    (latch_to_token_flag l).
+
+ Definition latch_clk_function (l : latch even odd) σ :=
+    match latch_to_token_flag l with
+    | NonToken => clk_defn (latch_input l) (latch_output l) ctrl_reset_n (latch_state0 l) σ
+    | Token => tok_clk_defn (latch_input l) (latch_output l) ctrl_reset_n (latch_state0 l) σ
+    end.
+
   Definition latch_clk_component (l : latch even odd) : StateSpace name :=
-    clk_component (latch_input l) (latch_output l) ctrl_reset_n (latch_clk l) (latch_state0 l)
-                  (latch_to_token_flag l).
+(*    clk_component (latch_input l) (latch_output l) ctrl_reset_n (latch_clk l) (latch_state0 l)
+                  (latch_to_token_flag l).*)
+    func_space [latch_state0 l; req (latch_input l); ack (latch_output l); ctrl_reset_n]
+               (latch_clk l)
+               (latch_clk_function l).
   Definition latch_right_req_component (l : latch even odd) :=
     forward (latch_state0 l) (req (latch_output l)).
+
   Definition latch_left_ack_component (l : latch even odd) :=
-    ack_i_output (latch_input l) (latch_clk l) (latch_state0 l) (latch_to_token_flag l).
+    ack_i_output (latch_input l) (latch_clk l) (latch_state0 l) (latch_not_state0 l)
+                 (latch_to_token_flag l).
   Definition latch_stage_with_reset l :=
       latch_clk_component l ∥ latch_flop_component l
     ∥ latch_left_ack_component l ∥ latch_right_req_component l.
@@ -487,9 +501,10 @@ Module Desync (Export click_module : ClickType).
   (** A latch stage with reset lines stable, but open environment  *)
   Definition latch_stage (l : latch even odd) :=
       hide (latch_state0 l)
+    ( hide (latch_not_state0 l)
     ( hide dp_reset_n
     ( hide ctrl_reset_n
-    ( latch_stage_with_reset l ∥ output dp_reset_n None ∥ output ctrl_reset_n None ))).
+    ( latch_stage_with_reset l ∥ output dp_reset_n None ∥ output ctrl_reset_n None )))).
 
  Lemma latch_stage_input : forall l,
     space_input (latch_stage l) == from_list [req (latch_input l);ack (latch_output l)].
