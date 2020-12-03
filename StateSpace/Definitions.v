@@ -907,7 +907,6 @@ Section DelaySpace.
   Variable sensitivities : list name.
   (** The guard should only depend on the variables in the sensitivites set *)
   Variable guard : state name -> Prop.
-Print func_step.
 
   Inductive delay_space_step (σ : state name) :
                       option (event name value) ->
