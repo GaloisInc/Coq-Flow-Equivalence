@@ -281,13 +281,15 @@ Qed.
   (* left_req -> clk+ *)
   | left_req_clk_rise_marked σ :
     σ (req (latch_input l)) = neg_value (σ (ack (latch_input l))) ->
-    ~ stable (latch_clk_component l) σ ->
+    latch_clk_function l σ = Bit1 ->
+    σ (latch_clk l) = Bit0 ->
     prop_marked left_req_clk_rise σ
 
   (* right_ack -> clk+ *)
   | right_ack_clk_rise_marked σ :
     σ (ack (latch_output l)) = σ (req (latch_output l)) ->
-    ~ stable (latch_clk_component l) σ ->
+    latch_clk_function l σ = Bit1 ->
+    σ (latch_clk l) = Bit0 ->
     prop_marked right_ack_clk_rise σ
   .
 
@@ -306,16 +308,55 @@ Import ClickTactics.
     fail).
   Qed.
 
+Lemma wf_reset_hidden_1 : forall l σ,
+    wf_stage_state l σ ->
+    σ match latch_to_token_flag l with
+      | Token => dp_reset_n
+      | NonToken => latch_hidden l
+      end = Bit1.
+Admitted.
+Lemma wf_hidden_reset_1 : forall l σ,
+    wf_stage_state l σ ->
+    σ match latch_to_token_flag l with
+      | Token => latch_hidden l
+      | NonToken => dp_reset_n
+      end = Bit1.
+Admitted.
+Hint Resolve wf_reset_hidden_1 wf_hidden_reset_1 : wf.
+Lemma latch_clk_function_is_bit : forall σ,
+    wf_stage_state l σ ->
+    val_is_bit (latch_clk_function l σ).
+Proof.
+  intros σ Hwf.
+  assert (Hlreq : val_is_bit (σ (req (latch_input l)))) by solve_val_is_bit.
+  assert (Hstate0 : val_is_bit (σ (latch_state0 l))) by solve_val_is_bit.
+  assert (Hrack :  val_is_bit (σ (ack (latch_output l)))) by solve_val_is_bit.
+  destruct Hwf as [Hbits Hctrl Hdp Hhidden].
+  unfold latch_clk_function.
+  destruct l; simpl in *.
+  * unfold clk_defn.
+    rewrite Hctrl. simpl.
+    inversion Hlreq; auto;
+    inversion Hstate0; auto;
+    inversion Hrack; auto;
+    simpl; solve_val_is_bit.
+
+  * unfold tok_clk_defn.
+    rewrite Hctrl. simpl.
+    inversion Hlreq; auto;
+    inversion Hstate0; auto;
+    inversion Hrack; auto;
+    simpl; solve_val_is_bit.
+Qed.
+Hint Resolve latch_clk_function_is_bit : wf.
+
 
   Section step_implies_prop_marked.
 
     Variable σ σ' : state name.
-(*
     Hypothesis Hwf : wf_stage_state l σ.
-    Hypothesis Hwf_stable : wf_stage_state_stable l σ.
-*)
-    Print wf_stage_state.
-    Hypothesis Hwf : forall x, x ∈ space_domain (latch_stage_with_env l) -> val_is_bit (σ x).
+(*    Hypothesis Hwf_stable : wf_stage_state_stable l σ. *)
+
 
 
   Definition step_implies_prop_marked_spec {t t0} (p : stage_place t0 t) :=
@@ -339,8 +380,6 @@ Import ClickTactics.
       { solve_val_is_bit. }
       reflexivity.
   Unshelve. exact (fun _ => true).
-  Unshelve. exact (fun _ => true).
-  Unshelve. exact (fun _ => true).
   Qed.
 
   Lemma step_implies_prop_marked_clk_fall_left_ack :
@@ -363,10 +402,6 @@ Import ClickTactics.
         destruct l; simpl; auto.
         rewrite val_is_bit_neg_neg; try solve_val_is_bit; auto.
   Unshelve. exact (fun _ => true).
-  Unshelve. exact (fun _ => true).
-  Unshelve. exact (fun _ => true).
-  Unshelve. exact (fun _ => true).
-  Unshelve. exact (fun _ => true).
   Qed.
 
   Lemma step_implies_prop_marked_clk_rise_right_req :
@@ -383,13 +418,11 @@ Import ClickTactics.
       destruct Hin as [Hin | Hin].
       2:{ contradict Hin. unfold update. reduce_eqb.
           apply bit_neq_neg_r; try solve_val_is_bit.
-          apply Hwf. rewrite dom_latch_stage_with_env. simpl; solve_in_dom.
       }
       apply clk_rise_right_req_marked_state0.
       { apply val_is_bit_neq_neg; auto.
         { right; solve_val_is_bit. }
       }
-    Unshelve. exact (fun _ => true).
     Unshelve. exact (fun _ => true).
   Qed. 
 
@@ -402,6 +435,7 @@ Import ClickTactics.
       step_inversion_clean.
   Unshelve. exact (fun _ => true).
   Qed.
+
 
   Lemma step_implies_prop_marked_clock_fall :
     step_implies_prop_marked_spec clock_fall.
@@ -417,12 +451,8 @@ Import ClickTactics.
     
     apply flop_inversion_clk in Hstep3.
     2:{ solve_all_disjoint. }
-    2:{ (* dp_reset_n and latch_hidden both Bit1 *)
-        admit.
-    }
-    2:{ (* dp_reset_n and latch_hidden both Bit1 *)
-        admit.
-    }
+    2:{ auto with wf. }
+    2:{ auto with wf. }
     destruct Hstep3 as [Hequiv' Hstep3].
     combine_state_equiv_on.
     standardize_state_equiv_on_set Hequiv0.
@@ -443,8 +473,7 @@ Import ClickTactics.
 
   Unshelve.
     exact (fun _ => true).
-    exact (fun _ => true).
-  Admitted.
+  Qed.
 
   Lemma step_implies_prop_marked_left_req_clk_rise :
     step_implies_prop_marked_spec left_req_clk_rise.
@@ -461,12 +490,8 @@ Import ClickTactics.
     
     apply flop_inversion_clk in Hstep3.
     2:{ solve_all_disjoint. }
-    2:{ (* dp_reset_n and latch_hidden both Bit1 *)
-        admit.
-    }
-    2:{ (* dp_reset_n and latch_hidden both Bit1 *)
-        admit.
-    }
+    2:{ auto with wf. }
+    2:{ auto with wf. }
 
     destruct Hstep3 as [Hequiv' Hstep3].
     combine_state_equiv_on.
@@ -478,12 +503,19 @@ Import ClickTactics.
                latch_clk_function l σ = Bit1
                σ' == update σ clk Bit1
          WTS:  σ l_req = neg_value (σ l_ack)
+        
+         This may be a consequence of latch_clk_function l σ = Bit1, along the lines of
+         latch_clk_function_Bit1_r_ack...
+
+         NO: Not as easy as latch_clk_function_Bit1_r_ack, that can be inferred from latch_clk_function, this one relies on an invariant about which blocks are stable at a time.
       *)
     }
-    { intros Hstable; apply func_stable_equiv in Hstable.
-      2:{ solve_space_set. }
-      contradict Hstable; auto.
+    { apply val_is_bit_neq in Hunstable;
+        try solve_val_is_bit; auto with wf.
+        simpl. rewrite <- Hunstable.
+        rewrite <- Heq. auto.
     }
+
     Unshelve. exact (fun _ => true).
 
   Admitted.
@@ -503,30 +535,33 @@ Import ClickTactics.
 
     apply flop_inversion_clk in Hstep3.
     2:{ solve_all_disjoint. }
-    2:{ (* dp_reset_n and latch_hidden both Bit1 *)
-        admit.
-    }
-    2:{ (* dp_reset_n and latch_hidden both Bit1 *)
-        admit.
-    }
+    2:{ auto with wf. }
+    2:{ auto with wf. }
+
     destruct Hstep3 as [Hequiv' Hstep3].
 
     combine_state_equiv_on.
     combine_state_equiv_on_domain.
 
-    Print prop_marked.
-    apply right_ack_clk_rise_marked.
+    apply right_ack_clk_rise_marked; auto.
     { admit (* need to show that right handshake is stable!! *).
       (* Know: σ clk = σ old_clk = Bit0
                latch_clk_function l σ = Bit1
                σ' == update σ clk Bit1
          WTS:  σ r_req = σ r_ack
+
+         Again, This may be a consequence of latch_clk_function l σ = Bit1, along the lines of
+         latch_clk_function_Bit1_r_ack
       *)
     }
-    { intros Hstable; apply func_stable_equiv in Hstable.
-      2:{ solve_space_set. }
-      contradict Hstable; auto.
+    { rewrite Hstep3.
+      apply val_is_bit_neq in Hunstable; try solve_val_is_bit; auto with wf.
+      rewrite <- Hstep3. simpl.
+      rewrite <- Hunstable.
+      rewrite <- Heq.
+      auto.
     }
+
 
     Unshelve. exact (fun _ => true).
   Admitted.
@@ -535,18 +570,13 @@ Import ClickTactics.
   End step_implies_prop_marked.
 
   Lemma step_implies_prop_marked : forall σ t σ',
-(*    wf_stage_state l σ ->
-    wf_stage_state_stable l σ ->
-*)
-    (forall x, x ∈ space_domain (latch_stage_with_env l) -> val_is_bit (σ x)) ->
+    wf_stage_state l σ ->
     latch_stage_with_env l ⊢ σ →{Some (latch_transition_event l t σ)} Some σ' ->
     forall t0 (p : stage_place t0 t), prop_marked p σ.
   Proof.
     intros σ t σ' Hwf Hstep t0 p.
     dependent destruction p.
-    { (* left_ack_left_req *)
-      eapply step_implies_prop_marked_left_ack_left_req; eauto.
-    }
+    { eapply step_implies_prop_marked_left_ack_left_req; eauto. }
     { eapply step_implies_prop_marked_clk_fall_left_ack; eauto. }
     { eapply step_implies_prop_marked_clk_rise_right_req; eauto. }
     { eapply step_implies_prop_marked_right_req_right_ack; eauto. }
@@ -556,77 +586,34 @@ Import ClickTactics.
   Qed.
 
   Lemma stage_eps_decide_state0 : forall σ σ0,
-(*    wf_stage_state l σ ->*)
-    (forall x, x ∈ space_domain (latch_stage_with_env l) -> val_is_bit (σ x)) ->
+    wf_stage_state l σ ->
 
     latch_stage_with_env l ⊢ σ →{None} Some σ0 ->
     σ (latch_state0 l) <> σ0 (latch_state0 l) ->
     σ (latch_old_clk l) = Bit1 \/ σ (latch_clk l) = Bit1.
   Proof.
     intros σ σ' Hwf Hstep Hstate0.
-      (* We keep the same prop_marked witness unless the Epsilon transition was
-      on latch_state0, if the transition was Flop_clk_fall *)
-    step_inversion_clean.
+    apply step_implies_stage_eps in Hstep; auto.
+    inversion Hstep as [ Hclk Hold_clk Hequiv
+                       | v Hclk Hold_clk Hv Hclk_function Hl_ack Hr_req Hnot_state0 Hequiv
+                       | Hnot_state0 Hclk Hequiv
+                       ]; subst; clear Hstep.
 
-      * (* flop →{None} *)
-        inversion Hstep; subst; clear Hstep.
+    * left.
+      apply val_is_bit_neq in Hold_clk; try solve_val_is_bit.
+      rewrite <- Hold_clk.
+      apply val_is_bit_neq in Hclk; try solve_val_is_bit.
 
-        left.
-        apply val_is_bit_neq in H0; try solve_val_is_bit.
-        apply val_is_bit_neq in H1; try solve_val_is_bit.
-        2:{ apply Hwf. rewrite dom_latch_stage_with_env. solve_in_dom. }
-        rewrite <- H1. auto.
+    * right; auto.
 
-      * (* latch_hidden ↦ 1 *)
-        contradict Hunstable. (* σ hidden = Bit1 *) admit.
-
-      * find_contradiction.
-
-      * (* dp_reset_n *)
-        find_contradiction.
-
-      * (* latch_not_state0 *)
-        clear Hdec.
-        clear Hin.
-        subst.
-
-        combine_state_equiv_on_complex.
-        { simpl; solve_space_set. }
-
-        (* Another flop inversion! *)
-        inversion Hstep0; subst; try find_contradiction; clear Hstep0.
-        clear H4. clear H3. (* don't need H3 here *)
-
-        combine_state_equiv_on.
-        combine_state_equiv_on_domain.
+    * contradict Hstate0.
+      rewrite_state_equiv. 2:{ solve_in_dom. }
+      simpl; auto.
+  Qed.
 
 
-        contradict Hstate0.
-        rewrite_state_equiv.
-        2:{ solve_in_dom. }
-        simpl.
-        apply val_is_bit_neq in Hunstable; try solve_val_is_bit.
-        { apply Hwf. rewrite dom_latch_stage_with_env. simpl; solve_space_set. }
+  Arguments wf_scoped {name} S {S_wf} σ e σ' Hstep x : rename.
 
-      * (* latch_state0 *)
-        combine_state_equiv_on_complex.
-        apply flop_inversion_output in Hstep1.
-        destruct Hstep1 as [Hclk [Hold_clk [Hv Hequiv']]].
-
-        2:{ solve_all_disjoint. }
-        2:{ admit (* true *). }
-        2:{ admit (* true *). }
-        right. auto.
-
-    Unshelve.
-    exact (fun _ => true).
-    exact (fun _ => true).
-    exact (fun _ => true).
-    exact (fun _ => true).
-  Admitted.
-
-
-Arguments wf_scoped {name} S {S_wf} σ e σ' Hstep x : rename.
 Ltac rewrite_back_wf_scoped :=
   match goal with
   | [ Hstep : ?S ⊢ ?σ →{ ?e } Some ?σ' |- context[ ?σ ?x ] ] =>
@@ -638,313 +625,10 @@ Ltac rewrite_back_wf_scoped :=
   end.
 
 
-(*
-    latch_stage_with_env l ⊢ σ →{None} Some σ' ->
-    1. latch_flop_component l ⊢ σ →{None} Some σ'
-       /\ state_equiv_on dom σ' (update σ old_clk (σ clk))
-    2. latch_flop_component l ⊢ σ →{state0 ↦ v} Some σ'
-       /\ σ (latch_state0 l) <> σ (latch_not_state0 l)
-       /\ state_equiv_on dom σ' (update (update σ state0 (σ not_state0) old_clk (σ clk))
-    3. latch_flop_component l ⊢ σ →{not_state0 ↦ σ state0} Some σ'
-       /\ state_equiv_on dom σ' (update σ not_state0 (neg_value (σ state0)))
-*)
-Print flop_step.
-  Inductive stage_eps_step l σ σ' : Prop :=
-  | Eps_Flop_clk_fall :
-    σ (latch_clk l) <> Num 1 ->
-    σ (latch_clk l) <> σ (latch_old_clk l) ->
-    state_equiv_on (space_domain (latch_stage_with_env l))
-                   (Some (update σ (latch_old_clk l) (σ (latch_clk l))))
-                   (Some σ') ->
-    stage_eps_step l σ σ'
-
-  | Eps_Flop_clk_rise : forall v,
-    σ dp_reset_n  = Num 1 ->
-    σ (latch_hidden l) = Num 1 ->
-    σ (latch_clk l) = Num 1 ->
-    σ (latch_old_clk l) <> Num  1 ->
-    v = σ (latch_not_state0 l) ->
-    σ (latch_clk l) = latch_clk_function l σ ->
-    σ (ack (latch_input l)) = if_token l (neg_value (σ (latch_state0 l))) ->
-    σ (req (latch_output l)) = σ (latch_state0 l) ->
-    σ (latch_state0 l) <> σ (latch_not_state0 l) ->
-    state_equiv_on (space_domain (latch_stage_with_env l))
-                   (Some (update (update σ (latch_state0 l) v) (latch_old_clk l) (σ (latch_clk l))))
-                   (Some σ') ->
-    stage_eps_step l σ σ'
-
-  | Eps_not_state0 :
-    σ (latch_not_state0 l) = σ (latch_state0 l) ->
-    σ (latch_clk l) = σ (latch_old_clk l) ->
-    state_equiv_on (space_domain (latch_stage_with_env l))
-                   (Some (update σ (latch_not_state0 l) (neg_value (σ (latch_state0 l)))))
-                   (Some σ') ->
-    stage_eps_step l σ σ'
-  .
-
-Ltac try_prove_equiv_subset := match goal with
-      | [ Hequiv : state_equiv_on (space_domain (latch_stage_with_env l)) (Some ?σ0) (Some ?σ')
-        |- state_equiv_on _ _ (Some ?σ')
-        ] => try unfold space_domain; simpl;
-             rewrite dom_latch_stage_with_env in Hequiv;
-             intros x Hx;
-              decompose_set_structure;
-              try (rewrite <- Hequiv; [ unfold update; simpl; auto
-                                      | try solve_in_dom
-                                      ])
-      end.
-Ltac prove_equiv_subset := try_prove_equiv_subset; fail.
-
-  Lemma stage_eps_implies_step : forall σ σ',
-    stage_eps_step l σ σ' ->
-    latch_stage_with_env l ⊢ σ →{None} Some σ'.
-  Proof.
-    intros  ? ? Hstep.
-    inversion Hstep as [ Hclk Hold_clk Hequiv
-                       | v Hreset Hhidden Hclk Hold_clk Hv Hclk_function Hl_ack Hr_req Hnot_state0 Hequiv
-                       | Hnot_state0 Hclk Hequiv
-                       ].
-    * (* Eps_Flop_clk_fall *)
-      apply union_step_1; [ inversion 1 | | prove_equiv_subset ].
-      apply union_step_2; [ inversion 1 | | prove_equiv_subset ].
-      unfold latch_stage.
-      apply Hide_Neq; [ | inversion 1].
-      apply Hide_Neq; [ | inversion 1].
-      apply Hide_Neq; [ | inversion 1].
-      apply Hide_Neq; [ | inversion 1].
-      apply union_step_1; [ inversion 1 | | prove_equiv_subset].
-      apply union_step_1; [ inversion 1 | | prove_equiv_subset].
-      unfold latch_stage_with_reset.
-      apply union_step_1; [ inversion 1 | | prove_equiv_subset].
-      apply union_step_1; [ inversion 1 | | prove_equiv_subset].
-      apply union_step_2; [ inversion 1 | | prove_equiv_subset].
-      unfold latch_flop_component, flop_component.
-      apply Hide_Neq; [ | inversion 1].
-      apply union_step_1; [ inversion 1 | | prove_equiv_subset].
-      apply union_step_1; [ inversion 1 | | prove_equiv_subset].
-      
-      apply Flop_clk_fall; auto.
-      { prove_equiv_subset. }
-
-    * (* Eps_Flop_clk_rise *)
-      apply union_step_1; [ inversion 1 | | prove_equiv_subset ].
-      apply union_step_2; [ inversion 1 | | prove_equiv_subset ].
-      unfold latch_stage.
-      apply Hide_Eq with (v := σ (latch_not_state0 l)).
-      apply Hide_Neq.
-      2:{ inversion 1; subst. contradict pf. solve_space_set. }
-      apply Hide_Neq.
-      2:{ inversion 1; subst. contradict pf. solve_space_set. }
-      apply Hide_Neq.
-      2:{ inversion 1; subst. contradict pf. solve_space_set. }
-      apply union_step_1.
-      { unfold space_domain; simpl; inversion 1; subst; decompose_set_structure. }
-      2:{ prove_equiv_subset. }
-      apply union_step_1.
-      { unfold space_domain; simpl; inversion 1; subst; decompose_set_structure. }
-      2:{ prove_equiv_subset. }
-      unfold latch_stage_with_reset.
-      apply union_communicate.
-      { apply driven_by_1; constructor; simpl; solve_in_dom. }
-      2:{ unfold latch_right_req_component.
-          apply func_input_stable; [ solve_space_set | auto | prove_equiv_subset].
-      }
-
-      apply union_communicate.
-      { apply driven_by_1; constructor; simpl; solve_space_set. }
-      2:{ unfold latch_left_ack_component, ack_i_output.
-          Print delay_space_step.
-          apply delay_space_input.
-          2:{ prove_equiv_subset. }
-          2:{ simpl. solve_space_set. }
-
-          apply func_input_stable; auto.
-          { solve_space_set. }
-          2:{ prove_equiv_subset. }
-          rewrite Hl_ack. unfold if_token.
-          destruct l; simpl; auto.
-          rewrite val_is_bit_neg_neg; auto.
-          admit (* true --add an assumption *).
-      }
-
-      apply union_communicate.
-      { apply driven_by_2; constructor; simpl; solve_space_set. }
-      1:{ unfold latch_clk_component.
-
-          apply func_input_stable; auto.
-          { solve_space_set. }
-          { prove_equiv_subset. }
-      }
-
-      unfold latch_flop_component, flop_component.
-      apply Hide_Neq.
-      2:{ inversion 1; subst. decompose_set_structure. }
-
-      apply union_step_1.
-      { inversion 1; subst. unfold space_domain in pf; simpl in pf.
-        decompose_set_structure.
-      }
-      2:{ prove_equiv_subset. }
-
-      apply union_communicate.
-      { apply driven_by_1; constructor; simpl; solve_space_set. }
-      2:{ apply func_input_stable; auto.
-          { solve_space_set. }
-          2:{ prove_equiv_subset. }
-          symmetry; apply val_is_bit_neq; auto; try solve_val_is_bit.
-          admit (* val_is_bit *).
-          admit (* val_is_bit *).
-      }
-
-      Print flop_step.
-      apply Flop_clk_rise; auto.
-      { admit (* dp_reset and latch_hidden = Bit1 *). }
-      { admit (* dp_reset and latch_hidden = Bit1 *). }
-      { prove_equiv_subset. }
-
-
-  *   apply union_step_1; [ inversion 1 | | prove_equiv_subset ].
-      apply union_step_2; [ inversion 1 | | prove_equiv_subset ].
-      unfold latch_stage.
-      apply Hide_Neq.
-      2:{ inversion 1; subst. }
-      apply Hide_Eq with (v := neg_value (σ (latch_state0 l))).
-      apply Hide_Neq.
-      2:{ inversion 1; subst. contradict pf. solve_space_set. }
-      apply Hide_Neq.
-      2:{ inversion 1; subst. contradict pf. solve_space_set. }
-      apply union_step_1.
-      { unfold space_domain; simpl; inversion 1; subst; decompose_set_structure. }
-      2:{ prove_equiv_subset. }
-      apply union_step_1.
-      { unfold space_domain; simpl; inversion 1; subst; decompose_set_structure. }
-      2:{ prove_equiv_subset. }
-      unfold latch_stage_with_reset.
-
-      apply union_step_1.
-      { unfold space_domain; simpl; inversion 1; subst; decompose_set_structure. }
-      2:{ prove_equiv_subset. }
-      apply union_communicate.
-      { apply driven_by_1; constructor; simpl; solve_space_set. }
-      2:{ unfold latch_left_ack_component, ack_i_output.
-          apply delay_space_sensitivity.
-          2:{ prove_equiv_subset. }
-          solve_space_set.
-      }
-
-      apply union_step_2.
-      { unfold space_domain; simpl; inversion 1; subst; decompose_set_structure. }
-      2:{ prove_equiv_subset. }
-
-      unfold latch_flop_component, flop_component.
-      apply Hide_Neq. 2:{ inversion 1; subst; decompose_set_structure. }
-      apply union_step_1.
-      { unfold space_domain; simpl; inversion 1; subst; decompose_set_structure. }
-      2:{ prove_equiv_subset. }
-
-      apply union_communicate.
-      { apply driven_by_2; constructor; simpl; solve_space_set. destruct l; simpl; auto. }
-      2:{ apply func_output; auto.
-          2:{ prove_equiv_subset. }
-          Search neg_value (_ <> _).
-          apply val_is_bit_neq_neg.
-          { left; admit (* val_is_bit *). }
-          rewrite Hnot_state0; auto.
-      }
-
-      Print flop_step.
-      apply Flop_input; auto.
-      2:{ solve_in_dom. }
-      2:{ prove_equiv_subset. }
-      left.
-      admit (* true given wf_state *).
-
-  Admitted.
-
-  Lemma step_implies_stage_eps : forall σ σ',
-    latch_stage_with_env l ⊢ σ →{None} Some σ' ->
-    stage_eps_step l σ σ'.
-  Proof.
-    intros σ σ' Hstep.
-    step_inversion_clean.
-    * (* flop →{None} *)
-      inversion Hstep; subst; clear Hstep.
-      Print stage_eps_step.
-      apply Eps_Flop_clk_fall; auto.
-      combine_state_equiv_on_complex.
-      { simpl; solve_space_set. }
-      combine_state_equiv_on_domain.
-      auto.
-    * (* flop →{hidden} *)
-      contradict Hunstable. admit (* wf_state *).
-    * (* ctrl_reset_n *) find_contradiction.
-    * (* dp_reset_n *) find_contradiction.
-    * (* flop →{not_state0} *)
-      inversion Hstep0; subst; clear Hstep0.
-      repeat combine_state_equiv_on.
-      combine_state_equiv_on_complex.
-      { simpl; solve_space_set. }
-      combine_state_equiv_on_domain.
-
-      apply Eps_not_state0; auto.
-      { apply val_is_bit_neq in Hunstable; auto.
-        simpl. rewrite <- Hunstable.
-        rewrite val_is_bit_neg_neg; auto.
-        admit (* val_is_bit *).
-        admit (* val_is_bit *).
-        admit (* val_is_bit *).
-      }
-
-    * (* flop →{state0} *)
-      About flop_inversion_output.
-      apply flop_inversion_output in Hstep1.
-      2:{ solve_all_disjoint. }
-      2:{ admit (* wf_state *). }
-      2:{ admit (* wf_state *). }
-      destruct Hstep1 as [Hclk [Hold_clk [Hv Hequiv]]].
-      combine_state_equiv_on_complex.
-      { simpl; solve_space_set. }
-      combine_state_equiv_on_complex.
-      combine_state_equiv_on_domain.
-
-      (* We are in a situation where state0 is getting updated to not_state0.
-         We know that σ clk = Bit1 and σ old_clk = Bit0, which SHOULd mean that
-            1. The clock component is stable AKA clk_function = Bit1
-            2. The left_ack component is stable AKA left half in Hin0
-            3. The right_req component is stable AKA left half in Hin
-            4. The not_state0 component is stable AKA left half in Hin2
-        But WHY do we know this? Do we state it as some invariant on well-formed states?
-       *)
-      destruct Hin1 as [Hin1 | Hin1]; [ | admit (*???*)].
-      destruct Hin0 as [Hin0 | Hin0]; [ | admit (*???*)].
-      destruct Hin as [Hin | Hin]; [ | admit (*???*)].
-      destruct Hin2 as [Hin2 | Hin2]; [ | admit (*???*)].
-
-      apply Eps_Flop_clk_rise with (v := v); auto.
-      { admit (* wf_state *). }
-      { admit (* wf_state *). }
-      { simpl; rewrite <- Hin0.
-        destruct l; simpl; auto.
-        unfold if_token; simpl.
-        rewrite val_is_bit_neg_neg; auto.
-        admit (* val_is_bit *).
-      }
-      { Search neg_value (_ <> _).
-        apply val_is_bit_neq_neg; auto.
-        left. admit (* val_is_bit *).
-      }
-    Unshelve. exact (fun _ => true).
-
-  Admitted.
-
-
 
   (* Helper lemmas for relate_implies_marked below *)
   Lemma relate_implies_marked_eps : forall σ σ',
-(*    wf_stage_state l σ ->
-    wf_stage_state_stable l σ ->
-*)
-    (forall x, x ∈ space_domain (latch_stage_with_env l) -> val_is_bit (σ x)) ->
+    wf_stage_state l σ ->
     latch_stage_with_env l ⊢ σ →{None} Some σ' ->
     forall {t1 t2} (p : stage_place t1 t2),
     prop_marked p σ' ->
@@ -993,13 +677,12 @@ Ltac prove_equiv_subset := try_prove_equiv_subset; fail.
       assert (Hclk : σ (latch_clk l) = Bit0) by (rewrite_back_wf_scoped; auto).
 
       apply clk_fall_left_ack_state0_marked; auto.
-      apply step_implies_stage_eps in Hstep.
+      apply step_implies_stage_eps in Hstep; auto.
       inversion Hstep; subst; find_contradiction; clear Hstep.
       + apply val_is_bit_neq in H2; auto; try solve_val_is_bit.
-        2:{ apply Hwf. rewrite dom_latch_stage_with_env; solve_in_dom. }
         rewrite <- H2. rewrite Hclk. auto.
       + contradict H0.
-        rewrite <- H3. 2:{ rewrite dom_latch_stage_with_env; solve_in_dom. }
+        rewrite <- H3. 2:{ solve_in_dom. }
         unfold update.
         rewrite <- H2. rewrite Hclk. simpl. inversion 1.
 
@@ -1008,43 +691,39 @@ Ltac prove_equiv_subset := try_prove_equiv_subset; fail.
       { rewrite_back_wf_scoped; auto. }
       apply clk_rise_right_req_marked; auto.
 
-      apply step_implies_stage_eps in Hstep.
+      apply step_implies_stage_eps in Hstep; auto.
       inversion Hstep; subst; find_contradiction; clear Hstep.
       + contradict H0. (* old_clk *)
         rewrite_state_equiv.
-        2:{ rewrite dom_latch_stage_with_env; solve_in_dom. }
+        2:{ solve_in_dom. }
         reduce_eqb.
         rewrite Hclk; inversion 1.
 
       + contradict H0 (* old_clk *).
         rewrite_state_equiv.
-        2:{ rewrite dom_latch_stage_with_env; solve_in_dom. }
+        2:{ solve_in_dom. }
         rewrite <- H2, Hclk. simpl. inversion 1.
 
     * assert (Hclk : σ (req (latch_output l)) = σ0 (req (latch_output l))).
       { rewrite_back_wf_scoped; auto. }
 
-      apply step_implies_stage_eps in Hstep.
+      apply step_implies_stage_eps in Hstep; auto.
       inversion Hstep; subst; find_contradiction; clear Hstep.
       + apply clk_rise_right_req_marked_state0.
         contradict H.
-        rewrite_state_equiv. 2:{ rewrite dom_latch_stage_with_env; solve_in_dom. }
-        rewrite_state_equiv. 2:{ rewrite dom_latch_stage_with_env; solve_in_dom. }
+        rewrite_state_equiv. 2:{ solve_in_dom. }
+        rewrite_state_equiv. 2:{ solve_in_dom. }
         simpl. auto.
 
       + (* If state0 is getting updated, so σ state0 <> σ0 state0... *)
         apply clk_rise_right_req_marked; auto.
-        Search (_ <> _) neg_value.
-        apply val_is_bit_neq in H3 (* old_clk *); try solve_val_is_bit.
-        2:{ admit (* val_is_bit *). }
-        Search (neg_value _ = _).
-        symmetry in H3. apply val_is_bit_neg_inversion in H3; try solve_val_is_bit.
-        { admit (* val_is_bit *). }
+        apply not_eq_sym in H1.
+        apply val_is_bit_neq in H1 (* old_clk *); try solve_val_is_bit.
 
       + apply clk_rise_right_req_marked_state0.
         contradict H.
-        rewrite_state_equiv. 2:{ rewrite dom_latch_stage_with_env; solve_in_dom. }
-        rewrite_state_equiv. 2:{ rewrite dom_latch_stage_with_env; solve_in_dom. }
+        rewrite_state_equiv. 2:{ solve_in_dom. }
+        rewrite_state_equiv. 2:{ solve_in_dom. }
         simpl. auto.
 
 
@@ -1057,15 +736,17 @@ Ltac prove_equiv_subset := try_prove_equiv_subset; fail.
            In case 2: Bit0 = σ0 old_clk = σ clk = Bit1
            In case 3: Bit0 = σ0 old_clk = σ old_clk
         *)
-        apply step_implies_stage_eps in Hstep.
+        apply step_implies_stage_eps in Hstep; auto.
         inversion Hstep; subst; find_contradiction; clear Hstep.
-        + admit (* true -- manipulate neg_value *).
+        + apply not_eq_sym in H3. (* old_clk *)
+          apply val_is_bit_neq in H3 (* old_clk *); try solve_val_is_bit.
         + contradict H0. rewrite_state_equiv.
           2:{ rewrite dom_latch_stage_with_env; solve_space_set. }
           rewrite <- H3, Hclk.
           simpl. inversion 1.
       }
-      assert (Hreset : σ ctrl_reset_n = σ0 ctrl_reset_n) by admit.
+      assert (Hwf' : wf_stage_state l σ0).
+      { eapply step_wf_state_eps; eauto. }
       assert (Hl_req : σ (req (latch_input l)) = σ0 (req (latch_input l)))
         by (rewrite_back_wf_scoped; auto).
       assert (Hr_ack : σ (ack (latch_output l)) = σ0 (ack (latch_output l)))
@@ -1084,34 +765,116 @@ Ltac prove_equiv_subset := try_prove_equiv_subset; fail.
         apply func_stable_equiv. { solve_space_set. }
         apply func_stable_equiv in H1. 2:{ solve_space_set. }
 
-        apply step_implies_stage_eps in Hstep.
+        apply step_implies_stage_eps in Hstep; auto.
         inversion Hstep; subst; find_contradiction; clear Hstep.
-        + admit (*?*).
-        + admit (*?*).
+        + auto.
+        + compare Bit1 (latch_clk_function l σ); auto.
+          { rewrite <- Heq; auto. }
+          (* when they are not equal *)
+          apply val_is_bit_neq in Hneq; try solve_val_is_bit; auto with wf.
+          simpl in Hneq.
+
+          (* If σ == σ0 on everything except latch_not_state0 *)
+
+          rewrite latch_clk_function_equiv with (σ' := σ0).
+          { rewrite Hclk.  rewrite <- H. auto. }
+          { prove_equiv_subset. }
 
     * (* clock_fall *)
-      admit.
-      
+      assert (Hclk : σ (latch_clk l) = Bit1)
+        by (rewrite_back_wf_scoped; auto).
+
+      apply step_implies_stage_eps in Hstep; auto.
+      inversion Hstep; subst; find_contradiction; clear Hstep.
+      + apply clock_fall_flop_marked; auto.
+        { (* old_clk *)
+          apply not_eq_sym in H3. (* old_clk *)
+          apply val_is_bit_neq in H3 (* latch_old_clk *); try solve_val_is_bit.
+        }
+        { (* stable *)
+          apply func_stable_equiv. { solve_space_set. }
+          auto.
+        }
+
+      + apply clock_fall_state0_marked; auto.
+        { (* old_clk *)
+          rewrite <- H3. auto.
+        }
+        { intros Hstable.
+          apply H1.
+          apply func_stable_equiv in Hstable.
+          2:{ solve_space_set. }
+          apply func_stable_equiv.
+          { solve_space_set. }
+          rewrite_state_equiv. 2:{ solve_in_dom. }
+          simpl.
+          rewrite latch_clk_function_equiv with (σ' := σ).
+          2:{ intros x Hx. rewrite <- H4 (* state_equiv_on *).
+              2:{ decompose_set_structure; solve_in_dom. }
+              unfold update. compare_next; auto.
+              contradict Hx; solve_space_set.
+          }
+          auto.
+        }
+
     * (* left_req_clk_rise *)
+      assert (Hclk : σ (latch_clk l) = σ0 (latch_clk l)).
+      { rewrite_back_wf_scoped; auto. }
+
       apply left_req_clk_rise_marked; auto.
       { rewrite_back_wf_scoped. rewrite_back_wf_scoped.
         auto.
       }
+      { rewrite latch_clk_function_equiv with (σ' := σ0); auto.
+        { apply step_implies_stage_eps in Hstep; auto.
+          inversion Hstep; subst; find_contradiction; clear Hstep.
+          + intros x Hx.
+            decompose_set_structure; rewrite_state_equiv; auto; solve_in_dom.
 
-      admit (* why is σ unstable? *).
+          + contradict Hclk.
+            rewrite H1. (* σ0 clk = Bit0 *)
+            rewrite H2. (* σ clk = Bit1 *)
+            inversion 1.
+
+          + intros x Hx.
+            decompose_set_structure; rewrite_state_equiv; auto; solve_in_dom.
+        }
+      }
+      rewrite Hclk. auto.
+
     * (* right_ack_clk_rise *)
-      apply right_ack_clk_rise_marked; auto.
-      { rewrite_back_wf_scoped. rewrite_back_wf_scoped.
-        auto.
-      } 
-      admit (* why is clk component unstable? *).
+      assert (Hclk : σ (latch_clk l) = σ0 (latch_clk l)).
+      { rewrite_back_wf_scoped; auto. }
 
-  Admitted.
+      apply right_ack_clk_rise_marked.
+      { rewrite_back_wf_scoped. rewrite_back_wf_scoped. auto. }
+      { rewrite latch_clk_function_equiv with (σ' := σ0); auto.
+        { apply step_implies_stage_eps in Hstep; auto.
+          inversion Hstep; subst; find_contradiction; clear Hstep.
+          + intros x Hx.
+            decompose_set_structure; rewrite_state_equiv; auto; solve_in_dom.
 
+          + contradict Hclk.
+            rewrite H1 (* σ0 clk = Bit0 *).
+            rewrite H2 (* σ clk = Bit1 *).
+            inversion 1.
+
+          + intros x Hx.
+            decompose_set_structure; rewrite_state_equiv; auto; solve_in_dom.
+        }
+      }
+      { rewrite Hclk. auto. }
+
+  Unshelve. all:auto.
+
+  Qed.
+
+
+(*** HERE ****)
+HEREHEREHEREHEREHEREHEREHEREHEREHEREHEREHEREHEREHEREHEREHEREHEREHEREHEREHEREHEREHERE
 
   Lemma outgoing_place_not_marked : forall σ σ' t,
     wf_stage_state l σ ->
-    wf_stage_state_stable l σ ->
     latch_stage_with_env l ⊢ σ →{Some (latch_transition_event l t σ)} Some σ' ->
     forall t0 (p : stage_place t0 t),
         ~ prop_marked p σ'.
