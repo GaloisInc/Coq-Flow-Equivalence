@@ -243,6 +243,8 @@ Section Stage.
 
   (** NOTE: added delay here *)
   (** NOTE: I added an additional delay, watching that not_state0 is stable wrt state0 *)
+  (** NOTE: Do we need to also watch old_clk to make sure the clk- is
+      acknowledged by the flop??? *)
   Definition ack_i_output f := (*match f with
                             | Token => NOT state0 (ack i)
                             | NonToken => forward state0 (ack i)
