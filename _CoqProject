@@ -17,3 +17,7 @@ Click/Definitions.v
 Click/Invariants.v
 Click/MG.v
 Click/MGProofs.v
+Click/PropMarked/PropMarked.v
+Click/PropMarked/Step.v
+Click/PropMarked/Outgoing.v
+Click/PropMarked/StepPreserved.v

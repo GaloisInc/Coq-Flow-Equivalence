@@ -10,7 +10,7 @@ Module WFStage (Export ClickModule : ClickType).
   Export click.
 
   Module Desync := Desync(ClickModule).
-  Import Desync.
+  Export Desync.
 
   Hint Constructors val_is_bit : click.
 
@@ -687,7 +687,7 @@ Module WFStage (Export ClickModule : ClickType).
   End ClickTactics.
   Export ClickTactics.
   Module Structural := Structural_SS(Name).
-  Import Structural.
+  Export Structural.
 
   Existing Instance singleton_enumerable.
   Existing Instance empty_enumerable.
@@ -759,7 +759,7 @@ Proof.
   exact S''.
 Defined.
 
-Import StateSpace.
+Export StateSpace.
 
 
 
@@ -1750,7 +1750,7 @@ Proof.
     rewrite <- (val_is_bit_neg_neg v1); auto.
     apply val_is_bit_neg_inversion; auto.
 Qed.
-Lemma latch_clk_function_fall : forall l σ σ',
+Lemma latch_clk_function_state0_fall : forall l σ σ',
     state_equiv_on (from_list (ctrl_reset_n :: req (latch_input l) :: ack (latch_output l) :: nil))
                    (Some σ) (Some σ') ->
     σ ctrl_reset_n = Bit1 ->
