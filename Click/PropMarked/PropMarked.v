@@ -93,15 +93,18 @@ Module Type PropMarkedType.
   (* left_req -> clk+ *)
   | left_req_clk_rise_marked σ :
     σ (req (latch_input l)) = neg_value (σ (ack (latch_input l))) ->
-    latch_clk_function l σ = Bit1 ->
+    σ (req (latch_input l)) = if_token l (σ (latch_state0 l)) ->
     σ (latch_clk l) = Bit0 ->
+    σ (latch_old_clk l) = Bit0 -> (* need extra info *)
     prop_marked l left_req_clk_rise σ
 
   (* right_ack -> clk+ *)
   | right_ack_clk_rise_marked σ :
     σ (ack (latch_output l)) = σ (req (latch_output l)) ->
-    latch_clk_function l σ = Bit1 ->
+    (* latch_clk_function l σ = Bit1 -> *)
+    σ (ack (latch_output l)) = σ (latch_state0 l) ->
     σ (latch_clk l) = Bit0 ->
+    σ (latch_old_clk l) = Bit0 -> (* need extra info *)
     prop_marked l right_ack_clk_rise σ
   .
 
@@ -120,32 +123,6 @@ Module PropMarkedTactics (Import PropMarked : PropMarkedType).
       try (destruct l; simpl in *; find_contradiction; auto; fail);
     fail).
   Qed.
-
-Lemma wf_reset_hidden_1 : forall l σ,
-    wf_stage_state l σ ->
-    σ match latch_to_token_flag l with
-      | Token => dp_reset_n
-      | NonToken => latch_hidden l
-      end = Bit1.
-Proof.
-  intros ? ? Hwf.
-  destruct l.
-    apply wf_hidden; auto.
-    eapply wf_dp_reset_n; eauto.
-Qed.
-Lemma wf_hidden_reset_1 : forall l σ,
-    wf_stage_state l σ ->
-    σ match latch_to_token_flag l with
-      | Token => latch_hidden l
-      | NonToken => dp_reset_n
-      end = Bit1.
-Proof.
-  intros ? ? Hwf.
-  destruct l.
-    eapply wf_dp_reset_n; eauto.
-    apply wf_hidden; auto.
-Qed.
-Hint Resolve wf_reset_hidden_1 wf_hidden_reset_1 : wf.
 
 (************)
 (** Lemmas **)

@@ -209,6 +209,15 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
          σ r_req = σ state0
        which is a contradiction.
       *)
+
+      assert (Hin' : σ (req (latch_output l)) = σ (ack (latch_output l))).
+      { destruct Hin as [Hin | Hin]; auto.
+        contradict Hin.
+        unfold update. reduce_eqb.
+        apply bit_neq_neg_r; try solve_val_is_bit.
+      }
+      clear Hin.
+
       assert (Hfun : latch_clk_function l σ = Bit1).
       { (* Some invariant about the fact that σ clk = Bit1 and σ old_clk =
       Bit0.... Or maybe add to prop_marked... *)
@@ -248,17 +257,11 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
           by auto.
       step_inversion_clean.
       clear Hin. clear Hdec.
-      apply flop_inversion_clk in Hstep3.
-      2:{ solve_all_disjoint. }
-      2:{ apply wf_reset_hidden_1; auto. }
-      2:{ apply wf_hidden_reset_1; auto. }
-      destruct Hstep3 as [Hequiv2 Hclk].
-      combine_state_equiv_on.
-      combine_state_equiv_on_complex; try (simpl; solve_space_set).
 
       (* Know: H : Bit0 = σ0 clk = Bit1 *)
       contradict H. rewrite_state_equiv; try solve_in_dom.
       reduce_eqb; inversion 1.
+
     * (* t = clk_fall_state0_marked *)
       replace (latch_transition_event l clk_fall σ)
           with (Event (latch_clk l) Bit0)
@@ -266,12 +269,6 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
           by auto.
       step_inversion_clean.
       clear Hin. clear Hdec. 
-      apply flop_inversion_clk in Hstep3.
-      2:{ solve_all_disjoint. }
-      2:{ apply wf_reset_hidden_1; auto. }
-      2:{ apply wf_hidden_reset_1; auto. }
-      destruct Hstep3 as [Hequiv2 Hclk].
-      combine_state_equiv_on.
       combine_state_equiv_on_complex; try (simpl; solve_space_set).
 
       contradict H. rewrite_state_equiv; try solve_in_dom.
@@ -283,12 +280,6 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
           in Hstep
           by auto.
       step_inversion_clean.
-      apply flop_inversion_clk in Hstep3.
-      2:{ solve_all_disjoint. }
-      2:{ apply wf_reset_hidden_1; auto. }
-      2:{ apply wf_hidden_reset_1; auto. }
-      destruct Hstep3 as [Hequiv2 Hclk].
-      combine_state_equiv_on.
       combine_state_equiv_on_complex; try (simpl; solve_space_set).
 
       clear Hin. clear Hdec. 
@@ -303,12 +294,6 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
           in Hstep
           by auto.
       step_inversion_clean.
-      apply flop_inversion_clk in Hstep3.
-      2:{ solve_all_disjoint. }
-      2:{ apply wf_reset_hidden_1; auto. }
-      2:{ apply wf_hidden_reset_1; auto. }
-      destruct Hstep3 as [Hequiv2 Hclk].
-      combine_state_equiv_on.
       combine_state_equiv_on_complex; try (simpl; solve_space_set).
 
       clear Hin. clear Hdec. 

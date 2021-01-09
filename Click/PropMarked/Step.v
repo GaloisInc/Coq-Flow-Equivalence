@@ -124,13 +124,6 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
     clear Hin. clear Hdec.
     combine_state_equiv_on_complex. { simpl; solve_space_set. }
     
-    apply flop_inversion_clk in Hstep3.
-    2:{ solve_all_disjoint. }
-    2:{ apply wf_reset_hidden_1; auto. }
-    2:{ apply wf_hidden_reset_1; auto. }
-    destruct Hstep3 as [Hequiv' Hstep3].
-    combine_state_equiv_on.
-    standardize_state_equiv_on_set Hequiv0.
 
     assert (Hclk : σ (latch_clk l) = Bit1).
     { rewrite <- Heq in *.
@@ -138,7 +131,7 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
     }
 
     { apply clock_fall_state0_marked; auto.
-      { (* old_clk *) rewrite <- Hstep3; auto. }
+      { (* old_clk *) rewrite <- Hold_clk; auto. }
       intros Hstable; apply func_stable_equiv in Hstable.
       2:{ solve_space_set. }
       contradict Hstable; auto.
@@ -160,14 +153,15 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
     step_inversion_clean.
     clear Hin.
     combine_state_equiv_on_complex. { simpl; solve_space_set. }
-    
-    apply flop_inversion_clk in Hstep3.
-    2:{ solve_all_disjoint. }
-    2:{ apply wf_reset_hidden_1; auto. }
-    2:{ apply wf_hidden_reset_1; auto. }
 
-    destruct Hstep3 as [Hequiv' Hstep3].
-    combine_state_equiv_on.
+    assert (Hclk : σ (latch_clk l) = Bit0).
+    { apply val_is_bit_neq in Hunstable;
+        try solve_val_is_bit.
+      simpl. rewrite <- Hunstable.
+      rewrite <- Heq. auto.
+    }
+    assert (Hlreq : σ (req (latch_input l)) = if_token l (σ (latch_state0 l))).
+    { apply latch_clk_function_Bit1_l_req; auto. }
 
     apply left_req_clk_rise_marked; auto.
     { (* Uses latch_clk_function_Bit1_l_req and wf_left_env *)
@@ -182,15 +176,9 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
         apply not_eq_sym.
         destruct l; apply bit_neq_neg_r; simpl; solve_val_is_bit.
       }
-      contradict Hreq.
-      apply latch_clk_function_Bit1_l_req; auto.
+      contradict Hreq; auto.
     }
-    { apply val_is_bit_neq in Hunstable;
-        try solve_val_is_bit.
-      2:{ apply latch_clk_function_bit; auto. }
-        simpl. rewrite <- Hunstable.
-        rewrite <- Heq. auto.
-    }
+    { rewrite <- Hold_clk; auto. }
 
     Unshelve. exact (fun _ => true).
 
@@ -209,14 +197,15 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
     combine_state_equiv_on_complex.
     { simpl; solve_space_set. }
 
-    apply flop_inversion_clk in Hstep3.
-    2:{ solve_all_disjoint. }
-    2:{ apply wf_reset_hidden_1; auto. }
-    2:{ apply wf_hidden_reset_1; auto. }
 
-    destruct Hstep3 as [Hequiv' Hstep3].
-
-    combine_state_equiv_on.
+    assert (Hclk : σ (latch_clk l) = Bit0).
+    { apply val_is_bit_neq in Hunstable;
+        try solve_val_is_bit.
+      simpl. rewrite <- Hunstable.
+      rewrite <- Heq. auto.
+    }
+    assert (Hrack : σ (ack (latch_output l)) = σ (latch_state0 l)).
+    { apply latch_clk_function_Bit1_r_ack; auto. }
 
     apply right_ack_clk_rise_marked; auto.
     { (* Uses latch_clk_function_Bit1_r_ack and wf_right_env *)
@@ -235,15 +224,7 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
         apply bit_neq_neg_r; solve_val_is_bit.
       }
     }
-    { rewrite Hstep3.
-      apply val_is_bit_neq in Hunstable; try solve_val_is_bit.
-      2:{ apply latch_clk_function_bit; auto. }
-      rewrite <- Hstep3. simpl.
-      rewrite <- Hunstable.
-      rewrite <- Heq.
-      auto.
-    }
-
+    { rewrite <- Hold_clk. auto. }
 
     Unshelve. exact (fun _ => true).
   Qed.
