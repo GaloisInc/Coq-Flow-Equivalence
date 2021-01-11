@@ -1988,7 +1988,6 @@ Ltac prove_equiv_subset := try_prove_equiv_subset; fail.
       apply union_communicate.
       { apply driven_by_1; constructor; simpl; solve_space_set. }
       2:{ unfold latch_left_ack_component, ack_i_output.
-          Print delay_space_step.
           apply delay_space_input.
           2:{ prove_equiv_subset. }
           2:{ simpl. solve_space_set. }
@@ -2102,7 +2101,6 @@ Lemma left_ack_stable_inversion' : forall l σ,
 Proof.
     intros l σ Hwf Hstable.
     compare Bit1 (σ (latch_clk l)); subst; auto.
-    Search (_ <> _) neg_value.
     apply val_is_bit_neq in Hneq; try solve_val_is_bit.
     compare (σ (latch_state0 l)) (σ (latch_not_state0 l)); subst; auto.
     apply val_is_bit_neq in Hneq0; try solve_val_is_bit.

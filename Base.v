@@ -425,7 +425,22 @@ Module EnsembleNotation.
   Qed.
 
 
-
+  Lemma setminus_union_equiv : forall {X} (A B : Ensemble X) `{in_dec X B},
+    (A ∖ B) ∪ B == A ∪ B.
+  Proof.
+    intros X A B Bdec. split; intros x Hx.
+    + inversion Hx as [? HA | HB]; subst.
+      { inversion HA as [HA' _].
+        left. auto.
+      }
+      { right. auto. }
+    
+    + destruct (In_Dec B x) as [HB | HB].
+      { right. auto. }
+      inversion Hx as [? HA | ? HB']; subst.
+      { left. constructor; auto. }
+      { right. auto. }
+  Qed.
 
 
   (** The [all_disjoint ls] predicate asserts that every element of the list
@@ -584,14 +599,36 @@ Ltac find_repetition ls :=
 Lemma reduce_count_cons_eq : forall {A} `{eq_dec A} (x:A) ls n,
     count x ls > n ->
     count x (x :: ls) > S n.
-Admitted.
+Proof.
+    intros A Adec x ls.
+    induction ls as [ | a ls]; intros n Hn.
+    * simpl in Hn. inversion Hn.
+    * simpl in *.
+      unfold eqb in *.
+      destruct (Dec x x) as [Hx | Hx].
+      2:{ contradict Hx; auto. }
+      destruct (Dec x a) as [Ha | Ha].
+      { apply Gt.gt_n_S; auto. }
+      { apply IHls; auto. }
+Qed.
 Lemma reduce_count_cons_0 : forall  {A} `{eq_dec A} (x:A) ls,
     count x (x :: ls) > 0.
-Admitted.
+Proof.
+  intros. simpl.
+  unfold eqb.
+  destruct (Dec x x) as [Hx | Hx].
+  { apply Gt.gt_Sn_O. }
+  { contradict Hx. auto. }
+Qed.
 Lemma reduce_count_cons_neq : forall  {A} `{eq_dec A} (x y : A) ls n,
     count x ls > n ->
     count x (y :: ls) > n.
-Admitted.
+Proof.
+  intros A Adec x y ls n Hn.
+  simpl. unfold eqb.
+  destruct (Dec x y) as [Hx | Hx]; [ | auto].
+  apply Gt.gt_trans with (m := (count x ls)); auto.
+Qed.
 Ltac reduce_count :=
   repeat match goal with
   | [ |- count ?x (?x :: _) > S ?n ] => apply reduce_count_cons_eq
@@ -803,6 +840,18 @@ Ltac solve_set :=
   Qed.
 
 
+  Lemma subset_union_r : forall {X} (A B : Ensemble X),
+    B ⊆ A ->
+    A ∪ B == A.
+  Proof.
+    intros X A B Hsubset.
+    split; intros x Hx.
+    2:{ left. auto. }
+    decompose_set_structure; auto.
+  Qed.
+
+
+
 
 
 Ltac reduce_set_simpl := match goal with
@@ -956,39 +1005,52 @@ Ltac compare_in_list :=
   Section IntersectionEnumerable.
 
     Context {A : Type} `{A_dec : eq_dec A}.
-    Variable X Y : Ensemble A.
-    Context `{enumX : enumerable _ X} `{enumY : enumerable _ Y}.
     Definition list_intersection (A B : list A) := filter (fun x => in_list_dec x B) A.
-    Lemma list_intersection_equiv :
-      X ∩ Y == from_list (list_intersection (enumerate X) (enumerate Y)).
+
+    Lemma list_intersection_equiv : forall (l1 l2 : list A),
+      from_list (list_intersection l1 l2) == from_list l1 ∩ from_list l2.
     Proof.
-      destruct enumX as [Xl HX]; destruct enumY as [Yl HY].
+      intros l1 l2.
       unfold list_intersection.
       simpl.
-      rewrite HX, HY; clear HX HY.
-      induction Xl.
+      induction l1.
       * simpl. rewrite intersection_emptyset.
         reflexivity.
       * simpl.
-        destruct (in_list_dec a Yl) eqn:Ha.
-        + (* a ∈ Yl *) simpl; from_in_list_dec.
+        destruct (in_list_dec a l2) eqn:Ha.
+        + (* a ∈ l2 *) simpl; from_in_list_dec.
           rewrite union_intersect_distr.
           rewrite singleton_intersection_in; auto.
-          rewrite IHXl.
+          rewrite IHl1.
           reflexivity.
-        + (* a ∉ Yl *)
+        + (* a ∉ l2 *)
           from_in_list_dec.
           rewrite union_intersect_distr.
           rewrite singleton_intersection_not_in; auto.
           rewrite union_emptyset.
-          rewrite IHXl; reflexivity.
+          rewrite IHl1; reflexivity.
     Qed.
+
+
+    Variable X Y : Ensemble A.
+    Context `{enumX : enumerable _ X} `{enumY : enumerable _ Y}.
+
+    Lemma from_list_intersection :
+      X ∩ Y == from_list (list_intersection (enumerate X) (enumerate Y)).
+    Proof.
+      destruct enumX as [Xl HX]; destruct enumY as [Yl HY].
+      rewrite list_intersection_equiv.
+      repeat rewrite <- rewrite_enumerate.
+      reflexivity.
+    Qed.
+
+
 
     Instance intersection_enumerable :
       enumerable (X ∩ Y).
     Proof.
       exists (list_intersection (enumerate X) (enumerate Y)).
-      apply list_intersection_equiv.
+      apply from_list_intersection.
     Defined.
   End IntersectionEnumerable.
   Existing Instance intersection_enumerable.
@@ -996,8 +1058,6 @@ Ltac compare_in_list :=
 
   Section SetminusEnumerable.
     Context {name : Type} `{name_dec : eq_dec name}.
-    Variable X Y : Ensemble name.
-    Context `{enumX : enumerable _ X} `{enumY : enumerable _ Y}.
 
     Fixpoint better_filter {A : Type} (f : A -> bool) (l : list A) :=
       match l with
@@ -1012,21 +1072,50 @@ Ltac compare_in_list :=
 
     Definition list_setminus (lX lY : list name) :=
       better_filter (fun x => negb (in_list_dec x lY)) lX.
-    Lemma list_setminus_equiv :
-      X ∖ Y == from_list (list_setminus (enumerate X) (enumerate Y)).
+
+(*
+Lemma better_filter_equiv : forall (f1 f2 : name -> bool) (l1 l2 : list name),
+  from_list l1 == from_list l2 ->
+  (forall a, f1 a = f2 a) ->
+  from_list (better_filter f1 l1) == from_list (better_filter f2 l2).
+Proof.
+  induction l1 as [ | a l1]; intros l2 Hl Hf.
+  * destruct l2 as [ | b l2].
+    + simpl. reflexivity.
+    + contradict Hl. simpl.
+      intros [_ Hx].
+      specialize (Hx b).
+      assert (Hb : b ∈ singleton b ∪ from_list l2) by solve_set.
+      specialize (Hx Hb). find_contradiction.
+  * simpl.
+    rewrite Hf.
+    rewrite from_list_app.
+    destruct (in_list_dec a l1) eqn:Hdec1.
+    + (* If a ∈ l1 then from_list l1 == from_list l2 *)
+      rewrite (IHl1 l2); auto.
+      2:{ admit (* TODO: true, see above *). }
+      rewrite <- from_list_app.
+      admit (* true fact of sets *).
+    + (* If a ∉ l1 then from_list l1 == from_list l2 ∖ singleton a *)
+      rewrite (IHl1 (list_setminus l2 [a])); auto.
+      2:{ admit (* TODO: true, above *). }
+      admit (* tODO: lemma *).
+Abort.
+*)
+    
+    Lemma list_setminus_equiv : forall l1 l2 : list name,
+      from_list (list_setminus l1 l2) == from_list l1 ∖ from_list l2.
     Proof.
-      destruct enumX as [Xl HX]; destruct enumY as [Yl HY].
+      intros l1.
       unfold list_setminus.
-      simpl.
-      rewrite HX, HY; clear HX HY.
-      induction Xl.
+      induction l1 as [ | a l1]; intros l2.
       * simpl.
         rewrite setminus_emptyset.
         reflexivity.
       * simpl.
         rewrite union_setminus_distr.
-        rewrite IHXl.
-        destruct (in_list_dec a Yl) eqn:Ha;
+        rewrite <- IHl1.
+        destruct (in_list_dec a l2) eqn:Ha;
           from_in_list_dec;
           simpl.
         + (* a ∈ Y *)
@@ -1037,9 +1126,23 @@ Ltac compare_in_list :=
           rewrite singleton_setminus_not_in; auto.
           reflexivity.
   Qed.
+
+
+
+    Variable X Y : Ensemble name.
+    Context `{enumX : enumerable _ X} `{enumY : enumerable _ Y}.
+
+    Lemma from_list_setminus :
+      X ∖ Y == from_list (list_setminus (enumerate X) (enumerate Y)).
+    Proof.
+      rewrite list_setminus_equiv.
+      destruct enumX as [Xl HX]; destruct enumY as [Yl HY].
+      repeat rewrite <- rewrite_enumerate.
+      reflexivity.
+  Qed.
   Instance setminus_enumerable : enumerable (X ∖ Y).
     exists (list_setminus (enumerate X) (enumerate Y)).
-    apply list_setminus_equiv.
+    apply from_list_setminus.
   Defined.
   End SetminusEnumerable.
 

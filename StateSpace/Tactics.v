@@ -246,15 +246,13 @@ Module StateSpaceTactics (Export name : NameType).
       σ' y = σ y.
   Proof.
     intros ? ? ? ? ? ? ? ? Hstep Hneq.
-(*
     inversion Hstep; subst;
     match goal with
-    | [ H : state_equiv_on _ (Some ?σ') _ |- ?σ' _ = _ ] => rewrite H; [unfold update | try solve_set]
+    | [ H : state_equiv_on _ _ (Some ?σ') |- ?σ' _ = _ ] => rewrite <- H;
+      [unfold update | try solve_set]
     end;
       compare_next; auto.
   Qed.
-*)
-  Admitted.
 
   Lemma func_space_inversion_None : forall I (o : name) f (σ : state name) σ',
       func_space I o f ⊢ σ →{None} Some σ' ->

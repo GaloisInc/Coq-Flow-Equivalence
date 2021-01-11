@@ -505,7 +505,7 @@ Section disjoint_place_marked.
        2. σ left_env = if_token l (σ state0)
        3. σ clk = Bit0
     *)
-    compare t left_ack. Print prop_marked.
+    compare t left_ack.
     { replace (latch_transition_event l left_ack σ)
         with  (Event (ack (latch_input l)) (neg_value (σ (ack (latch_input l)))))
         in    Hstep
@@ -584,8 +584,86 @@ Section disjoint_place_marked.
 
 
   Lemma disjoint_place_marked_right_ack_clk_rise : disjoint_place_marked_lemma right_ack_clk_rise.
-  
-  Admitted.
+  Proof.
+    intros Ht1 Ht2 Hmarked.
+    dependent destruction Hmarked.
+    rename H into H0_right_env (* σ0 rack = σ0 rreq *).
+    rename H0 into H0_right_ack (* σ0 rack = σ0 state0 *).
+    rename H1 into H0_clk (* σ0 clk = Bit0 *).
+    rename H2 into H0_old_clk (* σ0 old_clk = Bit0 *).
+    assert (Hstate0 : σ0 (latch_state0 l) = σ (latch_state0 l)).
+    { eapply transition_preserves_state0; eauto. }
+
+    (* Need to show:
+       1. right_env is stable
+       2. σ right_ack = σ state0
+       3. σ clk = Bit0
+       4. σ old_clk = Bit0
+    *)
+    compare t right_req.
+    { replace (latch_transition_event l right_req σ)
+        with  (Event (req (latch_output l)) (neg_value (σ (req (latch_output l)))))
+        in    Hstep
+        by    auto.
+      step_inversion_clean.
+      clear Hin0.
+
+      (* Know: σ rreq = σ rack \/ σ rreq = σ0 rreq = σ0 rack = σ rack *)
+      assert (Henv : σ (ack (latch_output l)) = σ (req (latch_output l))).
+      { destruct Hin as [Hin1 | Hin2]; auto.
+        simpl; rewrite Hin2.
+        transitivity (σ0 (ack (latch_output l))).
+        { rewrite_state_equiv; try solve_in_dom; auto. }
+        rewrite H0_right_env.
+        rewrite_state_equiv; auto; try solve_in_dom.
+      }
+      clear Hin.
+        
+      contradict H0_right_ack (* σ0 rack = σ0 state0 *).
+      rewrite_state_equiv; try solve_in_dom.
+      rewrite_state_equiv; try solve_in_dom.
+      simpl.
+      simpl in Henv. rewrite Henv.
+      auto. (* Hunstable *)
+    }
+
+    assert (Hrack : σ0 (ack (latch_output l)) = σ (ack (latch_output l))).
+    { rewrite_back_wf_scoped; try distinguish_events; auto. }
+    assert (Hrreq : σ0 (req (latch_output l)) = σ (req (latch_output l))).
+    { rewrite_back_wf_scoped; try distinguish_events; auto. }
+
+    compare t clk_fall.
+    { replace (latch_transition_event l clk_fall σ)
+        with  (Event (latch_clk l) Bit0)
+        in    Hstep
+        by    auto.
+      step_inversion_clean.
+      clear Hin.
+      combine_state_equiv_on_complex; try (simpl; solve_space_set).
+
+      assert (Hclk : σ (latch_clk l) = Bit1).
+      { apply val_is_bit_neq in Hunstable; try solve_val_is_bit.
+        simpl; rewrite <- Hunstable.
+        rewrite <- Heq.
+        auto.
+      }
+      contradict H0_old_clk (* σ0 old_clk = Bit0 *).
+      rewrite_state_equiv; try solve_in_dom.
+      rewrite <- Hold_clk.
+      rewrite Hclk.
+      inversion 1.
+    }
+
+    constructor.
+    { rewrite <- Hrreq. rewrite <- Hrack. auto. }
+    { rewrite <- Hrack. rewrite <- Hstate0. auto. }
+    { rewrite_back_wf_scoped; auto; try distinguish_events. }
+    { erewrite <- transition_preserves_old_clk; eauto. }
+
+  Unshelve.
+    all: try solve_wf.
+    all: exact (fun _ => true).
+  Qed.
 
 End disjoint_place_marked.
   

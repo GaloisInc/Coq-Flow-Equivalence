@@ -121,15 +121,15 @@ Section EnvPipeline.
   Definition inc_value (v : value) : value :=
     match v with
     | Num n => Num (1+n)
-    | Bit0 => Bit1
-    | Bit1 => Bit0
+(*    | Bit0 => Bit1
+    | Bit1 => Bit0*)
     | X => Num 0
     end.
   Lemma inc_value_inj : forall v1 v2,
     inc_value v1 = inc_value v2 ->
     v1 = v2.
   Proof.
-    intros [x | | | ] [y | | | ] Heq; auto; simpl in *;
+    intros [x | ] [y | ] Heq; auto; simpl in *;
       inversion Heq; auto.
   Qed.
 

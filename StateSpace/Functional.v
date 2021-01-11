@@ -673,11 +673,23 @@ Section Flop.
     flop set reset clk old_clk D Q ⊢ σ →{e} τ ->
     τ ∈ flop_step_fun σ e.
   Proof.
+(*
     intros σ e τ Hstep.
     destruct Hstep.
     * unfold flop_step_fun; subst.
       destruct (i ∈? flop_input); [ | find_contradiction].
-      destruct H as [Hstable | Hchange].
+      rewrite H. reduce_eqb.
+      compare_next; simpl.
+      + unfold update_on_flop.
+        auto.
+      + unfold Q_output.
+        compare (σ set) (Num 0).
+        1:{ unfold update in H0.
+        2:{ 
+        compare_next.
+        2:{
+
+      destruct H0 as [Hstable | Hchange].
       + destruct Hstable.
         compare_next. simpl.
         unfold update_on_flop.
@@ -711,6 +723,8 @@ Section Flop.
       unfold update_on_flop.
       repeat my_subst; auto.
   Qed.
+  *)
+  Admitted.
 
 
 

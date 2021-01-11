@@ -14,6 +14,7 @@ Open Scope list_scope.
 
 Import EnsembleNotation.
 Open Scope ensemble_scope.
+Require Import FunctionalExtensionality.
 
 
 
@@ -48,7 +49,9 @@ Module Structural_SS (Export name : NameType).
     match S with
     | IFunc I0 x0 f0 => x0 :: I0
     | IUnion S1 S2 => ISpace_dom S1 ++ ISpace_dom S2
-    | IHide x0 S0  => ISpace_dom S0
+    | IHide x0 S0  => x0 :: ISpace_dom S0 (* Adding the x0 lets us prove
+                                             correctness of ISpace_dom without
+                                             well-formedness *)
     | IFlop set reset clk old_clk D Q => set::reset::clk::old_clk::D::Q::nil
     | IDelaySpace S0 sens guard guardb => ISpace_dom S0 ++ sens
     end.
@@ -58,6 +61,7 @@ Module Structural_SS (Export name : NameType).
     | IFunc I0 x0 f0 => x0 :: nil
     | IUnion S1 S2 => ISpace_output S1 ++ ISpace_output S2
     | IHide x0 S0  => better_filter (fun y => negb (x0 =? y)) (ISpace_output S0)
+                      (*list_setminus (ISpace_output S0) (x0::nil)*)
     | IFlop set reset clk old_clk D Q => Q::nil
     | IDelaySpace S0 sens guard guardb => ISpace_output S0
     end.
@@ -81,38 +85,156 @@ Module Structural_SS (Export name : NameType).
     | IDelaySpace S0 sens guard guardb => ISpace_internal S0
     end.
 
-  Lemma space_domain_ISpace : forall S,
-    space_domain (interp_ISpace S) == from_list (ISpace_dom S).
+  Lemma setminus_singleton_equiv : forall x (l : list name),
+    from_list (better_filter (fun y => negb (x =? y)) l)
+    == from_list l ∖ singleton x.
   Proof.
-(*
-    induction S; unfold space_domain in *; simpl;
-      try rewrite from_list_app;
-      split; intros z Hz;
-      decompose_set_structure; try solve_set;
-      try rewrite <- IHS1 in *;
-      try rewrite <- IHS2 in *;
-      decompose_set_structure;
-      try solve_set.
-      try rewrite <- IHS1 in *.
-      rewrite <- IHS1 in H.
-      rewrite 
-*)
-  Admitted.
+    intros x l.
+    setoid_replace (singleton x) with (from_list [x]).
+    2:{ split; intros y Hy; decompose_set_structure; solve_set. }
+    rewrite <- list_setminus_equiv.
+    unfold list_setminus.
+
+    replace (fun y => negb (x =? y))
+      with  (fun y => negb (in_list_dec y [x])).
+    2:{ apply functional_extensionality.
+        intros y. simpl.
+        compare x y; auto.
+      }
+    reflexivity.
+  Qed.
+
+
+
 
   Lemma space_output_ISpace : forall S,
     space_output (interp_ISpace S) == from_list (ISpace_output S).
   Proof.
-  Admitted.
+    induction S; simpl.
+    * rewrite union_emptyset_r. reflexivity.
+    * rewrite from_list_app.
+      rewrite IHS1, IHS2.
+      reflexivity.
+    * rewrite IHS.
+      rewrite setminus_singleton_equiv.
+      reflexivity.
+    * rewrite union_emptyset_r. reflexivity.
+    * auto.
+  Qed.
 
   Lemma space_input_ISpace : forall S,
     space_input (interp_ISpace S) == from_list (ISpace_input S).
   Proof.
-  Admitted.
+    induction S; simpl.
+    * reflexivity.
+    * rewrite IHS1, IHS2.
+      repeat rewrite space_output_ISpace.
+      rewrite from_list_app.
+
+      apply union_mor.
+      + rewrite list_setminus_equiv.
+        reflexivity.
+      + rewrite list_setminus_equiv.
+        reflexivity.
+    * auto.
+    * reflexivity.
+    * rewrite IHS.
+      rewrite from_list_app.
+      reflexivity.
+  Qed.
   Lemma space_internal_ISpace : forall S,
     space_internal (interp_ISpace S) == from_list (ISpace_internal S).
   Proof.
-  Admitted.
+    induction S; simpl.
+    * reflexivity.
+    * rewrite IHS1, IHS2.
+      rewrite from_list_app.
+      reflexivity.
+    * rewrite IHS.
+      apply union_symm.
+    * rewrite union_emptyset_r. reflexivity.
+    * auto.
+  Qed.
 
+
+
+  Lemma space_domain_ISpace_union : forall S,
+    from_list (ISpace_dom S)
+    == from_list (ISpace_input S) ∪ from_list (ISpace_output S) ∪ from_list (ISpace_internal S).
+  Proof.
+    induction S; simpl.
+    * repeat rewrite union_emptyset_r.
+      apply union_symm.
+
+    * repeat rewrite from_list_app.
+      repeat rewrite list_setminus_equiv.
+      rewrite IHS1, IHS2.
+          
+      remember (from_list (ISpace_input S1)) as A1.
+      remember (from_list (ISpace_input S2)) as A2.
+      remember (from_list (ISpace_output S1)) as B1.
+      remember (from_list (ISpace_output S2)) as B2.
+      assert (B1dec : in_dec B1). { subst. apply from_list_in_dec. }
+      assert (B2dec : in_dec B2). { subst. apply from_list_in_dec. }
+      remember (from_list (ISpace_internal S1)) as C1.
+      remember (from_list (ISpace_internal S2)) as C2.
+      clear S1 HeqA1 HeqB1 HeqC1 IHS1.
+      clear S2 HeqA2 HeqB2 HeqC2 IHS2.
+      
+      transitivity (((A1 ∖ B2) ∪ B2) ∪ ((A2 ∖ B1) ∪ B1) ∪ C1 ∪ C2).
+      2:{ (* just commutativity of ∪ *)
+          remember (A1 ∖ B2) as D1.
+          remember (A2 ∖ B1) as D2.
+          clear A1 A2 HeqD1 HeqD2.
+          split; intros x Hx; decompose_set_structure.
+      }
+      transitivity ((A1 ∪ B2) ∪ (A2 ∪ B1) ∪ C1 ∪ C2).
+      { (* just commutativity of ∪ *)
+          split; intros x Hx; decompose_set_structure.
+      }
+      repeat rewrite setminus_union_equiv; auto.
+      reflexivity.
+
+    * (* hide *)
+      rewrite IHS.
+      rewrite setminus_singleton_equiv.
+
+      remember (from_list (ISpace_input S)) as A.
+      remember (from_list (ISpace_output S)) as B.
+      remember (from_list (ISpace_internal S)) as C.
+      remember (singleton x) as D.
+      assert (Ddec : in_dec D). { subst. apply in_dec_singleton. }
+      clear S HeqA HeqB HeqC HeqD IHS.
+      
+      transitivity (A ∪ (B ∪ D) ∪ C).
+      { (* commutativity *)
+        split; intros ? ?; decompose_set_structure.
+      }
+      rewrite <- (setminus_union_equiv B D).
+      remember (B ∖ D) as E.
+      clear B HeqE.
+
+      split; intros ? ?; decompose_set_structure.
+
+    * (* flop *)
+      split; intros ? ?; decompose_set_structure; solve_set.
+    * (* delay_space *)
+      repeat rewrite from_list_app.
+      rewrite IHS.
+      split; intros ? ?; decompose_set_structure.
+  Qed.
+
+
+  Lemma space_domain_ISpace : forall S,
+    space_domain (interp_ISpace S) == from_list (ISpace_dom S).
+  Proof.
+    intros. rewrite space_domain_ISpace_union.
+    unfold space_domain.
+    rewrite space_output_ISpace.
+    rewrite space_input_ISpace.
+    rewrite space_internal_ISpace.
+    reflexivity.
+  Qed.
 
 
   Inductive ISpace_wf : ISpace -> Prop :=
@@ -133,6 +255,10 @@ Module Structural_SS (Export name : NameType).
     ISpace_wf S ->
     well_formed (interp_ISpace S).
   Abort.
+
+
+
+
 
 
   Ltac reflect_ISpace S :=
@@ -255,10 +381,26 @@ Module Structural_SS (Export name : NameType).
   | SetSpaceInternal S0 => ISpace_internal S0
   end.
 
+
   Lemma SetStructure_to_list_correct : forall S,
     interpret_SetStructure S == from_list (SetStructure_to_list S).
   Proof.
-  Admitted.
+    induction S; simpl; try reflexivity.
+    * rewrite union_emptyset_r. reflexivity.
+    * rewrite from_list_app.
+      rewrite IHS1, IHS2.
+      reflexivity.
+    * rewrite list_intersection_equiv.
+      rewrite IHS1, IHS2.
+      reflexivity.
+    * rewrite list_setminus_equiv.
+      rewrite IHS1, IHS2.
+      reflexivity.
+    * apply space_domain_ISpace.
+    * apply space_input_ISpace.
+    * apply space_output_ISpace.
+    * apply space_internal_ISpace.
+  Qed.
 
   Ltac set_to_list HS S :=
     let S0 := reflect_to_SetStructure S in
