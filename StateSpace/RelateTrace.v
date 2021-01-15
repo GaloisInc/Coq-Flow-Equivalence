@@ -218,7 +218,6 @@ Section UnionStateSpaceRefinement.
         assert (Hstep' : exists σT'', S1' ⊢ σT →{Some e} Some σT'') by admit (* lemma *).
         destruct Hstep' as [σT'' Hstep'].
         exists σT''.
-        Print union_step.
         apply union_step_1; auto.
         (* These  two rely on the relation between the domain of Si and the domain of Si'. *)
         admit (* why? *).

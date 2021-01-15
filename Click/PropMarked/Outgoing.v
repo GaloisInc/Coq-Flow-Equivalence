@@ -256,7 +256,7 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
           in Hstep
           by auto.
       step_inversion_clean.
-      clear Hin. clear Hdec.
+      clear Hdec.
 
       (* Know: H : Bit0 = σ0 clk = Bit1 *)
       contradict H. rewrite_state_equiv; try solve_in_dom.
@@ -268,7 +268,7 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
           in Hstep
           by auto.
       step_inversion_clean.
-      clear Hin. clear Hdec. 
+      clear Hdec. 
       combine_state_equiv_on_complex; try (simpl; solve_space_set).
 
       contradict H. rewrite_state_equiv; try solve_in_dom.
@@ -282,7 +282,7 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
       step_inversion_clean.
       combine_state_equiv_on_complex; try (simpl; solve_space_set).
 
-      clear Hin. clear Hdec. 
+      clear Hdec. 
 
       contradict H1.
       rewrite_state_equiv; try solve_in_dom.
@@ -296,7 +296,7 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
       step_inversion_clean.
       combine_state_equiv_on_complex; try (simpl; solve_space_set).
 
-      clear Hin. clear Hdec. 
+      clear Hdec. 
 
       contradict H1.
       rewrite_state_equiv; try solve_in_dom.

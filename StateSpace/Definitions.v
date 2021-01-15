@@ -204,13 +204,14 @@ Section FuncStateSpace.
                       Prop :=
   | func_input_stable i (pf_i : i ∈ from_list I) v σ' :
     func_stable σ ->
-(*    σ i <> v -> *) (* Question: what happens if an event occurs that doesn't change the value of the variable? Is it allowed? Is it a no-op? *)
+    σ i <> v -> (* Question: what happens if an event occurs that doesn't change the value of the variable? Is it allowed? Is it a no-op? *)
     state_equiv_on (from_list I ∪ singleton x) (Some (update σ i v)) (Some σ') ->
     func_step σ (Some (Event i v))
                 (Some σ')
 
   | func_input_unstable i (pf_i : i ∈ from_list I) v σ' :
     ~ (func_stable σ) ->
+    σ i <> v ->
 (*    ~ (func_stable (update σ i v)) -> (* in a binary system, this is ok *)*)
     f σ = f (update σ i v) -> (* ok to update input in an unstable system if the output doesn't change *)
     state_equiv_on (from_list I ∪ singleton x) (Some (update σ i v))  (Some σ') ->
@@ -220,7 +221,7 @@ Section FuncStateSpace.
   (* if input updates in an unstable system causes output to change, go to error state*)
   | func_err i (pf_i : i ∈ from_list I) v :
     ~ (func_stable σ) ->
-    f σ <> f (update σ i v) -> 
+    f σ <> f (update σ i v) \/ σ i = v -> 
     func_step σ (Some (Event i v)) None
 
   | func_output v σ' :

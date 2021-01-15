@@ -121,7 +121,7 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
       in    Hstep
       by    auto.
     step_inversion_clean.
-    clear Hin. clear Hdec.
+    clear Hdec.
     combine_state_equiv_on_complex. { simpl; solve_space_set. }
     
 
@@ -151,7 +151,7 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
       by    auto.
 
     step_inversion_clean.
-    clear Hin.
+    clear Hdec.
     combine_state_equiv_on_complex. { simpl; solve_space_set. }
 
     assert (Hclk : σ (latch_clk l) = Bit0).
@@ -193,7 +193,7 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
       in    Hstep
       by    auto.
     step_inversion_clean.
-    clear Hin. clear Hdec.
+    clear Hdec.
     combine_state_equiv_on_complex.
     { simpl; solve_space_set. }
 

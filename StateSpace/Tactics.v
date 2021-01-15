@@ -268,7 +268,7 @@ Lemma func_space_inversion : forall I o f σ e σ',
   | None => False
   | Some (Event y v) => state_equiv_on (from_list I ∪ singleton o) (Some (update σ y v)) (Some σ')
                     /\ (y = o -> (v = f σ /\ f σ <> σ o))
-                    /\ (y ∈ from_list I -> f σ = σ o \/ f σ = f (update σ y v))
+                    /\ (y ∈ from_list I -> v <> σ y /\ (f σ = σ o \/ f σ = f (update σ y v)))
   end.
 Proof.
   intros ? ? ? ? ? ? Hwf Hstep.
