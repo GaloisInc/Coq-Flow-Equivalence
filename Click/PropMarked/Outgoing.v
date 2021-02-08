@@ -199,7 +199,7 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
          Hunstable : σ state0 <> σ r_req
       *)
       (* Since the flop is unstable on clk+, it must be the case that
-         latch_clk_function σ = Bit1 [ BUT WHY?]
+         latch_clk_function σ = Bit1 [ because of invariant ]
        Therefore, it must be the case that 
          σ (ack (latch_output l)) = σ (latch_state0 l)
        from latch_clk_function_Bit1_r_ack.
@@ -210,27 +210,33 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
        which is a contradiction.
       *)
 
+
+      assert (Hfun : latch_clk_function l σ = Bit1).
+      { apply wf_clk_1; auto.
+        { rewrite <- H (* σ0 clk *).
+          rewrite_state_equiv; try solve_in_dom.
+          simpl. auto.
+        }
+        { rewrite <- H0 (* σ0 old_clk *).
+          rewrite_state_equiv; try solve_in_dom.
+          simpl. auto.
+        }
+      }
       assert (Hin' : σ (req (latch_output l)) = σ (ack (latch_output l))).
       { destruct Hin as [Hin | Hin]; auto.
+        unfold update in Hin. reduce_eqb.
         contradict Hin.
-        unfold update. reduce_eqb.
         apply bit_neq_neg_r; try solve_val_is_bit.
       }
       clear Hin.
 
-      assert (Hfun : latch_clk_function l σ = Bit1).
-      { (* Some invariant about the fact that σ clk = Bit1 and σ old_clk =
-      Bit0.... Or maybe add to prop_marked... *)
-        admit.
-      }
-      apply latch_clk_function_Bit1_r_ack in Hfun; auto.
-      assert (Hunstable' : σ (ack (latch_output l)) = neg_value (σ (req (latch_output l)))).
-      { rewrite Hfun.
-        symmetry in Heq. apply val_is_bit_neg_inversion in Heq; try solve_val_is_bit.
-        simpl. rewrite <- Heq.
-        rewrite val_is_bit_neg_neg; try solve_val_is_bit.
-      }
-      apply wf_right_env in Hunstable'; auto; find_contradiction.
+      apply latch_clk_function_Bit1_iff in Hfun; auto.
+      destruct Hfun as [Hreq Hack].
+      contradict Hunstable.
+      simpl in *.
+      rewrite Hin'.
+      rewrite Hack.
+      reflexivity.
 
     * (* t = right_req (2) *)
       replace (latch_transition_event l right_req σ)
