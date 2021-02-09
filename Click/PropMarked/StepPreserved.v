@@ -194,42 +194,18 @@ Section disjoint_place_marked.
         auto.
       }
 
-      compare (σ (latch_clk l)) (σ (latch_old_clk l)).
-      2:{ apply clk_fall_left_ack_state0_marked.
-          { rewrite <- Hclk; auto. }
-          { apply val_is_bit_neq in Hneq0; try solve_val_is_bit.
-            rewrite <- Hneq0.
-            rewrite <- Hclk.
-            rewrite H.
-            auto.
-          }
-      }
-      { (* if these are equal, then... *)
-        apply clk_fall_left_ack_marked.
-        { rewrite <- Hclk; auto. }
-        { rewrite <- (transition_preserves_state0 l σ σ0 t); auto.
-          rewrite <- Hack; auto.
-        }
-      }
+      assert (Hstate0 : σ0 (latch_state0 l) = σ (latch_state0 l)).
+      { eapply transition_preserves_state0; eauto. }
 
-    * compare t clk_rise.
-      { (* if the clk+ event happens, contradiction iwth (σ (latch_clk l) = Bit0) *)
-        contradict H.
-        replace (latch_transition_event l clk_rise σ) with (Event (latch_clk l) Bit1) in Hstep
-          by auto.
-        rewrite (wf_update _ (latch_stage_well_formed l) _ _ _ _ Hstep); inversion 1.
-      }
-
-      assert (Hclk : σ0 (latch_clk l) = σ (latch_clk l)).
-      { rewrite_back_wf_scoped; try distinguish_events.
-        auto.
-      }
-
-      apply clk_fall_left_ack_state0_marked.
+      apply clk_fall_left_ack_marked; auto.
       { rewrite <- Hclk; auto. }
-      { erewrite <- transition_preserves_old_clk; eauto. }
+      { rewrite <- Hack.
+        rewrite H0 (* σ0 lack *).
+        rewrite Hstate0.
+        reflexivity.
+      }
 
-    Unshelve. all: apply latch_stage_well_formed.
+    Unshelve. all: auto. 
   Qed.
 
   Lemma disjoint_place_marked_clk_rise_right_req : disjoint_place_marked_lemma clk_rise_right_req.
@@ -648,23 +624,19 @@ End disjoint_place_marked.
       assert (Hack : σ (ack (latch_input l)) = σ0 (ack (latch_input l))).
       { rewrite_back_wf_scoped; auto. }
 
-      assert (Hstate0 : σ (latch_state0 l) = σ0 (latch_state0 l) -> prop_marked l clk_fall_left_ack σ).
-      { intros Hstate0.
-        apply clk_fall_left_ack_marked; auto.
-        rewrite Hack. rewrite Hstate0. auto.
+      assert (Hstate0 : σ (latch_state0 l) = σ0 (latch_state0 l)).
+      { apply step_implies_stage_eps in Hstep; auto.
+        inversion Hstep; auto;
+          find_contradiction;
+          rewrite_state_equiv; try solve_in_dom; simpl; auto.
       }
-      assert (Hold_clk : σ (latch_old_clk l) = Bit1 ->
-                        prop_marked l clk_fall_left_ack σ).
-      { intros Hold_clk.
-        apply clk_fall_left_ack_state0_marked; auto.
-      }
+      apply clk_fall_left_ack_marked; auto.
+      rewrite Hack.
+      rewrite H0 (* σ0 lack *).
+      rewrite Hstate0.
+      reflexivity.
 
-      compare (σ (latch_state0 l)) (σ0 (latch_state0 l)); auto.
-      apply stage_eps_decide_state0 in Hstep; auto.
-      destruct Hstep as [Hstep | Hstep]; auto.
-      { find_contradiction. }
-
-    * (* clk_fall_left_ack *)
+(*    * (* clk_fall_left_ack *)
       assert (Hclk : σ (latch_clk l) = Bit0) by (rewrite_back_wf_scoped; auto).
 
       apply clk_fall_left_ack_state0_marked; auto.
@@ -678,7 +650,7 @@ End disjoint_place_marked.
         rewrite <- H3. 2:{ solve_in_dom. }
         unfold update.
         rewrite <- H2. rewrite Hclk. simpl. inversion 1.
-
+*)
 
     * assert (Hclk : σ (latch_clk l) = Bit1).
       { rewrite_back_wf_scoped; auto. }
@@ -698,7 +670,8 @@ End disjoint_place_marked.
         2:{ solve_in_dom. }
         rewrite <- H2, Hclk. simpl. inversion 1.
 
-    * assert (Hclk : σ (req (latch_output l)) = σ0 (req (latch_output l))).
+    * (* clk_rise_right_req *)
+      assert (Hclk : σ (req (latch_output l)) = σ0 (req (latch_output l))).
       { rewrite_back_wf_scoped; auto. }
 
       apply step_implies_stage_eps in Hstep; auto.
@@ -817,7 +790,8 @@ End disjoint_place_marked.
         rewrite <- H2.
         apply step_implies_stage_eps in Hstep; auto.
         inversion Hstep; subst; find_contradiction; clear Hstep.
-        + admit (*????*).
+        + 
+admit (*????*).
         + contradict Hclk.
           rewrite H1 (* σ0 clk = Bit0 *).
           rewrite H3 (* σ clk = Bit1 *).
@@ -855,7 +829,7 @@ End disjoint_place_marked.
         apply step_implies_stage_eps in Hstep; auto.
         inversion Hstep; subst; find_contradiction; clear Hstep.
         + admit (*????*).
-        +         clear H6 H7 H8 (* extra from step_implies_stage_eps *).
+        + clear H6 H7 H8 (* extra from step_implies_stage_eps *).
           contradict Hclk.
           rewrite H1 (* σ0 clk = Bit0 *).
           rewrite H3 (* σ clk = Bit1 *).

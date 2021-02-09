@@ -94,7 +94,7 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
       destruct l; simpl; [ | apply not_eq_sym ]; apply bit_neq_neg_r; simpl;
         try solve_val_is_bit.
 
-
+(*
    * (* t = left_ack (2) *)
 
      replace (latch_transition_event l left_ack σ)
@@ -184,6 +184,7 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
     this by modifying flop so that clk- events update old_clk automatically??
     *)
     admit.
+*)
 
     * (* t = right_req (1) *)
       replace (latch_transition_event l right_req σ)
@@ -310,6 +311,6 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
 
   Unshelve. all: exact (fun _ => true).
 
-  Admitted.
+  Qed.
 
 End OutgoingPlaceNotMarked.

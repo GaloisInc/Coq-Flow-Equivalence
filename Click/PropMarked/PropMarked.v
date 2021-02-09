@@ -63,10 +63,12 @@ Module Type PropMarkedType.
 (*    σ (req (latch_input l)) = σ (ack (latch_input l)) -> (* left environment is stable *)*)
     prop_marked l clk_fall_left_ack σ
 
+(*
   | clk_fall_left_ack_state0_marked σ :
     σ (latch_clk l) = Bit0 ->
     σ (latch_old_clk l) = Bit1 ->
     prop_marked l clk_fall_left_ack σ
+*)
 
   (* clk+ -> right_req *)
   | clk_rise_right_req_marked σ :
