@@ -40,8 +40,51 @@ Lemma INVARIANT : forall σ l,
             σ (ack (latch_input l)) = if_token l (neg_value (σ (latch_state0 l))) ->
             latch_clk_function l σ = Bit0 ->
             σ (latch_clk l) = Bit0.
-Admitted.
+Admitted. Search latch_clk_function.
+(* Also prove concurrently?
+*)
+Print wf_stage_state.
+About latch_clk_function_Bit0_iff.
+(* Alternatively:
+           σ clk = Bit1 ->
+           latch_clk_function l σ = Bit0 ->
+           σ lack = if_token (σ state0).
+*)
+(* or, maybe:
+    wf_stage_state l σ ->
+    latch_stage_with_env l ⊢ σ →{CLK-} Some σ' ->
+    σ (ack (latch_input l)) = if_token l (σ (latch_state0 l)) (* ie lack is not stable *) 
+(not sure how to prove that)
+*)
+(* Don't add this to wf_stage_state, but define an extra set of constraints e.g. wf_stage_state_extra
+    and ass as an extra hypotheses to the relevant lemmas.
+  Proof (original):
+    σR YES
+    ->{None} If state0 changes: σ clk = Bit1, σ old_clk = Bit0, so latch_clk_function σ = Bit1
+             Then latch_clk_function l σ' = Bit0.
+             But because latch_clk_function σ = Bit1, we know left components are consistent (??)
+             so by wf_left_env: σ lack = if_token (neg_value (σ state0))
+             so                 σ' lack = if_token (σ' state0), so the hypothesis doesn't hold.
 
+    ->{lack} Know σ' clk = σ clk = Bit0 by delay_space
+
+    ->{lreq} (affects latch_clk_function)
+             Know σ' lreq = σ' lack so by wf_left_env: σ' lack = if_token l (neg_value (σ' state0))
+             so σ lack = if_token l (neg_value (σ state0)
+             suppose latch_clk_function l σ' = Bit1
+             and latch_clk_function l σ = Bit0
+             by iff: σ' lreq = if_token l (σ' state0)
+             so      σ lreq  = if_token l (neg_value (σ state0) = σ lack
+             aka left env is stable in σ
+             ????
+             
+
+    ->{rack} (affects latch_clk_function)
+
+    ->{clk+} latch_clk_function l σ' = latch_clk_function l σ = Bit1
+
+    ->{clk-} know σ' clk = Bit0
+*)
 
   Lemma transition_preserves_state0_old_clk : forall l σ σ' t,
     wf_stage_state l σ ->
