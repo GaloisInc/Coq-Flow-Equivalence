@@ -294,26 +294,78 @@ Qed.
         (Some σ').
   Proof.
     intros ? ? ? ? ? ? ? ? ? ? Hset Hreset Hstep.
-    inversion Hstep; subst; auto; clear Hstep.
+    inversion Hstep; subst; auto; clear Hstep;
+      try find_contradiction.
     + contradict H5. simpl. solve_set.
-    + find_contradiction.
-    + find_contradiction.
   Qed.
 
+  Lemma flop_inversion_clk_stable : forall set reset clk old_clk D Q σ v σ',
+    all_disjoint [set;reset;clk;old_clk;D;Q] ->
+    (flop set reset clk old_clk D Q) ⊢ σ →{Some (Event clk v)} Some σ' ->
+    σ set = Bit1 ->
+    σ reset = Bit1 ->
+    σ clk = σ old_clk.
+  Proof.
+    intros ? ? ? ? ? ? ? ? ? Hdisjoint Hstep Hset Hreset.
+    inversion Hstep; try (subst; find_contradiction; fail); auto.
+  Qed.
+
+  Lemma flop_inversion_clk_equiv : forall set reset clk old_clk D Q σ v σ',
+    all_disjoint [set;reset;clk;old_clk;D;Q] ->
+    (flop set reset clk old_clk D Q) ⊢ σ →{Some (Event clk v)} Some σ' ->
+    σ set = Bit1 ->
+    σ reset = Bit1 ->
+    (* equivalent on everything except old_clk *)
+    state_equiv_on (from_list (set::reset::clk::D::Q::nil)) (Some (update σ clk v)) (Some σ').
+  Proof.
+    intros ? ? ? ? ? ? ? ? ? Hdisjoint Hstep Hset Hreset.
+    inversion Hstep; try (subst; find_contradiction; fail); auto.
+    * intros x Hx; unfold update.
+      rewrite_state_equiv.
+      auto.
+    * intros x Hx; unfold update.
+      rewrite_state_equiv; try solve_set.
+      compare old_clk x; auto.
+      { (* if equal *) decompose_set_structure. (* contradiction with all_disjoint *) }
+
+    * intros x Hx; unfold update.
+      rewrite_state_equiv; try solve_set.
+  Qed.
+  Lemma flop_inversion_clk_Bit0 : forall set reset clk old_clk D Q σ σ',
+    all_disjoint [set;reset;clk;old_clk;D;Q] ->
+    (flop set reset clk old_clk D Q) ⊢ σ →{Some (Event clk Bit0)} Some σ' ->
+    σ set = Bit1 ->
+    σ reset = Bit1 ->
+    σ' old_clk = Bit0.
+  Proof.
+    intros ? ? ? ? ? ? ? ? Hdisjoint Hstep Hset Hreset.
+    inversion Hstep; subst; try find_contradiction.
+    * decompose_set_structure. (* contradiction of clk ∈ from_list [set;reset;D] *)
+    * rewrite_state_equiv; try solve_set.
+      reduce_eqb; auto.
+  Qed.
 
   Lemma flop_inversion_clk : forall set reset clk old_clk D Q σ v σ',
     all_disjoint [set;reset;clk;old_clk;D;Q] ->
     (flop set reset clk old_clk D Q) ⊢ σ →{Some (Event clk v)} Some σ' ->
     σ set = Bit1 ->
     σ reset = Bit1 ->
-    state_equiv_on (from_list (set::reset::clk::D::Q::old_clk::nil)) (Some (update σ clk v)) (Some σ')
-    /\ σ clk = σ old_clk.
+    σ clk = σ old_clk /\
+    state_equiv_on (from_list (set::reset::clk::D::Q::old_clk::nil))
+                   (Some (update (update σ clk v) old_clk (if v =? Bit1 then σ old_clk else v)))
+                   (Some σ').
   Proof.
     intros ? ? ? ? ? ? ? ? ? Hdisjoint Hstep Hset Hreset.
-    inversion Hstep; try (subst; find_contradiction; fail).
-    * split; auto.
+    split.
+    * eapply flop_inversion_clk_stable; eauto.
+    * intros x Hx. unfold update.
+      inversion Hstep; subst; try find_contradiction;
+        rewrite_state_equiv; try solve_set.
+      + (* contradiction *) decompose_set_structure.
+      + compare_next; auto.
+      + compare_next; auto.
+        compare_next; auto.
   Qed.
-
 
 Ltac unfold_SS recurse_flag loc_flag S :=
   match S with

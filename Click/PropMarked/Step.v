@@ -131,7 +131,7 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
     }
 
     { apply clock_fall_state0_marked; auto.
-      { (* old_clk *) rewrite <- Hold_clk; auto. }
+      { (* old_clk *) rewrite <- Hstep; auto. }
       intros Hstable; apply func_stable_equiv in Hstable.
       2:{ solve_space_set. }
       contradict Hstable; auto.
@@ -178,7 +178,7 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
       }
       contradict Hreq; auto.
     }
-    { rewrite <- Hold_clk; auto. }
+    { rewrite <- Hstep; auto. }
 
     Unshelve. exact (fun _ => true).
 
@@ -224,7 +224,7 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
         apply bit_neq_neg_r; solve_val_is_bit.
       }
     }
-    { rewrite <- Hold_clk. auto. }
+    { rewrite <- Hstep. auto. }
 
     Unshelve. exact (fun _ => true).
   Qed.

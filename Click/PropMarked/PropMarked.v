@@ -94,10 +94,10 @@ Module Type PropMarkedType.
 
   (* left_req -> clk+ *)
   | left_req_clk_rise_marked σ :
-    σ (req (latch_input l)) = neg_value (σ (ack (latch_input l))) ->
-    σ (req (latch_input l)) = if_token l (σ (latch_state0 l)) ->
-    σ (latch_clk l) = Bit0 ->
-    σ (latch_old_clk l) = Bit0 -> (* need extra info *)
+    σ (req (latch_input l)) = neg_value (σ (ack (latch_input l))) -> (* left component is stable *)
+    σ (req (latch_input l)) = if_token l (σ (latch_state0 l)) -> (* left ack is stable *)
+    σ (latch_clk l) = Bit0 -> (* clk is 0 *)
+(*    σ (latch_old_clk l) = Bit0 -> (* need extra info *) *)
     prop_marked l left_req_clk_rise σ
 
   (* right_ack -> clk+ *)
@@ -139,15 +139,9 @@ Module PropMarkedTactics (Import PropMarked : PropMarkedType).
   Proof.
     intros l σ σ' Hwf Hstep Hstate0.
     apply step_implies_stage_eps in Hstep; auto.
-    inversion Hstep as [ Hclk Hold_clk Hequiv
-                       | v Hclk Hold_clk Hv Hclk_function Hl_ack Hr_req Hnot_state0 Hequiv
+    inversion Hstep as [ v Hclk Hold_clk Hv Hclk_function Hl_ack Hr_req Hnot_state0 Hequiv
                        | Hnot_state0 Hclk Hequiv
                        ]; subst; clear Hstep.
-
-    * left.
-      apply val_is_bit_neq in Hold_clk; try solve_val_is_bit.
-      rewrite <- Hold_clk.
-      apply val_is_bit_neq in Hclk; try solve_val_is_bit.
 
     * right; auto.
 

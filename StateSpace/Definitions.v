@@ -668,18 +668,35 @@ Section Flop.
                       option (event name value) ->
                       option (state name) ->
                       Prop :=
+    (* Flops treat clk inputs different than other inputs. Flop_input only
+      covers set, reset, and D inputs. This is because clk- operations should *)
+
     (* an input is allowed when, either (1) the flip-flop is stable aka any
     possible clock changes have been registered; or (2) when the input would not
     actually be observable on the outputs of the circuit. *)
     (* Note: I am modifying condition 2 because, for clocks, that would enable
     the clocks to get out of sync. *)
   | Flop_input i v σ' :
-(*    flop_stable σ \/ Q_output σ = Q_output (update σ i v) -> *)
     σ clk = σ old_clk ->
     (σ Q = Q_output σ \/ Q_output σ = Q_output (update σ i v)) ->
-    i ∈ flop_input ->
+    i ∈ from_list [set;reset;D] ->
     state_equiv_on (from_list [set;reset;clk;D;Q;old_clk]) (Some (update σ i v)) (Some σ') ->
     flop_step σ (Some (Event i v)) (Some σ')
+
+  | Flop_input_clk_fall v σ' :
+    σ clk = σ old_clk ->
+    state_equiv_on (from_list [set;reset;clk;D;Q;old_clk]) (Some (update (update σ clk v)
+                                                                     old_clk v))
+                                                       (Some σ') ->
+    v <> Bit1 ->
+    flop_step σ (Some (Event clk v)) (Some σ')
+
+  | Flop_input_clk_rise σ' :
+    σ clk = σ old_clk ->
+    state_equiv_on (from_list [set;reset;clk;D;Q;old_clk])
+                   (Some (update σ clk Bit1))
+                   (Some σ') ->
+    flop_step σ (Some (Event clk Bit1)) (Some σ')
 
     (* other inputs lead to the error state *)
   | Flop_input_err_clk i v :
@@ -707,6 +724,7 @@ Section Flop.
     state_equiv_on (from_list [set;reset;clk;D;Q;old_clk]) (Some (update σ Q (Num 0))) (Some σ') ->
     flop_step σ (Some (Event Q (Num 0))) (Some σ')
 
+(*
     (* if the clock has fallen (i.e. input changed and clk is no longer 1), do
     nothing to the outputs, but propogate thd change to the old_clk. *)
   | Flop_clk_fall σ' :
@@ -716,6 +734,7 @@ Section Flop.
                                                            (Some σ')
                                                             ->
     flop_step σ None (Some σ')
+*)
 
     (* if the clock has risen (i.e. input changed and clk is now equal to 1),
     update Q and old_clk to their proper values. The result will now be stable *)
@@ -755,6 +774,7 @@ Section Flop.
         decompose_set_structure.
       + intros ? ? ? ? Hstep.
         inversion Hstep; try subst; try solve_set.
+        decompose_set_structure; try solve_set.
       + intros ? ? ? Hstep y Hy H_not_internal.
         decompose_set_structure;
         inversion Hstep; try subst;
@@ -769,6 +789,15 @@ Section Flop.
       inversion Hstep; try subst; unfold update; reduce_eqb; auto.
       ++ unfold flop_input in *. rewrite_state_equiv_on. 
          unfold update. reduce_eqb; auto.
+      ++ rewrite_state_equiv_on; auto.
+         unfold update.
+         rewrite <- H (* clk = x *).
+         reduce_eqb.
+         compare_next; auto.
+      ++ rewrite_state_equiv_on; auto.
+         unfold update.
+         reduce_eqb.
+         reflexivity.
       ++ rewrite_state_equiv_on.
          unfold update.
          reduce_eqb; auto.
@@ -787,9 +816,10 @@ Section Flop.
     val_is_bit v.
   Proof.
     intros ? ? ? ? Hstep.
-    inversion Hstep as [? ? ? ? ? Hi | | | | | |]; subst;
+    inversion Hstep as [? ? ? ? ? Hi | | | | | | |]; try subst;
       auto; try constructor.
     * contradict Hi. unfold flop_input. solve_set.
+    * find_contradiction.
   Qed.
 
 
@@ -801,7 +831,7 @@ Section Flop.
     val_is_bit (σ' old_clk).
   Proof.
     intros ? ? ? ? ? Hstep ? ?.
-    inversion Hstep as [? ? ? ? ? Hi | | | | | |]; try subst; unfold update;
+    inversion Hstep as [? ? ? ? ? Hi | | | | | | |]; try subst; unfold update;
       try match goal with
       | [ H : state_equiv_on _ _ (Some ?σ') |- _ ] =>
         rewrite <- H; [try unfold update; repeat (compare_next; auto) | solve_set]
@@ -820,6 +850,12 @@ Section Flop.
       destruct Hstep;
         try contradiction;
         try (constructor; auto; fail).
+      + constructor. simpl. unfold flop_input.
+        decompose_set_structure; try solve_set.
+      + constructor. simpl. unfold flop_input.
+        solve_set.
+      + constructor. simpl. unfold flop_input.
+        solve_set.
       + absurd (σ Q = Num 1); auto.
         destruct Hstable as [Hstable _].
         rewrite Hstable; unfold Q_output.
@@ -828,8 +864,6 @@ Section Flop.
         destruct Hstable as [Hstable _].
         rewrite Hstable; unfold Q_output.
         rewrite H, H0; auto.
-      + absurd (σ clk = σ old_clk); auto.
-        destruct Hstable as [_ Hstable]; auto.
       + absurd (σ clk = σ old_clk); try congruence.
         destruct Hstable as [_ Hstable]; auto.
   Qed.
