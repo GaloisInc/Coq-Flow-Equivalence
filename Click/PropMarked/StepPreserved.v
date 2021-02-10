@@ -540,7 +540,10 @@ Section disjoint_place_marked.
             latch_clk_function l σ = Bit0 ->
             σ (latch_clk l) = Bit0
     *)
-      
+                 
+     assert (Hclk0 : σ (latch_clk l) = Bit0).
+     { compare (σ (latch_clk l)) Bit1
+
      contradict Hclk.
      rewrite INVARIANT; auto.
      inversion 1.
@@ -563,10 +566,10 @@ Section disjoint_place_marked.
   Proof.
     intros Ht1 Ht2 Hmarked.
     dependent destruction Hmarked.
-    rename H into H0_right_env (* σ0 rack = σ0 rreq *).
-    rename H0 into H0_right_ack (* σ0 rack = σ0 state0 *).
-    rename H1 into H0_clk (* σ0 clk = Bit0 *).
-    rename H2 into H0_old_clk (* σ0 old_clk = Bit0 *).
+    rename H0 into H0_right_env (* σ0 rack = σ0 rreq *).
+    rename H into H0_right_ack (* σ0 rack = σ0 state0 *).
+    rename H1 into H0_fun (* clk_function σ0 = Bit1 -> σ0 clk = Bit0 *).
+
     assert (Hstate0 : σ0 (latch_state0 l) = σ (latch_state0 l)).
     { eapply transition_preserves_state0; eauto. }
 
@@ -632,23 +635,61 @@ Section disjoint_place_marked.
       symmetry in Heq.
       constructor.
       (* WHAT if this instance of prop_marked ONLY required latch_clk_function = bit0 and not also that clk = Bit0? *)
-      { rewrite <- Hrreq. rewrite <- Hrack. auto. }
       { rewrite <- Hrack. rewrite <- Hstate0. auto. }
-      { admit. }
-      { admit. }
+      { rewrite <- Hrreq. rewrite <- Hrack. auto. }
+      { intros; find_contradiction. }
     }
-      
+
+
+
 
     constructor.
-    { rewrite <- Hrreq. rewrite <- Hrack. auto. }
     { rewrite <- Hrack. rewrite <- Hstate0. auto. }
-    { rewrite_back_wf_scoped; auto; try distinguish_events. }
-    { erewrite <- transition_preserves_old_clk; eauto. }
+    { rewrite <- Hrreq. rewrite <- Hrack. auto. }
+    { intros Hfun.
+      apply latch_clk_function_Bit1_iff in Hfun; auto.
+      destruct Hfun as [Hlreq' Hrack'].
+
+      compare t left_req.
+      { (* if t = left_req, then this would contradict some things... *)
+        replace (latch_transition_event l left_req σ)
+          with  (Event (req (latch_input l)) (neg_value (σ (req (latch_input l)))))
+          in    Hstep
+          by    auto.
+        step_inversion_clean.
+        clear Hstep.
+
+        (* Heq : σ lreq = σ lack *)
+        (* wf_left_env: σ lack = if_token (neg_value (σ state0)) *)
+        (* Hlreq' : σ lreq = if_token l (σ state0) *)
+
+        assert (Henv : σ (ack (latch_input l)) = σ (req (latch_input l))).
+        { Search (neg_value _ = neg_value _).
+          apply neg_value_inj; auto; try solve_val_is_bit.
+        }
+        contradict Hlreq'.
+        rewrite <- Henv.
+        rewrite wf_left_env; auto.
+        rewrite <- neg_value_if_token.
+        Search (neg_value _ <> _).
+        apply bit_neq_neg_l. destruct l; simpl; try solve_val_is_bit.
+      }
+
+
+      rewrite_back_wf_scoped; auto; try distinguish_events. 
+      apply H0_fun.
+      apply latch_clk_function_Bit1_iff; auto.
+      { eapply step_wf_state_lemma; eauto. }
+      split; auto.
+      erewrite transition_preserves_state0; eauto.
+      rewrite <- Hlreq'.
+      rewrite_back_wf_scoped; auto; try distinguish_events.
+    }
 
   Unshelve.
     all: try solve_wf.
     all: exact (fun _ => true).
-  Admitted.
+  Qed.
 
 End disjoint_place_marked.
   
@@ -893,24 +934,59 @@ End disjoint_place_marked.
       { apply step_implies_stage_eps in Hstep; auto.
         inversion Hstep; subst; find_contradiction; clear Hstep.
 (*        + rewrite_state_equiv; auto; try solve_in_dom.*)
-        + contradict H1 (* σ0 clk = Bit0 *).
+        + (* Hclk : σ clk = Bit1 *)
+          (* H5+Hclk : latch_clk_function l σ = Bit1 *)
+          (* latch_clk_function_Bit1_iff : σ rack = σ state0 *)
+          (* H7 : σ rreq = σ state0 *)
+          (* H7+ : σ rack = σ rreq *)
+          (* H0 : σ0 rack = σ0 rreq *)
+          (* H : σ rack = σ0 rack = σ0 state0 = neg_value (σ state0) *)
+          contradict H.
           rewrite_state_equiv; auto; try solve_in_dom.
           simpl.
-          simpl in H3 (* σ clk = Bit1 *).
-          rewrite H3; inversion 1.
+          rewrite_state_equiv; auto; try solve_in_dom.
+          simpl. reduce_eqb.
+          assert (Hrenv : σ (ack (latch_output l)) = σ (req (latch_output l))).
+          { rewrite H7.
+            apply latch_clk_function_Bit1_r_ack; auto.
+            rewrite <- H5; auto.
+          }
+          simpl in Hrenv. rewrite Hrenv.
+          simpl in H7. rewrite H7.
+          auto.
+
+
         + rewrite_state_equiv; auto; try solve_in_dom.
       }
 
+      assert (Hclk_function : latch_clk_function l σ = latch_clk_function l σ0).
+      { apply latch_clk_function_equiv.
+        intros x Hx.
+        decompose_set_structure.
+        + (* ctrl_reset_n *)
+Print wf_stage_state.
+          erewrite wf_ctrl_reset_n; eauto.
+          erewrite wf_ctrl_reset_n; eauto.
+          eapply step_wf_state_eps; eauto.
+        + rewrite_back_wf_scoped; try distinguish_events.
+          auto.
+        + rewrite_back_wf_scoped; try distinguish_events.
+          auto.
+      }        
+
       apply right_ack_clk_rise_marked.
-      { rewrite_back_wf_scoped. rewrite_back_wf_scoped. auto. }
       { rewrite_back_wf_scoped; auto.
-        rewrite H0.
+        rewrite H (* σ0 rack = σ0 state0 *).
         rewrite Hstate0; auto.
       }
-      { rewrite Hclk. auto. }
-      { admit (* true *). }
+      { rewrite_back_wf_scoped. rewrite_back_wf_scoped. auto. }
+      { intros Hfun.
+        rewrite Hclk.
+        apply H1 (* latch_clk_function σ0 = Bit1 -> σ0 clk = Bit0 *).
+        rewrite <- Hclk_function; auto.
+      }
 
   Unshelve. all:auto.
-  Admitted.
+  Qed.
 
 End StepPreservation.

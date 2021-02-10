@@ -223,7 +223,6 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
         apply bit_neq_neg_r; solve_val_is_bit.
       }
     }
-    { rewrite <- Hstep. auto. }
 
     Unshelve. exact (fun _ => true).
   Qed.

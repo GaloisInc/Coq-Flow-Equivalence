@@ -96,17 +96,15 @@ Module Type PropMarkedType.
   | left_req_clk_rise_marked σ :
     σ (req (latch_input l)) = neg_value (σ (ack (latch_input l))) -> (* left component is stable *)
     σ (req (latch_input l)) = if_token l (σ (latch_state0 l)) -> (* left ack is stable *)
-    σ (latch_clk l) = Bit0 -> (* clk is 0 *)
+    σ (latch_clk l) = Bit0 -> (* clk is 0 since we have to wait for the delayy*)
 (*    σ (latch_old_clk l) = Bit0 -> (* need extra info *) *)
     prop_marked l left_req_clk_rise σ
 
   (* right_ack -> clk+ *)
   | right_ack_clk_rise_marked σ :
-    σ (ack (latch_output l)) = σ (req (latch_output l)) ->
-    (* latch_clk_function l σ = Bit1 -> *)
     σ (ack (latch_output l)) = σ (latch_state0 l) ->
-    σ (latch_clk l) = Bit0 ->
-(*    σ (latch_old_clk l) = Bit0 -> (* need extra info *)*)
+    σ (ack (latch_output l)) = σ (req (latch_output l)) ->
+    (latch_clk_function l σ = Bit1 -> σ (latch_clk l) = Bit0) ->
     prop_marked l right_ack_clk_rise σ
   .
 

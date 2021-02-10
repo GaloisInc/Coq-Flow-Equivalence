@@ -305,9 +305,15 @@ Module OutgoingPlaceNotMarked (Import PropMarked : PropMarkedType).
 
       clear Hdec. 
 
-      contradict H1.
-      rewrite_state_equiv; try solve_in_dom.
-      reduce_eqb; inversion 1.
+      absurd (σ0 (latch_clk l) = Bit0).
+      { rewrite_state_equiv; try solve_in_dom.
+        simpl. reduce_eqb.
+      }
+      { apply H1. (* latch_clk_function σ0 = Bit1 -> σ0 clk = Bit0 *)
+        rewrite (latch_clk_function_equiv σ); auto.
+        intros x Hx.
+        rewrite_state_equiv; try (simpl; solve_space_set); auto.
+      }
 
   Unshelve. all: exact (fun _ => true).
 
