@@ -178,7 +178,6 @@ Module StepImpliesPropMarked (Import PropMarked : PropMarkedType).
       }
       contradict Hreq; auto.
     }
-    { rewrite <- Hstep; auto. }
 
     Unshelve. exact (fun _ => true).
 

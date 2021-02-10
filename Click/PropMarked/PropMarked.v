@@ -106,7 +106,7 @@ Module Type PropMarkedType.
     (* latch_clk_function l σ = Bit1 -> *)
     σ (ack (latch_output l)) = σ (latch_state0 l) ->
     σ (latch_clk l) = Bit0 ->
-    σ (latch_old_clk l) = Bit0 -> (* need extra info *)
+(*    σ (latch_old_clk l) = Bit0 -> (* need extra info *)*)
     prop_marked l right_ack_clk_rise σ
   .
 

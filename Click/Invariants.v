@@ -160,11 +160,12 @@ Module WFStage (Export ClickModule : ClickType).
       σ (latch_old_clk l) = Bit0 ->
       latch_clk_function l σ = Bit1
 
-
+(*
     ; wf_left_ack_clk :
       σ (ack (latch_input l)) = if_token l (neg_value (σ (latch_state0 l))) ->
       latch_clk_function l σ = Bit0 ->
       σ (latch_clk l) = Bit0
+*)
 
     }.
 
@@ -1239,11 +1240,13 @@ Qed.
       unfold σR. simpl. reduce_eqb. destruct l; auto.
     * unfold σR. simpl.
       reduce_eqb.
-
-    * intros Hstable Hfun.
+(*
+    * (*wf_left_ack_clk *)
+      intros Hstable Hfun.
       unfold σR. simpl.
       reduce_eqb.
       auto.
+*)
   Qed.
 (*
   Lemma σR_wf_stable : forall l,
@@ -1464,7 +1467,7 @@ Qed.
       destruct Hfn1 as [Hfn11 Hfn12].
     admit (*???*).
     
-  Qed.
+  Abort.
 
 
 
@@ -1660,7 +1663,7 @@ Qed.
         destruct l; unfold if_token; simpl;
           rewrite val_is_bit_neg_neg; try solve_val_is_bit.
 
-      + (* wf_left_ack_clk *)
+(*      + (* wf_left_ack_clk *)
         repeat (rewrite_state_equiv; try solve_in_dom). simpl.
         intros Hstable Hfun.
         Print wf_stage_state.
@@ -1679,6 +1682,7 @@ Qed.
           rewrite neg_value_if_token.
           rewrite val_is_bit_neg_neg; try solve_val_is_bit.
         }
+*)
         
 
     Unshelve. exact (fun _ => true).
@@ -1770,11 +1774,12 @@ Qed.
           contradict Hx. solve_space_set.
         }
 
-      + (* left_ack_clk *)
+(*      + (* wf_left_ack_clk *)
         repeat (rewrite_state_equiv; try solve_in_dom). simpl.
         reduce_eqb.
         destruct Hguard as [Hguard _].
         auto.
+*)
 
     Unshelve.
     exact (fun _ => true).
@@ -1838,7 +1843,7 @@ Qed.
           contradict Hx. solve_space_set.
         }
 
-      + (* left_ack_clk *)
+(*      + (* wf_left_ack_clk *)
         repeat (rewrite_state_equiv; try solve_in_dom). simpl.
         replace (latch_clk_function l σ') with (latch_clk_function l σ).
         2:{ apply latch_clk_function_equiv.
@@ -1848,7 +1853,7 @@ Qed.
             decompose_set_structure.
         }
         apply wf_left_ack_clk; auto.
-        
+*)
 
     Unshelve. exact (fun _ => true).
     Qed.
@@ -1941,7 +1946,7 @@ Qed.
         simpl in H_right_env. rewrite H_right_env.
         reflexivity.
 
-      + (* left_ack_clk *)
+(*      + (* wf_left_ack_clk *)
         repeat (rewrite_state_equiv; try solve_in_dom). simpl.
         intros Hlack Hfun.
         Print wf_stage_state.
@@ -1976,7 +1981,7 @@ Print wf_stage_state.
             decompose_set_structure.
         }
         apply wf_left_ack_clk; auto.
-
+*)
 
     Unshelve. exact (fun _ => true).
     Qed.
