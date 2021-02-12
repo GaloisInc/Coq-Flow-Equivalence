@@ -20,11 +20,9 @@ Import EnsembleNotation.
 Open Scope ensemble_scope.
 Require Import Coq.Program.Equality.
 
-Module ClickMG (ClickModule : ClickType).
-  Export ClickModule.
-  Module Desync := Desync(ClickModule).
-  Export Desync.
-  Module WFClick := WFStage(ClickModule).
+Module ClickMG (ClickInvariant : ClickInvariant).
+  Export ClickInvariant.
+  Module WFClick := WFStage(ClickInvariant).
   Export WFClick.
   Module SSTactics := StateSpaceTactics(Name).
   Export SSTactics.

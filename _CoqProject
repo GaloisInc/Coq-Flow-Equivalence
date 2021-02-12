@@ -15,6 +15,7 @@ StateSpace/RelateTrace.v
 StateSpace.v
 Click/Definitions.v
 Click/Invariants.v
+Click/ExtraInvariants.v
 Click/MG.v
 Click/MGProofs.v
 Click/PropMarked/PropMarked.v

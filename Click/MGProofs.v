@@ -280,6 +280,12 @@ Hint Resolve latch_clk_function_is_bit : wf.
         destruct Hrelate as [tr Hsteps].
         eapply step_wf_state; eauto.
       }
+      assert (Hwf' : Invariants.wf_lack_clk_Bit0 l σ).
+      { apply state_relate_marking_steps in Hrelate.
+        destruct Hrelate as [tr Hsteps].
+        unfold Invariants.wf_lack_clk_Bit0.
+        eapply Invariants.wf_lack_clk_Bit0_steps; eauto.
+      }
 
       unfold is_enabled in Henabled.
       rewrite Hm'.

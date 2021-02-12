@@ -6,13 +6,51 @@ Require Import Monad.
 Require Import Coq.Program.Equality.
 
 
-Module WFStage (Export ClickModule : ClickType).
-  Export click.
 
+Module Type ClickInvariant.
+  Declare Module ClickModule : ClickType.
+  Export ClickModule.
+  Export click.
   Module Desync := Desync(ClickModule).
   Export Desync.
 
-  Hint Constructors val_is_bit : click.
+
+  Hint Constructors val_is_bit : click.  
+
+
+
+  Definition if_token (l : latch even odd) (v : value) :=
+    match latch_to_token_flag l with
+    | NonToken => neg_value v
+    | Token => v
+    end.
+
+
+  Record wf_stage_state (l : latch even odd) (σ : state name) : Prop :=
+    { wf_all_bits : forall x, x ∈ space_domain (latch_stage_with_env l) -> val_is_bit (σ x)
+    ; wf_ctrl_reset_n : σ ctrl_reset_n = Bit1
+    ; wf_dp_reset_n : σ dp_reset_n = Bit1
+    ; wf_hidden : σ (latch_hidden l) = Bit1
+
+    ; wf_left_env :
+      σ (ack (latch_input l)) = σ (req (latch_input l)) ->
+      σ (ack (latch_input l)) = if_token l (neg_value (σ (latch_state0 l)))
+
+    ; wf_right_env :
+     σ (ack (latch_output l)) = neg_value (σ (req (latch_output l))) ->
+     σ (req (latch_output l)) = σ (latch_state0 l)
+
+    ; wf_clk_1 :
+      σ (latch_clk l) = Bit1 ->
+      σ (latch_old_clk l) = Bit0 ->
+      latch_clk_function l σ = Bit1
+
+
+    }.
+End ClickInvariant.
+
+
+Module WFStage (Export ClickInvariant : ClickInvariant).
 
 
   (***************************************************************************
@@ -105,69 +143,6 @@ Module WFStage (Export ClickModule : ClickType).
   ****************************************************************************)
 
 
-  Definition if_token (l : latch even odd) (v : value) :=
-    match latch_to_token_flag l with
-    | NonToken => neg_value v
-    | Token => v
-    end.
-
-
-  Record wf_stage_state (l : latch even odd) (σ : state name) : Prop :=
-    { wf_all_bits : forall x, x ∈ space_domain (latch_stage_with_env l) -> val_is_bit (σ x)
-    ; wf_ctrl_reset_n : σ ctrl_reset_n = Bit1
-    ; wf_dp_reset_n : σ dp_reset_n = Bit1
-    ; wf_hidden : σ (latch_hidden l) = Bit1
-
-(*
-    ; wf_clk_stable   : σ (latch_state0 l) = σ (latch_not_state0 l) ->
-                        σ (latch_clk l) = Bit1 ->
-                        σ (latch_old_clk l) = Bit1
-    ; wf_clk_unstable :
-      latch_clk_function l σ = Bit1 ->
-      σ (latch_clk l) = Bit0 ->
-      σ (latch_state0 l) = neg_value (σ (latch_not_state0 l))
-    ; left_env_component_unstable :
-      σ (req (latch_input l)) = σ (ack (latch_input l)) ->
-      σ (latch_state0 l) = neg_value (σ (latch_not_state0 l))
-
-    ; left_component_stable :
-      σ (req (latch_input l)) = if_token l (σ (latch_state0 l)) ->
-      σ (latch_state0 l) = neg_value (σ (latch_not_state0 l))
-
-    ; wf_clk_fn_stable :
-      σ (latch_clk l) <> σ (latch_old_clk l) ->
-      latch_clk_function l σ = σ (latch_clk l)
-*)
-
-    ; wf_left_env :
-    (*
-      ~ (stable (left_env_component l) σ) ->
-      stable (latch_left_ack_component l) σ
-    *)
-      σ (ack (latch_input l)) = σ (req (latch_input l)) ->
-      σ (ack (latch_input l)) = if_token l (neg_value (σ (latch_state0 l)))
-
-    ; wf_right_env :
-    (* 
-      ~ stable (right_env_component l) σ ->
-      stable (latch_right_req_component l) σ
-    *)
-     σ (ack (latch_output l)) = neg_value (σ (req (latch_output l))) ->
-     σ (req (latch_output l)) = σ (latch_state0 l)
-
-    ; wf_clk_1 :
-      σ (latch_clk l) = Bit1 ->
-      σ (latch_old_clk l) = Bit0 ->
-      latch_clk_function l σ = Bit1
-
-(*
-    ; wf_left_ack_clk :
-      σ (ack (latch_input l)) = if_token l (neg_value (σ (latch_state0 l))) ->
-      latch_clk_function l σ = Bit0 ->
-      σ (latch_clk l) = Bit0
-*)
-
-    }.
 
 
 
@@ -1398,8 +1373,7 @@ Qed.
       { apply latch_clk_function_Bit1_iff; auto. }
       find_contradiction.
     * compare (latch_clk_function l σ) Bit1.
-      2:{ Search (_ <> _) neg_value.
-          apply not_eq_sym in Hneq. apply val_is_bit_neq in Hneq; try solve_val_is_bit.
+      2:{ apply not_eq_sym in Hneq. apply val_is_bit_neq in Hneq; try solve_val_is_bit.
       }
       apply latch_clk_function_Bit1_iff in Heq; auto.
       destruct Heq as [Heq1 Heq2].

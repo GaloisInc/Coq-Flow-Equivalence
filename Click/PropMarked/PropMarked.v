@@ -24,9 +24,9 @@ Require Import Coq.Program.Equality.
 Require Import Coq.Logic.FunctionalExtensionality.
 
 Module Type PropMarkedType.
-  Declare Module ClickModule : ClickType.
-  Export ClickModule.
-  Module ClickMG := ClickMG(ClickModule).
+  Declare Module ClickInvariant : ClickInvariant.
+  Export ClickInvariant.
+  Module ClickMG := ClickMG(ClickInvariant).
   Export ClickMG.
   Export ClickTactics.
 
