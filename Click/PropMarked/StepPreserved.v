@@ -36,8 +36,6 @@ Module StepPreservation (Import PropMarked : PropMarkedType).
   Import Invariants.
 
 
-
-
   Lemma latch_clk_function_l_ack_fall : forall l σ σ',
     wf_stage_state l σ ->
     wf_stage_state l σ' ->
@@ -583,14 +581,12 @@ Section disjoint_place_marked.
         (* Hlreq' : σ lreq = if_token l (σ state0) *)
 
         assert (Henv : σ (ack (latch_input l)) = σ (req (latch_input l))).
-        { Search (neg_value _ = neg_value _).
-          apply neg_value_inj; auto; try solve_val_is_bit.
+        { apply neg_value_inj; auto; try solve_val_is_bit.
         }
         contradict Hlreq'.
         rewrite <- Henv.
         rewrite wf_left_env; auto.
         rewrite <- neg_value_if_token.
-        Search (neg_value _ <> _).
         apply bit_neq_neg_l. destruct l; simpl; try solve_val_is_bit.
       }
 
@@ -884,7 +880,6 @@ End disjoint_place_marked.
         intros x Hx.
         decompose_set_structure.
         + (* ctrl_reset_n *)
-Print wf_stage_state.
           erewrite wf_ctrl_reset_n; eauto.
           erewrite wf_ctrl_reset_n; eauto.
           eapply step_wf_state_eps; eauto.

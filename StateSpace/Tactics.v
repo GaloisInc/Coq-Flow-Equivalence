@@ -155,19 +155,6 @@ Module StateSpaceTactics (Export name : NameType).
   Qed.
 
 
-(*
-  Instance internal_in_dec : forall l, in_dec (space_internal (latch_stage_with_env l)).
-  Proof.
-    intros l. simpl. typeclasses eauto.
-  Qed.
-
-  Instance input_in_dec : forall l, in_dec (space_input (latch_stage_with_env l)).
-  Admitted.
-
-  Instance output_in_dec : forall l, in_dec (space_output (latch_stage_with_env l)).
-  Admitted.
-*)
-
 
   Lemma union_internal_inversion_right : forall (S1 S2 : StateSpace name) σ x v σ',
       well_formed S1 ->

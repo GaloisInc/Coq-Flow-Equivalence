@@ -13,9 +13,6 @@ Open Scope list_scope.
 Require Import MarkedGraph.
 Require Import Click.Definitions.
 Require Import Click.Invariants.
-Require Import Click.MG.
-Require Import Click.PropMarked.PropMarked.
-Require Import Click.PropMarked.Step.
 
 Require Import Coq.Program.Equality.
 

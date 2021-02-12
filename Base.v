@@ -1073,35 +1073,6 @@ Ltac compare_in_list :=
     Definition list_setminus (lX lY : list name) :=
       better_filter (fun x => negb (in_list_dec x lY)) lX.
 
-(*
-Lemma better_filter_equiv : forall (f1 f2 : name -> bool) (l1 l2 : list name),
-  from_list l1 == from_list l2 ->
-  (forall a, f1 a = f2 a) ->
-  from_list (better_filter f1 l1) == from_list (better_filter f2 l2).
-Proof.
-  induction l1 as [ | a l1]; intros l2 Hl Hf.
-  * destruct l2 as [ | b l2].
-    + simpl. reflexivity.
-    + contradict Hl. simpl.
-      intros [_ Hx].
-      specialize (Hx b).
-      assert (Hb : b ∈ singleton b ∪ from_list l2) by solve_set.
-      specialize (Hx Hb). find_contradiction.
-  * simpl.
-    rewrite Hf.
-    rewrite from_list_app.
-    destruct (in_list_dec a l1) eqn:Hdec1.
-    + (* If a ∈ l1 then from_list l1 == from_list l2 *)
-      rewrite (IHl1 l2); auto.
-      2:{ admit (* TODO: true, see above *). }
-      rewrite <- from_list_app.
-      admit (* true fact of sets *).
-    + (* If a ∉ l1 then from_list l1 == from_list l2 ∖ singleton a *)
-      rewrite (IHl1 (list_setminus l2 [a])); auto.
-      2:{ admit (* TODO: true, above *). }
-      admit (* tODO: lemma *).
-Abort.
-*)
     
     Lemma list_setminus_equiv : forall l1 l2 : list name,
       from_list (list_setminus l1 l2) == from_list l1 ∖ from_list l2.

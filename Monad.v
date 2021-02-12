@@ -408,6 +408,7 @@ Proof.
   exact (exists a, X a /\ f a b).
 Defined.
 
+(*
 Ltac solve_ensemble_law :=
     repeat match goal with
     | [ |- forall x, _] => intros
@@ -449,6 +450,7 @@ Proof.
   * solve_ensemble_law.
   * solve_ensemble_law. 
 Admitted.
+*)
 
 
 

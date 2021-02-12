@@ -900,43 +900,6 @@ End Celem.
 
 (** * A state space modeling a delay until a guard holds over some sensitive input wires *)
 (** Relative timing constraint *)
-Section Delay.
-
-  Variable x y : name.
-  Variable sensitivities : list name.
-  (** The guard should only depend on the variables in the sensitivites set *)
-  Variable guard : state name -> Prop.
-  Variable guardb : state name -> bool.
-  Hypothesis guardb_equiv : forall σ, guard σ <-> guardb σ = true.
-
-  Inductive delay_step (σ : state name) :
-                      option (event name value) ->
-                      option (state name) ->
-                      Prop :=
-  | delay_input_unstable : forall v, σ x <> v -> σ y <> σ x ->
-                                     delay_step σ (Some (Event x v)) None
-  | delay_input_stable : forall v, σ y = σ x -> delay_step σ (Some (Event x v)) (Some (update σ x v))
-  (* output only transitions when the guard is true *)
-  | delay_output σ' : σ y <> σ x ->
-                   guard σ ->
-                   state_equiv_on (from_list sensitivities ∪ from_list [x;y]) (Some σ')
-                                                                    (Some (update σ y (σ x))) ->
-                   delay_step σ (Some (Event y (σ x))) (Some σ')
-  .
-
-  Definition delay : StateSpace :=
-    {| space_input := singleton x ∪ from_list sensitivities
-     ; space_output := singleton y
-     ; space_internal := ∅
-     ; space_step := delay_step
-    |}.
-
-  Lemma delay_wf : well_formed delay.
-  Admitted.
-
-End Delay.
-
-
 Section DelaySpace.
   Variable S : StateSpace.
   Variable sensitivities : list name.
@@ -1104,7 +1067,6 @@ Arguments func_space {name name_eq_dec}.
 Arguments C_elem {name name_eq_dec}.
 Arguments hide {name}.
 Arguments flop {name name_eq_dec}.
-Arguments delay {name name_eq_dec}.
 Arguments delay_space {name name_eq_dec}.
 Arguments state_equiv_on {name}.
 Arguments traces_of {name}.
