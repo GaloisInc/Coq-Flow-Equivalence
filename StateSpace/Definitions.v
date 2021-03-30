@@ -627,6 +627,25 @@ Section HideStateSpace.
       inversion Hstep; subst; auto.
       eapply wf_update0; eauto.
   Qed.
+
+  Lemma hide_stable : forall σ, stable S σ -> stable hide σ.
+  Proof.
+    intros σ [Hwf Hstable].
+    split.
+    { apply hide_wf; auto. }
+    intros e τ Hstep.
+    inversion Hstep; subst.
+    + (* S ⊢ σ →{x} τ where x ∈ output is a contradiction *)
+      specialize (Hstable _ _ H).
+      inversion Hstable as [ ? ? Hx]; subst.
+      (* we now have x ∈ space_input S and x ∈ space_output S *)
+
+      destruct (space_input_output _ Hwf) as [Hdisjoint].
+      absurd (x ∈ space_input S ∩ space_output S); auto; try solve_set.
+    + (* S ⊢ σ →{e} τ implies e ∈ input(S) *)
+      specialize (Hstable _ _ H).
+      auto.
+  Qed.
 End HideStateSpace.
 
 
