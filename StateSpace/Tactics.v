@@ -70,7 +70,7 @@ Module StateSpaceTactics (Export name : NameType).
     }
   Qed.
 
-  Lemma union_inversion_left_only : forall (S1 S2 : StateSpace name) σ e σ',
+  Lemma union_inversion_l : forall (S1 S2 : StateSpace name) σ e σ',
     (S1 ∥ S2) ⊢ σ →{e} Some σ' ->
     event_in (space_domain S1) e ->
     ~ event_in (space_domain S2) e ->
@@ -103,7 +103,7 @@ Module StateSpaceTactics (Export name : NameType).
     }
   Qed.
 
-  Lemma union_inversion_right_only : forall (S1 S2 : StateSpace name) σ e σ',
+  Lemma union_inversion_r : forall (S1 S2 : StateSpace name) σ e σ',
     (S1 ∥ S2) ⊢ σ →{e} Some σ' ->
     ~ event_in (space_domain S1) e ->
     event_in (space_domain S2) e ->
@@ -141,7 +141,7 @@ Module StateSpaceTactics (Export name : NameType).
     inversion Hstep; auto.
   Qed.
 
-  Lemma union_inversion_None : forall (S1 S2 : StateSpace name) σ σ',
+  Lemma union_inversion_eps : forall (S1 S2 : StateSpace name) σ σ',
     (S1 ∥ S2) ⊢ σ →{None} Some σ' ->
        (S1 ⊢ σ →{None} Some σ' /\ state_equiv_on (space_domain S2) (Some σ) (Some σ'))
     \/ (S2 ⊢ σ →{None} Some σ' /\ state_equiv_on (space_domain S1) (Some σ) (Some σ')).

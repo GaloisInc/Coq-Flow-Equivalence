@@ -423,7 +423,7 @@ Qed.
   (* Union *)
   | (?S1 ∥ ?S2) ⊢ _ →{None} _ => 
     let Hequiv := fresh "Hequiv" in
-    apply union_inversion_None in Hstep;
+    apply union_inversion_eps in Hstep;
     destruct Hstep as [[Hstep Hequiv] | [Hstep Hequiv]]
 
   | (?S1 ∥ ?S2) ⊢ _ →{?e} _ =>
@@ -432,7 +432,7 @@ Qed.
     | [ He1 : event_in (space_domain S1) ?e
       , He2 : ~ event_in (space_domain S2) ?e
       |- _ ] =>
-      apply union_inversion_left_only in Hstep; auto;
+      apply union_inversion_l in Hstep; auto;
       let Hstep' := fresh "Hstep" in
       let Hequiv := fresh "Hequiv" in
       destruct Hstep as [Hstep' Hequiv]; clear Hstep
@@ -440,7 +440,7 @@ Qed.
     | [ He1 : ~ event_in (space_domain S1) ?e
       , He2 : event_in (space_domain S2) ?e
       |- _ ] =>
-      apply union_inversion_right_only in Hstep; auto;
+      apply union_inversion_r in Hstep; auto;
       let Hstep' := fresh "Hstep" in
       let Hequiv := fresh "Hequiv" in
       destruct Hstep as [Hstep' Hequiv]; clear Hstep

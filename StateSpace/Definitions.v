@@ -326,6 +326,7 @@ Section FuncStateSpace.
       apply func_stable_equiv in Hstable; auto.
     }
   Defined.
+
 End FuncStateSpace.
 
 
@@ -541,6 +542,13 @@ Section UnionStateSpace.
            auto with sets.
   Qed.
 End UnionStateSpace.
+
+(* Might be interesting to prove:
+Lemma func_compose : forall I x y f1 f2 σ,
+       traces_of ((func_space I x f1) ∥ (func_space [x] y f2)) σ
+    == traces_of (func_space I y (fun x => f2 (fun z => if z =? y then f1 x else Bit0))) σ.
+*)
+
 
 
 (** * Move a name from the output of a state space to the input of a state space. *)
@@ -899,6 +907,7 @@ End Flop.
 
 (** * A state space modeling a C element. *)
 
+(*
 Section Celem.
 
   Variable x1 x2 y : name.
@@ -915,6 +924,69 @@ Section Celem.
     end.
   Definition C_elem : StateSpace := func_space [x1;x2] y C_elem_output.
 
+End Celem.
+*)
+
+(* The previous definition included stuttering; this definition avoids that. *)
+Section Partial_Function.
+  Print func_space.
+  Variable I : list name.
+  Variable x : name.
+  Variable f : state name -> option value.
+
+  Let pfunc_stable (σ : state name) := match f σ with
+                                       | Some v => σ x = v
+                                       | None   => True
+                                       end.
+
+  Inductive pfunc_step (σ : state name) : option (event name value) -> option (state name) -> Prop :=
+  | pfunc_input_stable : forall i σ' v,
+    i ∈ from_list I ->
+    pfunc_stable σ ->
+    σ i <> v ->
+    state_equiv_on (from_list I ∪ singleton x) (Some (update σ i v)) (Some σ') ->
+    pfunc_step σ (Some (Event i v)) (Some σ')
+
+  | pfunc_input_unstable i v σ' :
+    i ∈ from_list I ->
+    ~ (pfunc_stable σ) ->
+    f σ = f σ' -> (* ok to update input in an unstable system if the output doesn't change *)
+    state_equiv_on (from_list I ∪ singleton x) (Some (update σ i v))  (Some σ') ->
+    pfunc_step σ (Some (Event i v)) (Some σ')
+
+  (* if input updates in an unstable system causes output to change, go to error state*)
+  | pfunc_err i v :
+    i ∈ from_list I ->
+    ~ (pfunc_stable σ) ->
+    f σ <> f (update σ i v) \/ σ i = v ->
+    pfunc_step σ (Some (Event i v)) None
+
+  | pfunc_output v σ' :
+    f σ = Some v ->
+    ~ (pfunc_stable σ) ->
+    state_equiv_on (from_list I ∪ singleton x) (Some (update σ x v)) (Some σ')  ->
+    pfunc_step σ (Some (Event x v)) (Some σ')
+
+  .
+
+
+  Definition pfunc_space :=
+    {| space_input := from_list I;
+       space_output := singleton x;
+       space_internal := ∅;
+       space_step := pfunc_step
+    |}.
+
+End Partial_Function.
+Section Celem.
+  Variable x1 x2 y : name. 
+  Definition C_elem := pfunc_space [x1;x2] y (fun σ => match σ x1, σ x2 with
+                                                      | Num 0, Num 0 => Some Bit0
+                                                      | Num 1, Num 1 => Some Bit1
+                                                      | Num 0, Num 1 => None (* maintain value *)
+                                                      | Num 1, Num 0 => None (* maintain value *)
+                                                      | _    , _     => Some X
+                                                      end).
 End Celem.
 
 (** * A state space modeling a delay until a guard holds over some sensitive input wires *)

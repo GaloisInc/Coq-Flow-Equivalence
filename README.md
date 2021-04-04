@@ -17,9 +17,25 @@ The repository also contains work in progress building on the ASYNC paper.
 * `RiseDecoupled.v`: Proof that the rise decoupled protocol satisfies flow equivalence.
 * `FallDecoupled.v`: Proof that the fall decoupled protocol satisfies flow equivalence.
 * `Desynchronization.v`: Counterexample to Cortadella et al's proof tha the desynchronization protocol satisfies flow equivalence.
-* `StateSpace.v`: Formalization of state spaces, used to model the behavior of asynchronous controllers.
-* `Click.v`: Implementation of Click controllers as state spaces.
-* `ClickMG.v`: Marked graph refinements of Click controllers.
+* `StateSpace.v`
+  * `StateSpace/Definitions.v`: Formalization of state spaces, used to model the behavior of asynchronous controllers.
+  * `StateSpace/Tactics.v`: Inversion lemmas about state spaces and related tactics.
+  * `StateSpace/MarkedGraphs.v`: An embedding of marked graphs into state spaces.
+  * `StateSpace/Reflection.v`: Tactics for reflection over state spaces. Currently defunct.
+  * `StateSpace/RelateTrace.v`: Properties about relations between two state spaces with different domains.
+
+* `Click/`
+  * `Click/Definitions.v`: Implementation of Click controllers as state spaces.
+  * `Click/Invariants.v`: Proofs of key invariants about Click controllers, and tactics for working with Click state spaces, including `step_inversion_clean`.
+  * `Click/ExtraInvariants.v`: Proofs of additional invariants about Click controllers.
+  * `Click/MG.v`: Marked graph refinements of Click controllers.
+  * `Click/PropMarked/`
+	* `Click/PropMarked/PropMarked.v`: Definition of the `prop_marked` predicate that relates markings in the Click marked graphs with states in the state space.
+	* `Click/PropMarked/Step.v`: Proof of `step_implies_prop_marked`.
+	* `Click/PropMarked/Outgoing.v`: Proof of `outgoing_place_not_marked`.
+	* `Click/PropMarked/StepPreserved.v`: Proof of `disjoint_place_marked` and `relate_implies_marked_eps`.
+  * `Click/MGProofs.v`: Proof of `MG_refines_stage` that the traces produced by the Click gate-level state space are a subset of the traces produced by the corresponding marked graph.
+
 
 
 ## Building the project and documentation

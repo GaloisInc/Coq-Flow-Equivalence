@@ -289,6 +289,7 @@ Module Structural_SS (Export name : NameType).
     end
   end.
 
+(* Currently do not support C_elem
   Section Test.
   Variable x : name.
   Let S : StateSpace name := C_elem x x x.
@@ -299,6 +300,7 @@ Module Structural_SS (Export name : NameType).
     reflect_StateSpace.
   Abort.
   End Test.
+*)
 
 
   Definition update_oevent (σ : state name) (e : option (event name value)) : state name :=
