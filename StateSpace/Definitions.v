@@ -929,7 +929,6 @@ End Celem.
 
 (* The previous definition included stuttering; this definition avoids that. *)
 Section Partial_Function.
-  Print func_space.
   Variable I : list name.
   Variable x : name.
   Variable f : state name -> option value.

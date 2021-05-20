@@ -1,11 +1,12 @@
 -R ./ FE
 Monad.v
 Base.v
-MarkedGraph.v
-Circuit.v
-RiseDecoupled.v
-FallDecoupled.v
-Desynchronization.v
+FlowEquivalence/MarkedGraph.v
+FlowEquivalence/Circuit.v
+FlowEquivalence/RiseDecoupled.v
+FlowEquivalence/FallDecoupled.v
+FlowEquivalence/Desynchronization.v
+
 StateSpace/Definitions.v
 StateSpace/Tactics.v
 StateSpace/MarkedGraphs.v
